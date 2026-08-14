@@ -34,7 +34,7 @@ class IndexView(NavMixin, TemplateView):
     """
 
     #: TOP に載せるお知らせの件数
-    news_limit = 3
+    news_limit = 5
 
     template_name = 'home/index.html'
     nav = 'top'
