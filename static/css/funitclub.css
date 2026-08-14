@@ -7,6 +7,11 @@
  * 書体は Consolas（ラベル・数値・ナビ）＋ Meiryo（日本語本文）。
  */
 
+/* Bootstrap 5 の上に重ねて読み込む。Bootstrap と同名のクラス（.container /
+ * .card / .btn / .badge など）はここで上書きしているため、読み込み順を
+ * 「Bootstrap → funitclub.css」から変えないこと（templates/_assets.html）。
+ * Font Awesome のアイコンは文字サイズと色を継承させる。 */
+
 :root {
     --navy: #001E3C;
     --navy-2: #003060;
@@ -155,8 +160,12 @@ a:hover {
 }
 
 .card {
+    /* Bootstrap の .card は flex（縦積み）だが、こちらは通常のブロックを土台とし、
+     * 並べたい箇所（.wg-card / .work-card / .cd-item / .menu-card）で個別に指定する。 */
+    display: block;
     background: var(--card);
     color: var(--ink-2);
+    border: none;
     border-radius: var(--radius);
     padding: 24px;
 }
@@ -459,6 +468,14 @@ a:hover {
     left: 0;
     color: var(--accent);
     font-family: var(--mono);
+}
+
+.tools-note {
+    margin: 0 0 14px;
+    font-size: .82rem;
+    line-height: 1.9;
+    color: var(--muted);
+    max-width: 480px;
 }
 
 .tools {
@@ -868,6 +885,7 @@ a:hover {
 
 .cd-item {
     display: flex;
+    flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 24px;

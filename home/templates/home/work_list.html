@@ -23,7 +23,7 @@
                     {% else %}
                     <span></span>
                     {% endif %}
-                    <a class="work-link" href="{% if work.url %}{{ work.url }}{% else %}{% url 'home:coming_soon' %}{% endif %}" aria-label="詳細を見る">→</a>
+                    <a class="work-link" href="{% if work.url %}{{ work.url }}{% else %}{% url 'home:coming_soon' %}{% endif %}" aria-label="詳細を見る"><i class="fas fa-arrow-right"></i></a>
                 </div>
             </div>
             {% empty %}

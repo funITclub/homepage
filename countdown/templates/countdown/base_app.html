@@ -10,7 +10,7 @@
     <meta name="description" content="出来事や予定を名前と日付で登録するだけ。過ぎた日は経過日数、これからの日は残り日数を数えます。">
     <title>{% block title %}カウントアップ＆ダウン{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23001E3C'/><text x='16' y='23' font-size='18' font-family='monospace' fill='%235BB8FF'>±</text></svg>">
-    <link rel="stylesheet" href="{% static 'css/funitclub.css' %}">
+    {% include "_assets.html" %}
 </head>
 <body>
 
@@ -36,5 +36,6 @@
     </div>
 </footer>
 
+{% include "_scripts.html" %}
 </body>
 </html>

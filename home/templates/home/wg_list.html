@@ -22,7 +22,7 @@
                 <p class="wg-desc">{{ wg.description|linebreaksbr }}</p>
                 <div class="wg-actions">
                     {% if wg.is_active %}
-                    <a class="btn btn-primary" href="{% if wg.app_url %}{{ wg.app_url }}{% else %}{% url 'home:coming_soon' %}{% endif %}">▶ Webアプリを見る</a>
+                    <a class="btn btn-primary" href="{% if wg.app_url %}{{ wg.app_url }}{% else %}{% url 'home:coming_soon' %}{% endif %}"><i class="fas fa-play me-1"></i>Webアプリを見る</a>
                     {% if wg.link_label %}
                     <a class="btn btn-ghost" href="{% if wg.link_url %}{{ wg.link_url }}{% else %}{% url 'home:coming_soon' %}{% endif %}">{{ wg.link_label }}</a>
                     {% endif %}

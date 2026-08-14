@@ -35,10 +35,10 @@
     <section class="section">
         <div class="section-head">
             <p class="section-label">// お知らせ</p>
-            <a class="section-more" href="{% url 'home:coming_soon' %}">すべて見る →</a>
+            <a class="section-more" href="{% url 'home:coming_soon' %}">すべて見る <i class="fas fa-arrow-right ms-1"></i></a>
         </div>
 
-        {# お知らせは news アプリのモデルから。編集は /news-editor/ で行う。 #}
+        {# お知らせは news アプリのモデルから。編集は /edit/ で行う。 #}
         <div class="news">
             {% for news in news_list %}
             <div class="news-item">

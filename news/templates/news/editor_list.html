@@ -24,7 +24,7 @@
         </p>
 
         <div class="editor-toolbar">
-            <a class="btn btn-primary" href="{% url 'edit:news:editor_create' %}">＋ お知らせを追加</a>
+            <a class="btn btn-primary" href="{% url 'edit:news:editor_create' %}"><i class="fas fa-plus me-1"></i>お知らせを追加</a>
         </div>
 
         <div class="card">
@@ -53,8 +53,8 @@
                                 {% if news.is_published %}公開{% else %}下書き{% endif %}
                             </td>
                             <td class="editor-actions">
-                                <a href="{% url 'edit:news:editor_update' news.pk %}">編集</a>
-                                <a class="is-danger" href="{% url 'edit:news:editor_delete' news.pk %}">削除</a>
+                                <a href="{% url 'edit:news:editor_update' news.pk %}"><i class="fas fa-pen me-1"></i>編集</a>
+                                <a class="is-danger" href="{% url 'edit:news:editor_delete' news.pk %}"><i class="fas fa-trash me-1"></i>削除</a>
                             </td>
                         </tr>
                         {% endfor %}

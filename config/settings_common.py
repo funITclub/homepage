@@ -17,6 +17,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    # Bootstrap 5（hirahira_room と同じ構成。フォームのレンダリング用タグを使う）
+    'django_bootstrap5',
+
     # 自作アプリ
     'home',        # 公開サイト
     'news',        # お知らせ
