@@ -1,0 +1,32 @@
+{% extends "edit/base.html" %}
+
+{% block title %}成果物を削除 — fun IT club 編集{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="editor editor-narrow">
+
+        <div class="section-head">
+            <p class="section-label">// 成果物を削除</p>
+            <a class="section-more" href="{% url 'edit:catalog:work_list' %}">← 一覧に戻る</a>
+        </div>
+
+        <div class="card">
+            <p class="editor-confirm">次の成果物を削除します。元に戻せません。</p>
+            <p class="editor-target">
+                <span class="editor-date">{{ object.category }}</span>
+                {{ object.title }}
+            </p>
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-actions">
+                    <button class="btn btn-lg btn-danger" type="submit">削除する</button>
+                    <a class="btn btn-ghost" href="{% url 'edit:catalog:work_list' %}">キャンセル</a>
+                </div>
+            </form>
+        </div>
+
+    </section>
+</div>
+{% endblock %}

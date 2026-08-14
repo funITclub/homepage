@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}参加する — fun IT club{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="join">
+
+        <div>
+            <h2>こんな方におすすめ</h2>
+            <ul class="check-list">
+                <li>プログラミングやデータ分析に興味がある</li>
+                <li>何か作ってみたいけれど、ひとりでは続かない</li>
+                <li>ITは初心者だけれど、やってみたい</li>
+                <li>同じ関心を持つ仲間と交流したい</li>
+            </ul>
+
+            <p class="section-label">活動ツール</p>
+            <div class="tools">
+                <div class="tool">
+                    <div class="tool-name">Zoom</div>
+                    <div class="tool-role">ミーティング・発表</div>
+                </div>
+                <div class="tool">
+                    <div class="tool-name">Slack</div>
+                    <div class="tool-role">WG活動・連絡</div>
+                </div>
+                <div class="tool">
+                    <div class="tool-name">GitHub</div>
+                    <div class="tool-role">成果物共有</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cta">
+            <h2>一緒につくりませんか</h2>
+            <p>
+                プログラミング初心者歓迎。<br>
+                興味があれば気軽にご連絡ください。<br>
+                オンライン・全国参加可。
+            </p>
+            <a class="btn btn-lg" href="{% url 'home:coming_soon' %}">参加を検討する →</a>
+        </div>
+
+    </section>
+</div>
+{% endblock %}

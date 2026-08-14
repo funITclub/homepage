@@ -1,0 +1,72 @@
+{% extends "edit/base.html" %}
+
+{% block title %}成果物紹介 — fun IT club 編集{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="editor">
+
+        <div class="section-head">
+            <p class="section-label">// 成果物紹介</p>
+        </div>
+
+        {% if messages %}
+        <ul class="editor-messages">
+            {% for message in messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <p class="editor-note">
+            公開サイトの「成果物」に出るカードです。公開中の件数が
+            TOP の「公開済み成果物」に入ります。
+        </p>
+
+        <div class="editor-toolbar">
+            <a class="btn btn-primary" href="{% url 'edit:catalog:work_create' %}">＋ 成果物を追加</a>
+        </div>
+
+        <div class="card">
+            {% if work_list %}
+            <div class="editor-table-wrap">
+                <table class="editor-table">
+                    <thead>
+                        <tr>
+                            <th>順</th>
+                            <th>種別</th>
+                            <th>題名</th>
+                            <th>ライセンス</th>
+                            <th>掲載</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for work in work_list %}
+                        <tr>
+                            <td class="editor-date">{{ work.sort_order }}</td>
+                            <td class="editor-date">{{ work.category }}</td>
+                            <td>{{ work.title }}</td>
+                            <td>
+                                {% if work.license %}<span class="badge badge-ink">{{ work.license }}</span>{% endif %}
+                            </td>
+                            <td class="editor-state">
+                                {% if work.is_published %}公開{% else %}下書き{% endif %}
+                            </td>
+                            <td class="editor-actions">
+                                <a href="{% url 'edit:catalog:work_update' work.pk %}">編集</a>
+                                <a class="is-danger" href="{% url 'edit:catalog:work_delete' work.pk %}">削除</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="editor-empty">成果物がまだありません。「成果物を追加」から登録してください。</p>
+            {% endif %}
+        </div>
+
+    </section>
+</div>
+{% endblock %}

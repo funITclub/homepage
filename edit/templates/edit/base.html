@@ -1,0 +1,50 @@
+{% load static %}{% comment %}
+編集画面の共通レイアウト。
+公開サイト（templates/base.html）とは別立てで、公開ナビも公開ページへのリンクも持たない。
+{% endcomment %}<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{% block title %}編集 — fun IT club{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/funitclub.css' %}">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="container header-inner">
+        {% if user.is_authenticated %}
+        <a class="brand" href="{% url 'edit:index' %}">fun IT club / edit</a>
+        {% else %}
+        <span class="brand">fun IT club / edit</span>
+        {% endif %}
+
+        {% if user.is_authenticated %}
+        <nav class="site-nav">
+            <a href="{% url 'edit:news:editor_list' %}" {% if section == 'news' %}class="is-active"{% endif %}>お知らせ</a>
+            <a href="{% url 'edit:catalog:wg_list' %}" {% if section == 'wg' %}class="is-active"{% endif %}>WG紹介</a>
+            <a href="{% url 'edit:catalog:work_list' %}" {% if section == 'works' %}class="is-active"{% endif %}>成果物紹介</a>
+        </nav>
+
+        <form class="editor-signout" method="post" action="{% url 'edit:logout' %}">
+            {% csrf_token %}
+            <span class="editor-user">{{ user.get_username }}</span>
+            <button class="editor-signout-btn" type="submit">ログアウト</button>
+        </form>
+        {% endif %}
+    </div>
+</header>
+
+<main>
+    {% block contents %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span>fun IT club — 編集画面</span>
+    </div>
+</footer>
+
+</body>
+</html>

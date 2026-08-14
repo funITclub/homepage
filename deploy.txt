@@ -1,0 +1,97 @@
+# funITclub デプロイ手順（Azure App Service）
+#
+# 対象リソース（.azure/config の既定値。--resource-group などは省略できる）
+#   App Service : funITclub（PYTHON|3.11 / Linux）
+#   リソースグループ : hirahira
+#   App Service プラン : hirahiratriangle_asp_1479
+#   ロケーション : japanwest
+#   PostgreSQL : hirahira-db（公開アクセス無効。VNet 内からのみ）
+#
+# hirahira-room と同じリソースグループ・同じ DB サーバーを間借りしている。
+# ただしデータベースは funITclub 専用（funitclub）を使い、hirahira_room の
+# 共有DBには触らないこと。
+
+
+########################################
+# 通常のデプロイ（コード更新のみ）
+########################################
+
+# リポジトリのルートで実行する。SCM_DO_BUILD_DURING_DEPLOYMENT=True なので
+# デプロイ時に pip install と collectstatic が走る。
+az webapp up --name funITclub --runtime "PYTHON|3.11"
+
+# 状態の確認
+az webapp show --name funITclub --query state
+
+# 反映されないときは再起動
+az webapp restart --name funITclub
+
+# ログを見る（問題があるとき）
+az webapp log tail --name funITclub
+
+
+########################################
+# 初回のみ（環境の作成）
+########################################
+
+# 1. funITclub 専用データベースを作る。
+#    ※ hirahira_room の共有DBは使わない。
+az postgres flexible-server db create --resource-group hirahira --server-name hirahira-db --database-name funitclub --charset UTF8 --collation en_US.utf8
+
+# 2. SECRET_KEY を生成する。
+python -c "import secrets; import string; chars = string.ascii_letters + string.digits + '-_'; print(''.join(secrets.choice(chars) for _ in range(50)))"
+
+# 3. アプリケーション設定（環境変数）を入れる。
+#    DB_USER / DB_PASSWORD / DB_HOST は hirahira-room と同じ値。
+#    DB_NAME だけ funITclub 専用DBを指すこと。
+az webapp config appsettings set --name funITclub --settings \
+  SECRET_KEY="<生成した値>" \
+  DB_NAME="funitclub" \
+  DB_USER="<ユーザー名>" \
+  DB_PASSWORD="<パスワード>" \
+  DB_HOST="<hirahira-db のホスト名>" \
+  SCM_DO_BUILD_DURING_DEPLOYMENT="True"
+
+# 4. VNet 統合（hirahira-db は VNet 内からしか繋がらない）。
+#    hirahira-room と同じ hirahara_vnet の中に、funITclub 専用サブネットを切って繋ぐ。
+#    ※ 別VNetにすると hirahira-db に届かなくなる（ピアリングとプライベートDNSが別途必要）。
+az network vnet subnet create --resource-group hirahira --vnet-name hirahara_vnet --name funitclub_vnet_apps --address-prefixes 10.1.2.0/24 --delegations Microsoft.Web/serverfarms
+az webapp vnet-integration add --name funITclub --resource-group hirahira --vnet hirahara_vnet --subnet funitclub_vnet_apps
+
+#    サブネットの割り当て（現状）
+#      hirahira_vnet_db     10.1.0.0/24  PostgreSQL
+#      hirahira_vnet_apps   10.1.1.0/24  hirahira-room
+#      funitclub_vnet_apps  10.1.2.0/24  funITclub
+
+# 5. マイグレーションと編集画面のアカウント作成。
+#    App Service の SSH から実行する（手元からは hirahira-db に繋がらない）。
+#    ※ アプリを更新してテーブルが増えたときも、デプロイ後に migrate が必要。
+python manage.py migrate
+python manage.py createsuperuser
+
+
+########################################
+# 一時的にデバッグする（本番）
+########################################
+
+# DEBUG=True を足すと本番でもエラー画面が出る。切り分けが済んだら必ず消すこと。
+az webapp config appsettings set --name funITclub --settings DEBUG="True"
+az webapp config appsettings delete --name funITclub --setting-names DEBUG
+
+
+########################################
+# 参考
+########################################
+
+# 静的ファイルを手元で収集して確認する（本番設定）
+python manage.py collectstatic --noinput --settings=config.settings
+
+# アプリの全情報
+az webapp show --name funITclub
+
+# 停止・開始
+az webapp stop  --name funITclub
+az webapp start --name funITclub
+
+# ※ az group delete は全リソースが消えるので実行しないこと。
+# ※ 作り直しでなければ az webapp delete も不要（az webapp up で上書きできる）。

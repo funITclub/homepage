@@ -1,0 +1,38 @@
+{% load static %}<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="fun IT club — 佛教大学 通信教育課程 課外活動団体。テーマごとのWGで手を動かして成果物を作る同好会です。">
+    <title>{% block title %}fun IT club{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23001E3C'/><text x='16' y='23' font-size='18' font-family='monospace' fill='%235BB8FF' text-anchor='middle'>f</text></svg>">
+    <link rel="stylesheet" href="{% static 'css/funitclub.css' %}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<header class="site-header">
+    <div class="container header-inner">
+        <a class="brand" href="{% url 'home:index' %}">fun IT club</a>
+        <nav class="site-nav">
+            <a href="{% url 'home:index' %}" {% if nav == 'top' %}class="is-active"{% endif %}>TOP</a>
+            <a href="{% url 'home:wg_list' %}" {% if nav == 'wg' %}class="is-active"{% endif %}>WG一覧</a>
+            <a href="{% url 'home:work_list' %}" {% if nav == 'works' %}class="is-active"{% endif %}>成果物</a>
+            <a href="{% url 'home:join' %}" {% if nav == 'join' %}class="is-active"{% endif %}>参加する</a>
+        </nav>
+    </div>
+</header>
+
+<main>
+    {% block contents %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span>fun IT club — 佛教大学 通信教育課程 課外活動団体</span>
+        <span>&copy; {% now "Y" %} fun IT club</span>
+    </div>
+</footer>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

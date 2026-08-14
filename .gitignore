@@ -1,0 +1,25 @@
+# VSCodeの設定ファイル
+.vscode/
+
+# Pythonのコンパイルファイル
+__pycache__/
+*.pyc
+
+# Mac用
+.DS_Store
+
+# 仮想環境
+venv/
+.venv/
+
+# データベース
+db.sqlite3
+
+# アップされたメディアファイル
+media/
+
+# 静的ファイル（collectstatic の出力）
+staticfiles/
+
+# Azure
+.azure/

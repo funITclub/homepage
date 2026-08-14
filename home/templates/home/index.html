@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}fun IT club — 佛教大学 通信教育課程 課外活動団体{% endblock %}
+
+{% block contents %}
+<div class="container">
+
+    <section class="hero">
+        <div>
+            <p class="hero-eyebrow">// fun IT club — 佛教大学 通信教育課程 課外活動団体</p>
+            <h1>ITで<span class="accent">つくる</span>、<br>仲間と<span class="accent">つながる</span>。</h1>
+            <p class="hero-lead">
+                プログラミング・データ分析・機械学習など、テーマごとのWGで実際に
+                手を動かして成果物を作る同好会です。オンライン完結・全国参加可。
+            </p>
+        </div>
+
+        {# 件数は編集画面で登録した公開中のWG・成果物に連動する。 #}
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-num">{{ active_wg_count|stringformat:"02d" }}</div>
+                <div class="stat-label">活動中のWG</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num">{{ work_count|stringformat:"02d" }}</div>
+                <div class="stat-label">公開済み成果物</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num">CC BY</div>
+                <div class="stat-label">成果物ライセンス</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <p class="section-label">// お知らせ</p>
+            <a class="section-more" href="{% url 'home:coming_soon' %}">すべて見る →</a>
+        </div>
+
+        {# お知らせは news アプリのモデルから。編集は /news-editor/ で行う。 #}
+        <div class="news">
+            {% for news in news_list %}
+            <div class="news-item">
+                <span class="news-date">{{ news.published_on|date:"Y-m-d" }}</span>
+                <span class="news-text">{{ news.text }}</span>
+                {% if news.is_new %}
+                <span class="badge badge-new">NEW</span>
+                {% elif news.badge %}
+                <span class="badge">{{ news.badge }}</span>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="news-item news-empty">
+                <span class="news-text">お知らせはまだありません。</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+</div>
+{% endblock %}

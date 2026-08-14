@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}作成中 — fun IT club{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="coming">
+        <div class="card">
+            <p class="coming-label">// UNDER CONSTRUCTION</p>
+            <h1>このページは作成中です</h1>
+            <p>
+                各WGのWebアプリ・成果物ページは準備中です。<br>
+                公開までもうしばらくお待ちください。
+            </p>
+            <a class="btn btn-primary" href="{% url 'home:index' %}">TOPへ戻る</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

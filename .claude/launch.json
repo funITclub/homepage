@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "funitclub",
+      "runtimeExecutable": "venv/bin/python",
+      "runtimeArgs": ["manage.py", "runserver", "8010", "--settings=config.settings_dev"],
+      "port": 8010
+    }
+  ]
+}
