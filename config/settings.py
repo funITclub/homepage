@@ -30,6 +30,10 @@ CUSTOM_DOMAINS = ['funitclub.org', 'www.funitclub.org']
 
 CSRF_TRUSTED_ORIGINS = [f'https://{d}' for d in CUSTOM_DOMAINS]
 
+# 正規のURLは www なし。www.funitclub.org へのアクセスは 301 でこちらへ寄せる。
+CANONICAL_HOST = 'funitclub.org'
+MIDDLEWARE.insert(idx + 2, 'config.middleware.CanonicalHostMiddleware')
+
 # Azure App Service 用の設定（既定ホスト名でもアクセスできるようにしておく）
 if 'WEBSITE_HOSTNAME' in os.environ:
     _origin = f"https://{os.environ['WEBSITE_HOSTNAME']}"
