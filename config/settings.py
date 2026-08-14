@@ -23,9 +23,14 @@ STORAGES = {
 }
 
 ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = []
 
-# Azure App Service 用の設定
+# カスタムドメイン。POST（編集画面と admin のログイン）を通すために CSRF の許可
+# オリジンへ入れる必要がある。増えたら CUSTOM_DOMAINS に足す。
+CUSTOM_DOMAINS = ['funitclub.org', 'www.funitclub.org']
+
+CSRF_TRUSTED_ORIGINS = [f'https://{d}' for d in CUSTOM_DOMAINS]
+
+# Azure App Service 用の設定（既定ホスト名でもアクセスできるようにしておく）
 if 'WEBSITE_HOSTNAME' in os.environ:
     _origin = f"https://{os.environ['WEBSITE_HOSTNAME']}"
     if _origin not in CSRF_TRUSTED_ORIGINS:
