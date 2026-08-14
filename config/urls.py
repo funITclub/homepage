@@ -12,4 +12,8 @@ urlpatterns = [
     # 編集画面（ログイン必須）。公開サイトからはリンクせず、この URL を直接開いて使う。
     # お知らせ・WG紹介・成果物紹介の編集はすべてこの下にある。
     path('edit/', include('edit.urls', namespace='edit')),
+
+    # サブアプリ「カウントアップ＆ダウン」（ログイン不要）。公開サイトとは相互に
+    # リンクせず、成果物紹介に登録した URL から辿る。
+    path('countdown/', include('countdown.urls', namespace='countdown')),
 ]

@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'news',        # お知らせ
     'catalog',     # WG紹介・成果物紹介
     'edit',        # 編集画面（ログイン・メニュー・共通レイアウト）
+    'countdown',   # サブアプリ「カウントアップ＆ダウン」（ログイン不要の公開ボード）
 ]
 
 MIDDLEWARE = [

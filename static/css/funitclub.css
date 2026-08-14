@@ -829,6 +829,135 @@ a:hover {
     color: #FFFFFF;
 }
 
+/* ---------- サブアプリ：カウントアップ＆ダウン（/countdown/） ---------- */
+
+.cd-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+}
+
+.cd-actions .btn {
+    display: inline-block;
+    min-width: 160px;
+}
+
+.cd-card-title {
+    margin: 0 0 12px;
+    color: var(--ink);
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.cd-card-desc {
+    margin: 0;
+    font-size: .86rem;
+    line-height: 1.95;
+    color: var(--ink-2);
+}
+
+.cd-group-label {
+    margin: 32px 0 14px;
+}
+
+.cd-list {
+    display: grid;
+    gap: 12px;
+}
+
+.cd-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 18px 22px;
+}
+
+.cd-name {
+    margin: 0 0 4px;
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.cd-date {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: .76rem;
+    color: var(--ink-2);
+}
+
+.cd-memo {
+    margin: 8px 0 0;
+    font-size: .82rem;
+    line-height: 1.8;
+    color: var(--ink-2);
+}
+
+.cd-count {
+    text-align: right;
+    flex: none;
+}
+
+.cd-num {
+    font-family: var(--mono);
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--accent-ink);
+}
+
+.cd-unit {
+    font-size: .8rem;
+    color: var(--ink-2);
+    margin-left: 4px;
+}
+
+.cd-sub {
+    margin: 2px 0 0;
+    font-size: .74rem;
+    color: var(--ink-2);
+    white-space: nowrap;
+}
+
+.cd-today {
+    font-size: .8rem;
+    padding: 3px 12px;
+}
+
+.cd-item-actions {
+    margin-top: 10px;
+}
+
+.cd-item-actions a {
+    font-family: var(--mono);
+    font-size: .74rem;
+    color: var(--accent-ink);
+    margin-left: 10px;
+}
+
+.cd-item-actions a.is-danger {
+    color: #B3261E;
+}
+
+@media (max-width: 640px) {
+    .cd-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .cd-count {
+        text-align: left;
+    }
+
+    .cd-item-actions a {
+        margin: 0 14px 0 0;
+    }
+}
+
 /* ---------- フッター ---------- */
 
 .site-footer {

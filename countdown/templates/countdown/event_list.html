@@ -1,0 +1,82 @@
+{% extends "countdown/base_app.html" %}
+
+{% block title %}一覧 — カウントアップ＆ダウン{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="section">
+
+        <div class="section-head">
+            <p class="section-label">// 一覧（本日 {{ today|date:"Y-m-d" }}）</p>
+            <a class="section-more" href="{% url 'countdown:event_create' %}">＋ 登録する</a>
+        </div>
+
+        {% if messages %}
+        <ul class="editor-messages">
+            {% for message in messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <p class="section-label cd-group-label">// これからの予定（カウントダウン）</p>
+        <div class="cd-list">
+            {% for event in upcoming_events %}
+            <div class="card cd-item">
+                <div class="cd-body">
+                    <h2 class="cd-name">{{ event.name }}</h2>
+                    <p class="cd-date">{{ event.date|date:"Y-m-d (D)" }}</p>
+                    {% if event.memo %}<p class="cd-memo">{{ event.memo|linebreaksbr }}</p>{% endif %}
+                </div>
+                <div class="cd-count">
+                    {% if event.is_today %}
+                    <span class="badge badge-new cd-today">本日</span>
+                    {% else %}
+                    <div><span class="cd-num">{{ event.count_days }}</span><span class="cd-unit">日</span></div>
+                    <p class="cd-sub">
+                        残り{{ event.count_days }}日
+                        {% with wd=event.weeks_and_days %}
+                        {% if wd.0 %}（{{ wd.0 }}週{% if wd.1 %}と{{ wd.1 }}日{% endif %}）{% endif %}
+                        {% endwith %}
+                    </p>
+                    {% endif %}
+                    <div class="cd-item-actions">
+                        <a href="{% url 'countdown:event_update' event.pk %}">編集</a>
+                        <a class="is-danger" href="{% url 'countdown:event_delete' event.pk %}">削除</a>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="card"><p class="cd-card-desc">これからの予定はまだありません。</p></div>
+            {% endfor %}
+        </div>
+
+        <p class="section-label cd-group-label">// 過ぎた出来事（カウントアップ）</p>
+        <div class="cd-list">
+            {% for event in past_events %}
+            <div class="card cd-item">
+                <div class="cd-body">
+                    <h2 class="cd-name">{{ event.name }}</h2>
+                    <p class="cd-date">{{ event.date|date:"Y-m-d (D)" }}</p>
+                    {% if event.memo %}<p class="cd-memo">{{ event.memo|linebreaksbr }}</p>{% endif %}
+                </div>
+                <div class="cd-count">
+                    <div><span class="cd-num">{{ event.count_days }}</span><span class="cd-unit">日</span></div>
+                    <p class="cd-sub">
+                        経過{{ event.count_days }}日
+                        {% if event.years_passed %}（{{ event.years_passed }}周年経過）{% endif %}
+                    </p>
+                    <div class="cd-item-actions">
+                        <a href="{% url 'countdown:event_update' event.pk %}">編集</a>
+                        <a class="is-danger" href="{% url 'countdown:event_delete' event.pk %}">削除</a>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="card"><p class="cd-card-desc">過ぎた出来事はまだありません。</p></div>
+            {% endfor %}
+        </div>
+
+    </section>
+</div>
+{% endblock %}

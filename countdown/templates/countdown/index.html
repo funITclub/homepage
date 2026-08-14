@@ -1,0 +1,77 @@
+{% extends "countdown/base_app.html" %}
+
+{% block title %}カウントアップ＆ダウン — fun IT club{% endblock %}
+
+{% block contents %}
+<div class="container">
+
+    <section class="hero">
+        <div>
+            <p class="hero-eyebrow">// count up &amp; down</p>
+            <h1>数えるのは<span class="accent">日数</span>だけ。</h1>
+            <p class="hero-lead">
+                出来事や予定を「名前」と「日付」で登録するだけ。過ぎた日は経過日数を数え上げ、
+                これからの日は残り日数を数え下げます。ログインは要りません。
+            </p>
+            <div class="cd-actions">
+                <a class="btn btn-lg" href="{% url 'countdown:event_list' %}">一覧を見る</a>
+                <a class="btn btn-primary" href="{% url 'countdown:event_create' %}">＋ 登録する</a>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-num">＋</div>
+                <div class="stat-label">カウントアップ（過去）</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num">−</div>
+                <div class="stat-label">カウントダウン（未来）</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <p class="section-label">// 2つの数え方</p>
+        </div>
+
+        <div class="grid-3">
+            <div class="card">
+                <h2 class="cd-card-title">カウントアップ</h2>
+                <p class="cd-card-desc">
+                    日付が今日より前なら、その日からの<strong>経過日数</strong>を数え上げます。
+                    週数と周年もあわせて出るので、設立日や継続日数の確認に使えます。
+                </p>
+            </div>
+            <div class="card">
+                <h2 class="cd-card-title">カウントダウン</h2>
+                <p class="cd-card-desc">
+                    日付が今日より後なら、その日までの<strong>残り日数</strong>を数え下げます。
+                    締切や発表会までの日数が一目で分かります。
+                </p>
+            </div>
+            <div class="card">
+                <h2 class="cd-card-title">当日は「本日」</h2>
+                <p class="cd-card-desc">
+                    日付が今日なら「本日」と表示します。
+                    予定と出来事は自動で振り分けられるので、登録後の操作は要りません。
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <p class="section-label">// 使うときの注意</p>
+        </div>
+        <div class="card">
+            <p class="cd-card-desc">
+                このページは<strong>誰でも登録・編集・削除できる共有ボード</strong>です。
+                他の人が登録した内容も操作できてしまうため、消えて困るものは登録しないでください。
+            </p>
+        </div>
+    </section>
+
+</div>
+{% endblock %}

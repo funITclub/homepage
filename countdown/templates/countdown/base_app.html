@@ -1,0 +1,40 @@
+{% load static %}{% comment %}
+カウントアップ＆ダウンの共通レイアウト。
+公開サイト（templates/base.html）とは別立てで、公開ページへのリンクは持たない
+（成果物ページに載せた URL から辿ってくる想定）。
+{% endcomment %}<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="出来事や予定を名前と日付で登録するだけ。過ぎた日は経過日数、これからの日は残り日数を数えます。">
+    <title>{% block title %}カウントアップ＆ダウン{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23001E3C'/><text x='16' y='23' font-size='18' font-family='monospace' fill='%235BB8FF'>±</text></svg>">
+    <link rel="stylesheet" href="{% static 'css/funitclub.css' %}">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="container header-inner">
+        <a class="brand" href="{% url 'countdown:index' %}">count up &amp; down</a>
+        <nav class="site-nav">
+            <a href="{% url 'countdown:index' %}" {% if nav == 'index' %}class="is-active"{% endif %}>このアプリについて</a>
+            <a href="{% url 'countdown:event_list' %}" {% if nav == 'list' %}class="is-active"{% endif %}>一覧</a>
+            <a href="{% url 'countdown:event_create' %}" {% if nav == 'create' %}class="is-active"{% endif %}>登録</a>
+        </nav>
+    </div>
+</header>
+
+<main>
+    {% block contents %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span>fun IT club — カウントアップ＆ダウン</span>
+        <span>&copy; {% now "Y" %} fun IT club</span>
+    </div>
+</footer>
+
+</body>
+</html>
