@@ -16,9 +16,37 @@
 # 通常のデプロイ（コード更新のみ）
 ########################################
 
-# リポジトリのルートで実行する。SCM_DO_BUILD_DURING_DEPLOYMENT=True なので
+# zip デプロイを使う。アプリのコンテンツだけを差し替えるので、
+# App Service プランには触らない。SCM_DO_BUILD_DURING_DEPLOYMENT=True なので
 # デプロイ時に pip install と collectstatic が走る。
-az webapp up --name funITclub --runtime "PYTHON|3.11"
+#
+# ※ az webapp up は使えない。あれは毎回 App Service プランを
+#    create-or-update しようとするが、B1（Basic）のプランに Regional VNet 統合が
+#    付いていると、同じ B1 への更新であっても Azure に拒否される
+#    （Conflict / ExtendedCode 04519）。
+#    エラーは「VNet 統合を切ってから再実行せよ」と案内してくるが、切らないこと。
+#    hirahira-db への唯一の経路がこの VNet 統合で、外すと DB に繋がらなくなる。
+
+# 1. 送るものを zip に固める。リポジトリのルートで実行する。
+#    .gitignore を除外リストとして使うので、venv・db.sqlite3・staticfiles・
+#    __pycache__ は自動的に除外される。除外条件を二重に管理しなくて済む。
+#    コミットの有無は関係ない。作業ツリーの中身がそのまま上がる
+#    （--others で未追跡ファイルも含め、--exclude-standard で .gitignore を効かせる）。
+#    ※ zip は既存ファイルに「追記」する。前回の残骸があると古いファイルが
+#      混ざるので、必ず先に消してから作ること。
+rm -f /tmp/funitclub-deploy.zip
+git ls-files --cached --others --exclude-standard -z \
+  | xargs -0 zip -q -X /tmp/funitclub-deploy.zip
+
+# 2. 中身を確認する（venv や db.sqlite3 が混ざっていないこと）
+unzip -l /tmp/funitclub-deploy.zip
+
+# 3. デプロイする。完了まで2分ほどかかる。
+az webapp deploy --name funITclub --resource-group hirahira \
+  --src-path /tmp/funitclub-deploy.zip --type zip
+
+# 4. 使い終わった zip を消す
+rm /tmp/funitclub-deploy.zip
 
 # 状態の確認
 az webapp show --name funITclub --query state
@@ -94,4 +122,6 @@ az webapp stop  --name funITclub
 az webapp start --name funITclub
 
 # ※ az group delete は全リソースが消えるので実行しないこと。
-# ※ 作り直しでなければ az webapp delete も不要（az webapp up で上書きできる）。
+# ※ 作り直しでなければ az webapp delete も不要（zip デプロイで上書きできる）。
+# ※ VNet 統合は外さないこと。hirahira-db への唯一の経路。
+#    外すと DB に繋がらず、サイトが落ちる。
