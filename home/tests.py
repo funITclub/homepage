@@ -19,7 +19,7 @@ class JoinFormTests(TestCase):
     """参加フォーム（/join/）。佛教大学のアドレスからだけ受け付ける。"""
 
     def setUp(self):
-        self.url = reverse('home:join')
+        self.url = reverse('home:join_apply')
         self.wg = Wg.objects.create(code='WG-01', name='データ分析', description='説明')
 
     def post(self, **overrides):
@@ -35,6 +35,13 @@ class JoinFormTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '大学のメールアドレス')
+
+    def test_guide_page_has_no_form_and_links_to_it(self):
+        """案内（/join/）とフォーム（/join/apply/）は別ページ。"""
+        response = self.client.get(reverse('home:join'))
+
+        self.assertNotContains(response, '<form')
+        self.assertContains(response, f'href="{self.url}"')
 
     def test_valid_post_sends_two_mails_and_redirects(self):
         response = self.post()
@@ -151,7 +158,7 @@ class BurstDetectionTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        self.url = reverse('home:join')
+        self.url = reverse('home:join_apply')
 
     def post(self, **extra):
         return self.client.post(self.url, {

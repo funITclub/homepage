@@ -41,55 +41,16 @@
             </div>
         </div>
 
-        <div class="cta" id="apply">
+        <div class="cta">
             <h2>一緒につくりませんか</h2>
             <p>
                 プログラミング初心者歓迎。<br>
-                下のフォームからお申し込みください。<br>
+                興味があれば気軽にお申し込みください。<br>
                 オンライン・全国参加可。
             </p>
-
-            {% if messages %}
-            <ul class="form-messages">
-                {% for message in messages %}
-                <li>{{ message }}</li>
-                {% endfor %}
-            </ul>
-            {% endif %}
-
-            <form method="post" action="{% url 'home:join' %}#apply" novalidate>
-                {% csrf_token %}
-
-                {% if form.non_field_errors %}
-                <ul class="form-errors">
-                    {% for error in form.non_field_errors %}
-                    <li>{{ error }}</li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-
-                {% for field in form %}
-                <div class="form-row">
-                    <label for="{{ field.id_for_label }}">{{ field.label }}{% if not field.field.required %}<span class="form-optional">任意</span>{% endif %}</label>
-                    {{ field }}
-                    {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
-                    {% if field.errors %}
-                    <ul class="form-errors">
-                        {% for error in field.errors %}
-                        <li>{{ error }}</li>
-                        {% endfor %}
-                    </ul>
-                    {% endif %}
-                </div>
-                {% endfor %}
-
-                <div class="form-actions">
-                    <button class="btn btn-lg" type="submit">申し込む <i class="fas fa-arrow-right ms-1"></i></button>
-                </div>
-            </form>
-
-            <p class="form-note">
-                いただいた内容は事務局にメールで届きます。控えのメールが自動で返信されます。
+            <a class="btn btn-lg" href="{% url 'home:join_apply' %}">参加を申し込む <i class="fas fa-arrow-right ms-1"></i></a>
+            <p class="cta-note">
+                大学から発行されたメールアドレス（@bukkyo-u.ac.jp）でお申し込みいただけます。
             </p>
         </div>
 

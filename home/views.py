@@ -170,17 +170,25 @@ class WorkListView(NavMixin, TemplateView):
 
 
 @method_decorator(login_not_required, name='dispatch')
-class JoinView(NavMixin, FormView):
-    """参加する。ページ下部の申し込みフォームから参加申請を受け取る。
-
-    申し込みは DB に残さず、事務局（settings.JOIN_NOTIFY_EMAIL）へのメールと
-    申込者への自動返信で完結する（hirahira_room のお問い合わせと同じ作り）。
-    """
+class JoinView(NavMixin, TemplateView):
+    """参加する。活動の案内と、申し込みページへの導線だけを持つ。"""
 
     template_name = 'home/join.html'
     nav = 'join'
+
+
+@method_decorator(login_not_required, name='dispatch')
+class JoinApplyView(NavMixin, FormView):
+    """参加を申し込む。案内（/join/）とは別ページにして、フォームだけを置く。
+
+    申し込みは DB に残さず、事務局（edit.Administrator）へのメールと申込者への
+    自動返信で完結する（hirahira_room のお問い合わせと同じ作り）。
+    """
+
+    template_name = 'home/join_apply.html'
+    nav = 'join'
     form_class = JoinForm
-    success_url = reverse_lazy('home:join')
+    success_url = reverse_lazy('home:join_apply')
 
     def form_valid(self, form):
         detect_and_block_burst_submissions(self.request)

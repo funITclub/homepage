@@ -61,7 +61,7 @@ class JoinMailRecipientTests(TestCase):
     def test_notification_is_sent_to_all_administrators(self):
         Administrator.objects.create(email='second@example.com', sort_order=1)
 
-        self.client.post(reverse('home:join'), {
+        self.client.post(reverse('home:join_apply'), {
             'name': '佛教 太郎',
             'email': 'bu0000000000@bukkyo-u.ac.jp',
             'wg': '',

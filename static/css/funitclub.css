@@ -847,7 +847,21 @@ a:hover {
     color: #FFFFFF;
 }
 
-/* 参加フォーム（/join/）。白いカード（.cta）の中に置く */
+/* 参加を申し込む（/join/apply/）。1カラムの狭いページ */
+
+.apply {
+    max-width: 620px;
+    padding: 48px 0;
+}
+
+.cta-note {
+    margin: 16px 0 0;
+    font-size: .74rem;
+    line-height: 1.8;
+    color: var(--ink-2);
+}
+
+/* 参加フォームの部品。白いカードの中に置く */
 
 .form-optional {
     font-family: var(--mono);
