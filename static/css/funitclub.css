@@ -497,6 +497,19 @@ a:hover {
     font-size: .95rem;
 }
 
+.tool-tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 0 5px;
+    font-family: var(--mono);
+    font-size: .62rem;
+    font-weight: 400;
+    color: var(--ink-2);
+    border: 1px solid var(--line-ink);
+    border-radius: 2px;
+    vertical-align: middle;
+}
+
 .tool-role {
     color: var(--ink-2);
     font-size: .72rem;
@@ -859,6 +872,29 @@ a:hover {
     font-size: .74rem;
     line-height: 1.8;
     color: var(--ink-2);
+}
+
+.notice {
+    margin-top: 24px;
+}
+
+.notice-title {
+    margin: 20px 0 6px;
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .04em;
+    color: var(--accent);
+}
+
+.notice-title:first-child {
+    margin-top: 0;
+}
+
+.notice p:not(.notice-title) {
+    margin: 0;
+    font-size: .78rem;
+    line-height: 1.9;
+    color: var(--muted);
 }
 
 /* 参加フォームの部品。白いカードの中に置く */

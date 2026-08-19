@@ -36,6 +36,23 @@ class JoinFormTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '大学のメールアドレス')
 
+    def test_apply_page_states_how_the_input_is_handled(self):
+        """個人情報の扱いとアクセス制限の方針を掲示する（具体的な閾値は書かない）。"""
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'データベースに保存せず')
+        self.assertContains(response, 'アクセスを一時的に制限')
+        self.assertContains(response, '共有の回線')
+        # 閾値を書くとギリギリを狙われるので出さない
+        self.assertNotContains(response, '10分')
+
+    def test_guide_page_explains_the_tools(self):
+        """活動ツールは Classroom を起点に説明する。"""
+        response = self.client.get(reverse('home:join'))
+
+        self.assertContains(response, 'Google Classroom')
+        self.assertContains(response, 'GitHub だけは別途登録')
+
     def test_guide_page_has_no_form_and_links_to_it(self):
         """案内（/join/）とフォーム（/join/apply/）は別ページ。"""
         response = self.client.get(reverse('home:join'))
