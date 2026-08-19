@@ -90,15 +90,30 @@ LOGGING = {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
         },
+        # 未処理の例外（500）を管理者に送る。宛先は管理者テーブルから取るため、
+        # settings.ADMINS は使わない（設定ファイルにアドレスを書かない）。
+        'admin_email': {
+            'level': 'ERROR',
+            'class': 'edit.log_handlers.DbAdminEmailHandler',
+        },
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'admin_email'],
             'level': 'INFO',
         },
         # 参加フォームの受付・送信失敗をログに残す
         'home': {
-            'handlers': ['console'],
+            'handlers': ['console', 'admin_email'],
+            'level': 'INFO',
+        },
+        # 管理者テーブル・通知・ログイン失敗の監視
+        'edit': {
+            'handlers': ['console', 'admin_email'],
+            'level': 'INFO',
+        },
+        'config': {
+            'handlers': ['console', 'admin_email'],
             'level': 'INFO',
         },
     },

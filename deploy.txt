@@ -107,6 +107,10 @@ python manage.py createsuperuser
 #    ※ 一度だけでよい。作られていないと検知が働かない（申し込み自体は通る）。
 python manage.py createcachetable
 
+# 7. 管理者（通知の宛先・公開の問い合わせ先）を確認する。
+#    migrate で contact@funitclub.org が登録される。増減は /admin/ →「管理者」。
+#    ※ 設定ファイルやテンプレートにアドレスを書かないこと。参照先はこのテーブルだけ。
+
 
 ########################################
 # メール送信（参加フォーム /join/）
@@ -142,16 +146,19 @@ python manage.py createcachetable
 #   追加した DNS レコード（funitclub.org ゾーン）
 #     TXT   @                                        ms-domain-verification=37abf404-...
 #     TXT   @                                        v=spf1 include:spf.protection.outlook.com -all
-#     TXT   _dmarc                                   v=DMARC1; p=none; rua=mailto:<事務局アドレス>
+#     TXT   _dmarc                                   v=DMARC1; p=none; rua=mailto:contact@funitclub.org
 #     CNAME selector1-azurecomm-prod-net._domainkey  selector1-azurecomm-prod-net._domainkey.azurecomm.net
 #     CNAME selector2-azurecomm-prod-net._domainkey  selector2-azurecomm-prod-net._domainkey.azurecomm.net
 #
 #   クライアント シークレットの有効期限は2年（2028-08-19 まで）。
-#   切れる前に発行し直し、Key Vault を更新する。
+#   30日前から管理者に通知が届く（EMAIL_SECRET_EXPIRES_ON を見ている）。
+#   切れる前に発行し直し、Key Vault と期限日の設定を更新する。
 #   App Service の設定はバージョン無しの参照なので、Key Vault を更新すれば追従する
 #   （反映は最大24時間。すぐ反映したいなら az webapp restart）。
 #     az ad app credential reset --id bdd9eab1-9a2d-4f46-be1d-47e7131bd2ff --years 2
 #     az keyvault secret set --vault-name funitclub-kv --name funitclub-smtp-password --value "<新しい値>"
+#     az webapp config appsettings set --name funITclub --settings EMAIL_SECRET_EXPIRES_ON="<新しい期限>"
+#     ※ 期限日の更新を忘れると通知が嘘になる。
 #
 #   Key Vault 参照が解決できているかの確認
 #     az rest --method get --url "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)\
@@ -165,6 +172,7 @@ python manage.py createcachetable
 #   連続送信の検知・遮断のログを見る（WARNING で出る）
 #     az webapp log tail --name funITclub | grep -e 連続送信 -e 遮断
 #     ※ 遮断は 24時間 → 7日間 → 恒久 と、繰り返すほど延びる。
+#       遮断すると運営（JOIN_NOTIFY_EMAIL）に通知メールが届く。
 #       手動の解除は /admin/ の「遮断IP」→「今すぐ解除する」。
 #
 #   自分のIPを誤って遮断して admin に入れなくなったときの復旧（DB を触らずに戻せる）

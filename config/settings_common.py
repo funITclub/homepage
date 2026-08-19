@@ -31,6 +31,8 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     # 遮断リストの IP を最初に弾く。静的ファイルも含めて何も返さないよう先頭に置く。
     'config.middleware.BlockedIpMiddleware',
+    # 1日1回の定期点検（SMTP のシークレット期限）。遮断済みの相手では動かさない。
+    'config.middleware.DailyCheckMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -156,6 +158,27 @@ IP_BLOCK_EXEMPT = [
 # こちらは気づけない（遮断された側は問い合わせフォームにも辿り着けない）。
 # まず短く切って自動で解けるようにし、本当に繰り返す相手だけ恒久に落とす。
 IP_BLOCK_DURATIONS = [24 * 60 * 60, 7 * 24 * 60 * 60, None]
+
+# 管理者への通知（edit.notify）。種類ごとに1時間あたりの通数を制限する。
+# 通知が溢れると読まれなくなるため。
+ADMIN_NOTIFY_MAX_PER_HOUR = 10
+
+# 未処理の例外（500）や ERROR ログの通知の上限（1時間あたり）。
+# DB やキャッシュが落ちるとリクエストのたびに ERROR が出るため、必ず頭を打たせる。
+ERROR_NOTIFY_MAX_PER_HOUR = 10
+
+# 遮断したときに管理者へ送る通知の上限（1時間あたり）。
+# IP を変えながら攻撃されると通知が大量に届くため、頭を打たせる。
+IP_BLOCK_NOTIFY_MAX_PER_HOUR = 5
+
+# ログイン失敗の監視（edit.signals）。(回数, 秒) に達したら管理者に通知する。
+# ※ 遮断はしない。正規の運営が打ち間違えて締め出されると復旧できなくなるため。
+LOGIN_FAILURE_RULE = (5, 600)
+
+# メール送信に使う Entra アプリのクライアント シークレットの期限（YYYY-MM-DD）。
+# 30日前・14日前・7日前・前日と失効後に、管理者へ通知する（edit.checks）。
+# **シークレットを更新したらこの値も必ず更新すること。**
+EMAIL_SECRET_EXPIRES_ON = os.getenv('EMAIL_SECRET_EXPIRES_ON', '2028-08-19')
 
 # 差出人。bukkyo-u.ac.jp は2段階認証が許可されておらず、アプリ パスワードを発行できない
 # ため、大学アカウントの SMTP では送れない。送信は Azure Communication Services を使い、

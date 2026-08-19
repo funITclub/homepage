@@ -8,6 +8,8 @@ from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponseForbidden, HttpResponsePermanentRedirect
 from django.template.loader import render_to_string
 
+from edit.checks import run_daily_checks
+from edit.models import public_contact_email
 from home.models import BlockedIp
 from home.netutils import client_ip
 
@@ -70,7 +72,7 @@ class BlockedIpMiddleware:
                 logger.warning('遮断中の IP からのアクセスを拒否しました: IP=%s', ip)
                 # 遮断中は静的ファイルも返さないので、CSS を埋め込んだ1枚で返す
                 return HttpResponseForbidden(render_to_string('home/blocked.html', {
-                    'contact': settings.JOIN_NOTIFY_EMAIL,
+                    'contact': public_contact_email(),
                     'expires_at': blocked[ip],
                 }))
         return self.get_response(request)
@@ -104,3 +106,22 @@ class BlockedIpMiddleware:
         except Exception:
             logger.debug('遮断リストのキャッシュ削除に失敗しました', exc_info=True)
 
+
+class DailyCheckMiddleware:
+    """1日1回だけ定期点検を走らせる（SMTP のシークレット期限など）。
+
+    App Service には常設のスケジューラが無いため、リクエストの機会を借りる。
+    実際に点検するのは1日1回だけで、それ以外はキャッシュを1回読むだけ。
+
+    点検が失敗してもリクエストは通す。
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            run_daily_checks()
+        except Exception:
+            logger.exception('定期点検の起動に失敗しました')
+        return self.get_response(request)

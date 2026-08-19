@@ -28,6 +28,7 @@ from news.models import News
 from .forms import JoinForm
 from .models import BlockedIp
 from .netutils import client_ip
+from .notifications import send_block_notification
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ def block_ip(ip, reason):
     # middleware は home.models を読むので、循環を避けてここで import する
     from config.middleware import BlockedIpMiddleware
     BlockedIpMiddleware.forget_cache()
+
+    send_block_notification(blocked)
 
 
 class NavMixin:

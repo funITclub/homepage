@@ -227,6 +227,28 @@ class BurstDetectionTests(TestCase):
         # 遮断中は静的ファイルも 403 なので、外部 CSS を読ませない
         self.assertNotContains(response, '/static/', status_code=403)
 
+    def test_admin_is_notified(self):
+        for _ in range(4):
+            self.post()
+
+        notice, = [m for m in mail.outbox if 'IP を遮断しました' in m.subject]
+        self.assertEqual(notice.to, ['contact@funitclub.org'])
+        self.assertIn('127.0.0.1', notice.body)
+        self.assertIn('1回目', notice.body)
+        self.assertIn('巻き添え', notice.body)
+        self.assertIn('IP_BLOCK_EXEMPT', notice.body)
+
+    @override_settings(IP_BLOCK_NOTIFY_MAX_PER_HOUR=1)
+    def test_notification_is_capped_per_hour(self):
+        """IP を変えながら攻撃されても通知で溢れさせない。"""
+        for i in range(3):
+            for _ in range(4):
+                self.post(HTTP_X_FORWARDED_FOR=f'203.0.113.{i}:40000')
+
+        self.assertEqual(BlockedIp.objects.count(), 3)
+        notices = [m for m in mail.outbox if 'IP を遮断しました' in m.subject]
+        self.assertEqual(len(notices), 1)
+
     def test_blocked_ip_cannot_access_anything(self):
         for _ in range(4):
             self.post()

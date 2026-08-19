@@ -19,7 +19,11 @@ home/                  公開サイトの4ページ＋作成中ページ（モ�
   templates/home/      index / wg_list / work_list / join / coming_soon
 news/                  お知らせ（モデル＋編集画面＋admin 登録）
 catalog/               WG紹介・成果物紹介（モデル＋編集画面＋admin 登録）
-edit/                  編集画面の枠（ログイン・メニュー・共通レイアウト。モデルなし）
+edit/                  編集画面の枠（ログイン・メニュー・共通レイアウト）＋運営まわり
+  models.py            管理者（連絡先）。通知の宛先と公開の問い合わせ先はここだけを見る
+  notify.py            管理者への通知メールの共通部分
+  signals.py           ログイン失敗の監視
+  checks.py            定期点検（SMTP のシークレット期限）
   templates/edit/      base（共通レイアウト）/ login / index（メニュー）
 templates/base.html    公開サイトのヘッダー・ナビ・フッター（編集画面では使わない）
 static/css/funitclub.css   デザイン一式（公開サイト・編集画面とも）
@@ -166,6 +170,11 @@ python manage.py sendtestemail contact@funitclub.org --settings=config.settings_
 admin（`/admin/` → 遮断IP → 「今すぐ解除する」）。反映は最大60秒
 （`BlockedIpMiddleware.CACHE_SECONDS`）。
 
+遮断すると**運営に通知メールが届く**（`home/notifications.py`）。遮断された側は
+問い合わせフォームにも辿り着けないため、こちらから気づく手段がこれしかない。
+IPを変えながら攻撃されたときに通知で溢れないよう、1時間あたりの上限を設けてある
+（`settings.IP_BLOCK_NOTIFY_MAX_PER_HOUR`）。
+
 403 の画面（`home/templates/home/blocked.html`）には連絡先と「共有回線では他の方の
 操作が原因の場合がある」旨を出す。**遮断中は静的ファイルも 403 になるため、この1枚に
 CSS を埋め込んで自己完結させてある**（外部ファイルを読ませないこと）。
@@ -230,13 +239,67 @@ WG の「Webアプリの URL」や成果物の「公開先の URL」が空欄な
 python manage.py createsuperuser --settings=config.settings_dev
 ```
 
+## 管理者と通知
+
+**運営の連絡先は `edit.Administrator`（管理者テーブル）にだけ置く。** 設定ファイルにも
+テンプレートにも書かない。担当者が代わったときに追いきれなくなるうえ、HTML に個人の
+アカウントが残るため。編集は admin（`/admin/` → 管理者）から。
+
+| 用途 | 参照するもの |
+|---|---|
+| 参加申し込みの通知先 | 有効かつ「通知を受け取る」の全員 |
+| 自動返信の `Reply-To` | 「公開ページの問い合わせ先にする」の先頭1件 |
+| アクセス制限画面（403）の連絡先 | 同上 |
+| IP遮断・ログイン失敗・500エラーの通知先 | 有効かつ「通知を受け取る」の全員 |
+
+テーブルが空、または DB を読めないときは `settings.JOIN_NOTIFY_EMAIL` に落とす。
+宛先が無いせいで異常に気づけない事態を避けるための保険。
+
+初期データはマイグレーション（`edit/migrations/0002_seed_administrator.py`）で登録済み。
+
+### 通知される事象
+
+| 事象 | 通知 | 補足 |
+|---|---|---|
+| IP を遮断した | 都度 | 1時間5通まで |
+| ログイン失敗が続いた | 上限到達時に1回 | 既定は10分に5回。**遮断はしない** |
+| 未処理の例外（500） | 都度 | `edit.log_handlers.DbAdminEmailHandler`。本番のみ |
+| SMTP シークレットの期限接近 | 30日前・14日前・7日前・前日・失効後 | 各1回 |
+
+通知は種類ごとに1時間あたりの通数を制限する（`settings.ADMIN_NOTIFY_MAX_PER_HOUR`）。
+溢れると読まれなくなるため。
+
+**ログイン失敗ではIPを遮断しない。** 正規の運営が打ち間違えて締め出されると、復旧の
+手段を失うため。通知だけ出して、判断は人に委ねる。
+
+### シークレットの期限通知
+
+メール送信に使う Entra アプリのクライアント シークレットは**2028年8月19日**に失効する。
+失効すると参加フォームの送信が止まるが、「申し込みが来ない」状態と区別がつかず気づけない。
+そこで期限日を `settings.EMAIL_SECRET_EXPIRES_ON` に持ち、近づいたら通知する。
+
+点検は1日1回、リクエストのついでに走る（`config.middleware.DailyCheckMiddleware`）。
+App Service に常設のスケジューラが無いため。手元やスケジューラから明示的に叩くなら:
+
+```bash
+python manage.py check_secret_expiry --settings=config.settings_dev
+```
+
+> **シークレットを更新したら `EMAIL_SECRET_EXPIRES_ON` も必ず更新すること。**
+> 忘れると通知が嘘になる。通知メールの本文に更新手順を書いてあるので、2年後に
+> 受け取った人はそれを読めば対応できる。
+
+なお、この仕組みは**メールが送れる状態でしか機能しない**。ACS 側の障害や送信停止には
+気づけないので、そこまで見たい場合は Azure Monitor のアラートが必要になる。
+
 ## 管理画面（`/admin/`）
 
 テーブルの中身を一覧・検索するための画面。hirahira_room と同じ構成で、素の Django admin を
 そのまま使う（`config/urls.py` に `admin.site.urls`、登録は各アプリの `admin.py`）。
 **編集の主導線は `/edit/` 側**で、admin は全カラムを見たいときや絞り込み検索に使う。
 
-- 一覧に出す列・絞り込み・検索対象は `news/admin.py` と `catalog/admin.py` の `ModelAdmin` で決める。
+- 一覧に出す列・絞り込み・検索対象は各アプリの `admin.py` の `ModelAdmin` で決める。
+- 管理者（`edit`）と遮断IP（`home`）もここから編集する。
 - `created_at` / `updated_at` は読み取り専用。
 - ログイン画面は admin 自身のもの（`/admin/login/`）。Django が admin の URL に `login_url` を
   仕込んでいるため、`LoginRequiredMiddleware` も `/edit/login/` ではなくそちらへ回す。
@@ -326,7 +389,8 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `EMAIL_HOST_USER` | ACS の SMTP ユーザー名。未設定だと送信できない |
 | `EMAIL_HOST_PASSWORD` | 紐づけた Entra アプリのクライアント シークレット。本番は Key Vault 参照（`@Microsoft.KeyVault(...)`）で入れている |
 | `JOIN_FROM_EMAIL` | 任意。差出人アドレス。既定は `no-reply@funitclub.org` |
-| `JOIN_NOTIFY_EMAIL` | 任意。参加申し込みの通知先。既定は大学のアドレス |
+| `JOIN_NOTIFY_EMAIL` | 任意。管理者テーブルが空のときの予備の宛先 |
+| `EMAIL_SECRET_EXPIRES_ON` | シークレットの期限（`YYYY-MM-DD`）。更新時に必ず直す |
 | `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 任意。IP遮断の停止・除外（ロックアウトからの復旧用） |
 | `DEBUG` | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
 

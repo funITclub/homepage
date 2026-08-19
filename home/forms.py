@@ -19,6 +19,7 @@ from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
 
 from catalog.models import Wg
+from edit.models import notification_emails, public_contact_email
 
 
 class JoinForm(forms.Form):
@@ -87,9 +88,10 @@ class JoinForm(forms.Form):
         ])
 
         # 差出人は「fun IT club <no-reply@funitclub.org>」で統一する（settings の既定値）。
+        # 宛先と問い合わせ先は管理者テーブル（edit.Administrator）から取る。
         from_email = settings.DEFAULT_FROM_EMAIL
-        notify_to = settings.JOIN_NOTIFY_EMAIL
-        contact = notify_to
+        notify_to = notification_emails()
+        contact = public_contact_email()
 
         # 事務局あて。そのまま返信すれば申込者に届くよう Reply-To を申込者にする。
         notification = EmailMessage(
@@ -102,7 +104,7 @@ class JoinForm(forms.Form):
                 'このまま返信すると申込者に届きます。\n'
             ),
             from_email=from_email,
-            to=[notify_to],
+            to=notify_to,
             reply_to=[email],
         )
 
