@@ -29,6 +29,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # 遮断リストの IP を最初に弾く。静的ファイルも含めて何も返さないよう先頭に置く。
+    'config.middleware.BlockedIpMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -74,6 +76,17 @@ DATABASES = {
     }
 }
 
+# キャッシュ。参加フォームの連続送信を数えるのに使う。
+# ローカルメモリだと worker ごとに別勘定になり、再起動でも消えて検知漏れするため、
+# DB に置いて全プロセスで共有する。テーブルは初回に createcachetable で作る
+# （テーブル名は他と同じく funitclub_ 接頭辞で固定）。
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'funitclub_cache',
+    }
+}
+
 # 認証は編集画面（/edit/）専用。
 # 一般向けの会員登録は無く、アカウントは manage.py createsuperuser で作る。
 AUTH_PASSWORD_VALIDATORS = [
@@ -115,6 +128,34 @@ JOIN_ALLOWED_EMAIL_DOMAIN = 'bukkyo-u.ac.jp'
 
 # 申し込みの通知先。大学アカウントで受け取る（受信は制限されていない）。
 JOIN_NOTIFY_EMAIL = os.getenv('JOIN_NOTIFY_EMAIL', 'contact@funitclub.org')
+
+# 参加フォームの連続送信とみなす条件。(件数, 秒) を超えた IP を遮断する。
+# 同一IPからの申し込みを数える。問い合わせフォームとして一般的な水準にしてある
+# （通常の申込者は1回送れば済むので、正規の利用がここに触れることはまずない）。
+#   10分に3件  … ボットの連投・短時間のバースト
+#   1時間に10件 … 間隔を空けた継続的な連投
+JOIN_BURST_RULES = [(3, 600), (10, 3600)]
+
+# 検知した IP の遮断（config.middleware.BlockedIpMiddleware）。
+#
+# 自分の IP を誤って遮断すると admin にも入れなくなるため、逃げ道を2つ用意してある。
+# どちらも App Service のアプリケーション設定から変えられる（DB を触らずに復旧できる）。
+#   IP_BLOCK_ENABLED=False   … 遮断そのものを止める
+#   IP_BLOCK_EXEMPT=1.2.3.4,5.6.7.8 … 個別に除外する（遮断リストより優先）
+IP_BLOCK_ENABLED = os.getenv('IP_BLOCK_ENABLED', 'True') == 'True'
+IP_BLOCK_EXEMPT = [
+    ip.strip() for ip in os.getenv('IP_BLOCK_EXEMPT', '').split(',') if ip.strip()
+]
+
+# 遮断期間（秒）。繰り返すほど延び、最後の値に達したらそれ以降は同じ。
+# None は恒久（解除するまで）。
+#   1回目 … 24時間、2回目 … 7日間、3回目以降 … 恒久
+#
+# 初回から恒久にしない理由。IP は個人の持ち物ではなく貸出品で、大学の構内ネットワークや
+# 携帯のCGNATでは多数の人が同じIPを共有する。1人の乱用で無関係な人を永久に締め出しても
+# こちらは気づけない（遮断された側は問い合わせフォームにも辿り着けない）。
+# まず短く切って自動で解けるようにし、本当に繰り返す相手だけ恒久に落とす。
+IP_BLOCK_DURATIONS = [24 * 60 * 60, 7 * 24 * 60 * 60, None]
 
 # 差出人。bukkyo-u.ac.jp は2段階認証が許可されておらず、アプリ パスワードを発行できない
 # ため、大学アカウントの SMTP では送れない。送信は Azure Communication Services を使い、

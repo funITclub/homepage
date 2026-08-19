@@ -8,7 +8,9 @@ from .settings_common import *
 # DEBUG=True を足して一時的に有効化し、済んだら必ず戻す（hirahira-room と同じ運用）。
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# WhiteNoise で静的ファイルを配信する
+# WhiteNoise で静的ファイルを配信する。
+# 差し込み位置は SecurityMiddleware の直後。遮断ミドルウェア（先頭）はそれより前に
+# あるので、遮断中の IP には静的ファイルも返さない。
 INSTALLED_APPS.insert(0, 'whitenoise.runserver_nostatic')
 idx = MIDDLEWARE.index('django.middleware.security.SecurityMiddleware')
 MIDDLEWARE.insert(idx + 1, 'whitenoise.middleware.WhiteNoiseMiddleware')

@@ -45,7 +45,7 @@ deploy.txt             Azure へのデプロイ・本番環境の作成手順（
 | `/edit/news/` | お知らせの編集 |
 | `/edit/wg/` | WG紹介の編集 |
 | `/edit/works/` | 成果物紹介の編集 |
-| `/admin/` | 管理画面（テーブルの中身を一覧・検索する） |
+| `/admin/` | 管理画面（テーブルの中身を一覧・検索する。遮断IPの解除もここ） |
 
 ## 参加フォーム（`/join/`）
 
@@ -129,6 +129,68 @@ python manage.py sendtestemail contact@funitclub.org --settings=config.settings_
 送信に失敗したときは 500 にせず、フォームにエラーを出して再送を促す（ログには
 スタックトレースを残す）。
 
+### 悪用への備え
+
+入力されたアドレスの持ち主を確認していない以上、第三者あてに自動返信を送らせる余地は
+残る。文章を載せられないようにしたうえで、異常な件数を検知できるようにしてある。
+
+| 対策 | 内容 |
+|---|---|
+| 自由記述を持たない | メッセージ欄なし。攻撃者が第三者に読ませる文章を作れない |
+| 氏名の URL を弾く | 30文字あれば短縮URLが収まるため、`http` / `www.` / `://` を含む氏名は拒否 |
+| 心当たりがない場合の案内 | 自動返信に明記。受け取った人が破棄すれば手続きは進まないと伝える |
+| 連続送信の遮断 | 同一IPで **10分に3件** / **1時間に10件** を超えたら、そのIPを**恒久的に遮断**する |
+
+### IP の遮断
+
+連続送信を検知すると `home.BlockedIp` にそのIPを登録し、以降のアクセスは
+`config.middleware.BlockedIpMiddleware` が **403 で止める**（公開ページ・編集画面・
+静的ファイルを含めてすべて）。閾値は `settings.JOIN_BURST_RULES` で調整する。
+
+遮断期間は繰り返すほど延びる（`settings.IP_BLOCK_DURATIONS`）。
+
+| 回数 | 期間 |
+|---|---|
+| 1回目 | 24時間 |
+| 2回目 | 7日間 |
+| 3回目以降 | 恒久（解除するまで） |
+
+> **初回から恒久にしない理由。** IP は個人の持ち物ではなく貸出品で、大学の構内
+> ネットワークや携帯キャリアの CGNAT では多数の人が同じIPを共有する。1人の乱用で
+> 無関係な人を永久に締め出しても、**こちらは気づけない**（遮断された側は問い合わせ
+> フォームにも辿り着けない）。さらに動的IPは時間とともに別人へ再割り当てされるため、
+> 恒久遮断は放置するほど無関係な人を巻き込む。まず短く切って自動で解け、本当に
+> 繰り返す相手だけ恒久に落とす。
+
+期限切れの行は消さずに残す（再犯したときに回数を引き継ぐため）。手動の解除は
+admin（`/admin/` → 遮断IP → 「今すぐ解除する」）。反映は最大60秒
+（`BlockedIpMiddleware.CACHE_SECONDS`）。
+
+403 の画面（`home/templates/home/blocked.html`）には連絡先と「共有回線では他の方の
+操作が原因の場合がある」旨を出す。**遮断中は静的ファイルも 403 になるため、この1枚に
+CSS を埋め込んで自己完結させてある**（外部ファイルを読ませないこと）。
+
+**自分のIPを遮断してしまうと admin にも入れなくなる**ので、逃げ道を2つ用意してある。
+どちらも App Service のアプリケーション設定から変えられ、DB を触らずに復旧できる。
+
+| 環境変数 | 効果 |
+|---|---|
+| `IP_BLOCK_ENABLED=False` | 遮断そのものを止める（ミドルウェアを組み込まない） |
+| `IP_BLOCK_EXEMPT=1.2.3.4,5.6.7.8` | 指定IPを除外する。遮断リストより優先される |
+
+遮断の判定に使うIPは `X-Forwarded-For` の**右端**（Azure の front end が付けた値）。
+左端はクライアントが自由に詐称できるため、そちらを信じると**攻撃者が他人のIPを名乗って
+無関係な人を遮断させられる**。DB やキャッシュを読めないときは通す（fail open）。
+遮断機能のためにサイト全体を落とさない。
+
+数える土台に DB キャッシュ（テーブル `funitclub_cache`）を使う。ローカルメモリだと
+worker ごとに別勘定になり、再起動でも消えて検知漏れするため。**初回だけ
+`createcachetable` が必要**。テーブルが無くても申し込み自体は通る（検知だけ働かない）。
+
+```bash
+python manage.py createcachetable --settings=config.settings_dev
+```
+
 ## 編集画面（`/edit/`）
 
 掲載内容を編集する画面。**ログイン必須**。未ログインで URL を直接叩くと
@@ -199,6 +261,7 @@ python manage.py runserver --settings=config.settings_dev
 
 ```bash
 python manage.py migrate --settings=config.settings_dev
+python manage.py createcachetable --settings=config.settings_dev
 python manage.py createsuperuser --settings=config.settings_dev
 ```
 
@@ -264,6 +327,7 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `EMAIL_HOST_PASSWORD` | 紐づけた Entra アプリのクライアント シークレット。本番は Key Vault 参照（`@Microsoft.KeyVault(...)`）で入れている |
 | `JOIN_FROM_EMAIL` | 任意。差出人アドレス。既定は `no-reply@funitclub.org` |
 | `JOIN_NOTIFY_EMAIL` | 任意。参加申し込みの通知先。既定は大学のアドレス |
+| `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 任意。IP遮断の停止・除外（ロックアウトからの復旧用） |
 | `DEBUG` | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
 
 `DJANGO_SETTINGS_MODULE` は不要（`manage.py` と `wsgi.py` の既定が `config.settings`）。

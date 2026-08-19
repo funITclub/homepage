@@ -48,6 +48,9 @@ az webapp deploy --name funITclub --resource-group hirahira \
 # 4. 使い終わった zip を消す
 rm /tmp/funitclub-deploy.zip
 
+# ※ 参加フォームの連続送信検知を入れたときのデプロイでは、初回だけ
+#   App Service の SSH から createcachetable が必要（テーブル funitclub_cache）。
+
 # 状態の確認
 az webapp show --name funITclub --query state
 
@@ -99,6 +102,10 @@ az webapp vnet-integration add --name funITclub --resource-group hirahira --vnet
 #    ※ アプリを更新してテーブルが増えたときも、デプロイ後に migrate が必要。
 python manage.py migrate
 python manage.py createsuperuser
+
+# 6. キャッシュ用テーブルを作る。参加フォームの連続送信を数えるのに使う。
+#    ※ 一度だけでよい。作られていないと検知が働かない（申し込み自体は通る）。
+python manage.py createcachetable
 
 
 ########################################
@@ -154,6 +161,17 @@ python manage.py createsuperuser
 #   p=quarantine → p=reject と段階的に強めると、funitclub.org を騙るメールを弾ける。
 #   ※ ACS の DMARC 検証（initiate-verification --verification-type DMARC）はサービス側が
 #     受け付けない。DNS にレコードがあれば機能するので、検証状態 NotStarted のままでよい。
+#
+#   連続送信の検知・遮断のログを見る（WARNING で出る）
+#     az webapp log tail --name funITclub | grep -e 連続送信 -e 遮断
+#     ※ 遮断は 24時間 → 7日間 → 恒久 と、繰り返すほど延びる。
+#       手動の解除は /admin/ の「遮断IP」→「今すぐ解除する」。
+#
+#   自分のIPを誤って遮断して admin に入れなくなったときの復旧（DB を触らずに戻せる）
+#     az webapp config appsettings set --name funITclub --settings IP_BLOCK_EXEMPT="<自分のIP>"
+#     az webapp config appsettings set --name funITclub --settings IP_BLOCK_ENABLED="False"
+#     ※ 復旧して遮断を消したら、この設定は消しておくこと。
+#     az webapp config appsettings delete --name funITclub --setting-names IP_BLOCK_EXEMPT
 #
 #   メールを送らずに認証だけ確かめる（手元から）
 #     python -c "import os,smtplib; s=smtplib.SMTP('smtp.azurecomm.net',587); s.starttls(); \

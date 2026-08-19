@@ -6,7 +6,13 @@
 # 申し込みは大学から発行されたメールアドレスからのみ受け付ける
 # （settings.JOIN_ALLOWED_EMAIL_DOMAIN）。活動ツールが大学の
 # Google Workspace 前提なので、私用アドレスでは受け付けても先に進めないため。
-
+#
+# ※ 自由記述（メッセージ欄）は意図的に持たせていない。復活させないこと。
+#   入力されたアドレスが本人のものか確認していないため、他人のアドレスを入れて
+#   自動返信を第三者に届けられる。自由記述があると、その本文に任意の文章を
+#   載せられてしまい、フィッシングの配送路になる（差出人は SPF/DKIM/DMARC が
+#   通った funitclub.org なので、受信側の認証チェックはすべて成功する）。
+#   聞きたいことは、届いた自動返信に返信してもらえば事務局に届く。
 
 from django import forms
 from django.conf import settings
@@ -44,6 +50,19 @@ class JoinForm(forms.Form):
         # 公開中のWGだけを候補にする。毎回引き直したいので __init__ で入れる。
         self.fields['wg'].queryset = Wg.objects.published()
 
+    def clean_name(self):
+        """氏名に URL を書かせない。
+
+        自動返信は入力されたアドレス宛に届くので、氏名欄も第三者に読まれる文章に
+        なる（冒頭の「○○ 様」と本文の「お名前」）。短縮URLなら30文字に収まるため、
+        ここを塞いでおかないとリンクを第三者に届けられる。
+        """
+        name = self.cleaned_data['name']
+        lowered = name.lower()
+        if any(token in lowered for token in ('http', 'www.', '://')):
+            raise forms.ValidationError('お名前に URL は入力できません。')
+        return name
+
     def clean_email(self):
         """佛教大学のドメインだけを通す。"""
         email = self.cleaned_data['email']
@@ -70,6 +89,7 @@ class JoinForm(forms.Form):
         # 差出人は「fun IT club <no-reply@funitclub.org>」で統一する（settings の既定値）。
         from_email = settings.DEFAULT_FROM_EMAIL
         notify_to = settings.JOIN_NOTIFY_EMAIL
+        contact = notify_to
 
         # 事務局あて。そのまま返信すれば申込者に届くよう Reply-To を申込者にする。
         notification = EmailMessage(
@@ -87,6 +107,9 @@ class JoinForm(forms.Form):
         )
 
         # 申込者あての控え。問い合わせ先は事務局アドレス。
+        # 申し込みフォームは入力されたアドレスの持ち主を確認していないので、
+        # 第三者が他人のアドレスを入れた場合にもこのメールが届く。受け取った人が
+        # 戸惑わないよう、身に覚えがない場合の案内を必ず入れておく。
         auto_reply = EmailMessage(
             subject=f'[{settings.SITE_NAME}] 参加申し込みを受け付けました',
             body=(
@@ -94,13 +117,17 @@ class JoinForm(forms.Form):
                 f'{settings.SITE_NAME} への参加申し込みをありがとうございます。\n'
                 '以下の内容で受け付けました。担当者から折り返しご連絡します。\n\n'
                 f'{summary}\n\n'
+                '■ このメールに心当たりがない場合\n'
+                '第三者があなたのメールアドレスを入力した可能性があります。\n'
+                'このメールを破棄していただければ、手続きは進みません。\n'
+                f'気になる場合は {contact} までお知らせください。\n\n'
                 '--\n'
                 f'{settings.SITE_NAME}（{settings.SITE_TAGLINE}）\n'
                 'このメールは自動送信です。ご質問はこのまま返信してください。\n'
             ),
             from_email=from_email,
             to=[email],
-            reply_to=[notify_to],
+            reply_to=[contact],
         )
 
         connection = get_connection()
