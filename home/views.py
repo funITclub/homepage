@@ -7,12 +7,21 @@
 # LoginRequiredMiddleware で全ビューが既定ログイン必須になっているため、
 # このファイルのビューだけ login_not_required で公開している。
 
+import logging
+import smtplib
+
+from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
+from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.views.generic import TemplateView
+from django.views.generic import FormView, TemplateView
 
 from catalog.models import Wg, Work
 from news.models import News
+
+from .forms import JoinForm
+
+logger = logging.getLogger(__name__)
 
 
 class NavMixin:
@@ -74,11 +83,32 @@ class WorkListView(NavMixin, TemplateView):
 
 
 @method_decorator(login_not_required, name='dispatch')
-class JoinView(NavMixin, TemplateView):
-    """参加する。"""
+class JoinView(NavMixin, FormView):
+    """参加する。申し込みフォームから参加申請を受け取る。
+
+    申し込みは DB に残さず、事務局（settings.JOIN_NOTIFY_EMAIL）へのメールと
+    申込者への自動返信で完結する（hirahira_room のお問い合わせと同じ作り）。
+    """
 
     template_name = 'home/join.html'
     nav = 'join'
+    form_class = JoinForm
+    success_url = reverse_lazy('home:join')
+
+    def form_valid(self, form):
+        try:
+            form.send_email()
+        except (smtplib.SMTPException, OSError):
+            # SMTP の設定漏れや送信障害で 500 にせず、フォームに戻して知らせる。
+            logger.exception('参加フォームのメール送信に失敗しました')
+            form.add_error(None, 'メールの送信に失敗しました。'
+                                 'お手数ですが時間をおいて再度お試しください。')
+            return self.form_invalid(form)
+
+        messages.success(self.request, '参加の申し込みを受け付けました。'
+                                       '確認のメールをお送りしましたのでご確認ください。')
+        logger.info('参加申し込みを受け付けました')
+        return super().form_valid(form)
 
 
 @method_decorator(login_not_required, name='dispatch')

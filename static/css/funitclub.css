@@ -761,6 +761,7 @@ a:hover {
 
 .form-row input[type="text"],
 .form-row input[type="password"],
+.form-row input[type="email"],
 .form-row input[type="date"],
 .form-row input[type="url"],
 .form-row input[type="number"],
@@ -844,6 +845,36 @@ a:hover {
     background: #B3261E;
     border-color: #B3261E;
     color: #FFFFFF;
+}
+
+/* 参加フォーム（/join/）。白いカード（.cta）の中に置く */
+
+.form-optional {
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--ink-2);
+    border: 1px solid var(--line-ink);
+    border-radius: 2px;
+    padding: 0 5px;
+    margin-left: 8px;
+}
+
+.form-messages {
+    list-style: none;
+    margin: 0 0 24px;
+    padding: 10px 14px;
+    border-left: 2px solid var(--accent-ink);
+    background: rgba(14, 107, 168, .08);
+    color: var(--ink);
+    font-size: .85rem;
+    line-height: 1.9;
+}
+
+.form-note {
+    margin: 16px 0 0;
+    font-size: .74rem;
+    line-height: 1.8;
+    color: var(--ink-2);
 }
 
 /* ---------- サブアプリ：カウントアップ＆ダウン（/countdown/） ---------- */

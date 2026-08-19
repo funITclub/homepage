@@ -5,6 +5,7 @@
 - **公開ページは認証なし**（会員登録・allauth は入っていない）
 - **編集画面（`/edit/`）だけログイン必須**。公開サイトとは別レイアウトで、相互にリンクしない
 - 掲載内容（お知らせ・WG紹介・成果物紹介）はモデル化済みで、編集画面から編集する
+- **参加ページ（`/join/`）に申し込みフォーム**。大学のメールアドレス（`@bukkyo-u.ac.jp`）のみ受け付ける
 - **サブアプリ（WGごとのWebアプリ）は未実装**。URL 未設定のリンクは「作成中」ページ（`/coming-soon/`）へ流す
 - デザインは `ホームページのイメージ案.pptx` に準拠（ネイビー #001E3C ＋ アクセント #5BB8FF、Consolas ＋ Meiryo）
 
@@ -12,7 +13,9 @@
 
 ```
 config/                設定（common / 本番 settings.py / 開発 settings_dev.py）
+.env.example           ローカルの秘密情報のひな形（.env にコピーして使う。.env は git に入らない）
 home/                  公開サイトの4ページ＋作成中ページ（モデルは持たず、表示だけ）
+  forms.py             参加フォーム（/join/）。入力内容をメールで送るだけで DB には残さない
   templates/home/      index / wg_list / work_list / join / coming_soon
 news/                  お知らせ（モデル＋編集画面＋admin 登録）
 catalog/               WG紹介・成果物紹介（モデル＋編集画面＋admin 登録）
@@ -30,7 +33,7 @@ deploy.txt             Azure へのデプロイ・本番環境の作成手順（
 | `/` | TOP（ヒーロー・活動サマリ・お知らせ） |
 | `/wg/` | WG一覧 |
 | `/works/` | 成果物 |
-| `/join/` | 参加する |
+| `/join/` | 参加する（申し込みフォーム） |
 | `/coming-soon/` | 作成中プレースホルダ |
 
 ここまでがログイン不要の公開ページ。以下はログイン必須。
@@ -43,6 +46,88 @@ deploy.txt             Azure へのデプロイ・本番環境の作成手順（
 | `/edit/wg/` | WG紹介の編集 |
 | `/edit/works/` | 成果物紹介の編集 |
 | `/admin/` | 管理画面（テーブルの中身を一覧・検索する） |
+
+## 参加フォーム（`/join/`）
+
+参加ページの右カラムに申し込みフォームを置いている。**ログイン不要**。hirahira_room の
+お問い合わせフォームと同じ作りで、モデルを持たず、入力内容をメールで送るだけ
+（`home/forms.py` の `JoinForm`）。申し込みは DB に残らない。
+
+| 項目 | 必須 | 備考 |
+|---|---|---|
+| お名前 | ○ | |
+| 大学のメールアドレス | ○ | `@bukkyo-u.ac.jp` 以外は弾く（`JOIN_ALLOWED_EMAIL_DOMAIN`） |
+| 興味のあるWG | | 公開中の WG から選ぶ。空欄（まだ決めていない）でよい |
+
+**自由記述（メッセージ欄）は意図的に持たせていない。復活させないこと。** 入力された
+アドレスが本人のものか確認していないため、第三者のアドレスを入れれば自動返信をその人に
+届けられる。自由記述があると、その本文に任意の文章を載せてフィッシングの配送路に使える
+（差出人は SPF/DKIM/DMARC が通った `funitclub.org` なので、受信側の認証チェックはすべて
+成功してしまう）。聞きたいことは、届いた自動返信に返信すれば事務局に届く。
+`home/tests.py` の `test_form_has_no_free_text_field` がこの制約を守っている。
+
+活動ツールが大学の Google Workspace 前提なので、**私用アドレスでは受け付けない**。
+送信すると2通のメールが出る。
+
+1. 事務局（`JOIN_NOTIFY_EMAIL` ＝ `contact@funitclub.org`）あての通知。
+   `Reply-To` が申込者なので、そのまま返信すれば本人に届く。
+2. 申込者あての控え（自動返信）。`Reply-To` は事務局の大学アドレス。
+   第三者のアドレスが入力された場合にもこのメールは届くので、
+   **「このメールに心当たりがない場合」の案内を必ず入れてある**。
+
+どちらも差出人は `fun IT club <no-reply@funitclub.org>`。
+
+送信は **Azure Communication Services（ACS）の SMTP リレー**（`smtp.azurecomm.net:587` / TLS）を
+使い、独自ドメインの `no-reply@funitclub.org` から出す。
+
+> **大学アカウントからは送れない。** `bukkyo-u.ac.jp` は Google Workspace 側で2段階認証が
+> 許可されておらず、アプリ パスワードを発行できない。Google は2段階認証なしの SMTP 認証を
+> 廃止済みなので、大学アドレスでの SMTP 送信は経路がない。**受信は問題ない**ため、通知先と
+> Reply-To は大学アドレスのままにしてある。申込者が控えのメールに返信すれば大学アドレスに届く。
+
+認証情報はリポジトリに持たず、環境変数から読む。**差出人アドレスと SMTP ユーザー名は別物**
+なので混同しないこと。
+
+| 設定 | 中身 |
+|---|---|
+| `EMAIL_HOST_USER` | ACS の「SMTP ユーザー名」。Entra アプリに紐づく認証用の名前 |
+| `EMAIL_HOST_PASSWORD` | 紐づけた Microsoft Entra アプリのクライアント シークレット |
+| `JOIN_FROM_EMAIL` | 差出人アドレス（既定 `no-reply@funitclub.org`） |
+| `JOIN_NOTIFY_EMAIL` | 通知先（既定 `contact@funitclub.org`） |
+
+本番のシークレットは App Service に平文で置かず、**Azure Key Vault**（`funitclub-kv`）に入れて
+アプリケーション設定から参照している。取り出せるのは App Service のマネージド ID だけで、
+権限は `Key Vault Secrets User`（読み取りのみ）。Entra アプリ側もカスタムロール
+`funITclub Email Sender`（ACS のメール送信に必要な3操作のみ）に絞ってある。
+
+なりすまし対策として SPF・DKIM に加えて **DMARC**（`p=none`）を設定済み。レポートを見て
+問題がなければ `p=quarantine` → `p=reject` と強められる。
+
+ACS のリソース作成・独自ドメインの DNS 検証・Entra アプリの手順は
+[deploy.txt](deploy.txt) の「メール送信」を参照。
+
+**ローカルでも本番と同じ経路で実際に送信する**。認証情報は `.env` に置く
+（`.gitignore` 済み。`config/settings_dev.py` が起動時に読む）。
+
+```bash
+cp .env.example .env
+# .env に EMAIL_HOST_USER と EMAIL_HOST_PASSWORD を入れて runserver を再起動する
+```
+
+`.env` を編集したら runserver を再起動する（起動時に一度だけ読むため）。設定できたか
+どうかは、フォームを使わずに確かめられる。
+
+```bash
+python manage.py sendtestemail contact@funitclub.org --settings=config.settings_dev
+```
+
+認証情報が空のときは送信せず、メールの内容を runserver のログに出力する
+（起動時にその旨を表示する）。**送信できる状態で試すと本物のメールが届く**ので、
+フォームには自分のアドレスを入れること。なおテスト（`manage.py test`）は Django が
+送信をメモリ上に差し替えるため、実際には送られない。
+
+送信に失敗したときは 500 にせず、フォームにエラーを出して再送を促す（ログには
+スタックトレースを残す）。
 
 ## 編集画面（`/edit/`）
 
@@ -117,6 +202,13 @@ python manage.py migrate --settings=config.settings_dev
 python manage.py createsuperuser --settings=config.settings_dev
 ```
 
+参加フォームのメールを実際に送るなら、ACS の認証情報を `.env` に入れる
+（詳しくは[参加フォーム](#参加フォームjoin)）。入れなければコンソール出力で動く。
+
+```bash
+cp .env.example .env
+```
+
 ## 開発と本番の切り替え
 
 hirahira_room と同じ構成。設定を3ファイルに分け、**既定は本番**。
@@ -128,7 +220,7 @@ hirahira_room と同じ構成。設定を3ファイルに分け、**既定は本
 | DEBUG | `True` | 既定 `False`。環境変数 `DEBUG=True` で一時的に有効化できる |
 | DB | SQLite（`DB_HOST` を渡したときだけ PostgreSQL） | PostgreSQL（funITclub 専用DB） |
 | 静的ファイル | runserver が配信 | WhiteNoise（圧縮＋ハッシュ付き） |
-| メール | コンソール出力 | 未設定（送信機能なし） |
+| メール | 大学アカウントの SMTP（`.env` の `EMAIL_HOST_PASSWORD`）。未設定ならコンソール出力 | 大学アカウントの SMTP（smtp.gmail.com） |
 | Cookie | 通常 | `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` が True |
 | ログ | DEBUG レベル・詳細フォーマット | INFO レベル |
 
@@ -168,6 +260,10 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `DB_USER` / `DB_PASSWORD` / `DB_HOST` | PostgreSQL の接続情報（hirahira-room と同じ値） |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `True`。デプロイ時に pip install と collectstatic を走らせる |
 | `WEBSITE_HOSTNAME` | Azure が自動設定。CSRF_TRUSTED_ORIGINS に反映 |
+| `EMAIL_HOST_USER` | ACS の SMTP ユーザー名。未設定だと送信できない |
+| `EMAIL_HOST_PASSWORD` | 紐づけた Entra アプリのクライアント シークレット。本番は Key Vault 参照（`@Microsoft.KeyVault(...)`）で入れている |
+| `JOIN_FROM_EMAIL` | 任意。差出人アドレス。既定は `no-reply@funitclub.org` |
+| `JOIN_NOTIFY_EMAIL` | 任意。参加申し込みの通知先。既定は大学のアドレス |
 | `DEBUG` | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
 
 `DJANGO_SETTINGS_MODULE` は不要（`manage.py` と `wsgi.py` の既定が `config.settings`）。

@@ -80,6 +80,9 @@ az webapp config appsettings set --name funITclub --settings \
   DB_HOST="<hirahira-db のホスト名>" \
   SCM_DO_BUILD_DURING_DEPLOYMENT="True"
 
+# 3-2. 参加フォーム（/join/）の送信設定は「メール送信」の節を参照。
+#    ACS を作ってから EMAIL_HOST_USER / EMAIL_HOST_PASSWORD を設定する。
+
 # 4. VNet 統合（hirahira-db は VNet 内からしか繋がらない）。
 #    hirahira-room と同じ hirahara_vnet の中に、funITclub 専用サブネットを切って繋ぐ。
 #    ※ 別VNetにすると hirahira-db に届かなくなる（ピアリングとプライベートDNSが別途必要）。
@@ -96,6 +99,165 @@ az webapp vnet-integration add --name funITclub --resource-group hirahira --vnet
 #    ※ アプリを更新してテーブルが増えたときも、デプロイ後に migrate が必要。
 python manage.py migrate
 python manage.py createsuperuser
+
+
+########################################
+# メール送信（参加フォーム /join/）
+########################################
+
+# Azure Communication Services（ACS）の Email を使い、独自ドメイン funitclub.org の
+# 差出人（no-reply@funitclub.org）で送る。申し込みの通知先と Reply-To は
+# 大学アドレス contact@funitclub.org のままなので、受信はこれまで通り。
+#
+# ※ 大学アカウント（bukkyo-u.ac.jp）の SMTP は使えない。Google Workspace 側で
+#    2段階認証が許可されておらず、アプリ パスワードを発行できないため。
+#    2SV なしの SMTP 認証は Google が廃止済み。
+#
+# funitclub.org の DNS は Azure DNS（リソースグループ hirahira のゾーン funitclub.org）に
+# あるので、検証用レコードも az で足せる。
+
+# ---- 現在の構成（構築済み。作り直すときだけ下の手順を使う） ----
+#   Email Communication Service : funitclub-email（data-location: Japan）
+#   送信ドメイン                : funitclub.org（CustomerManaged / Domain・SPF・DKIM・DKIM2 検証済み）
+#   差出人                      : no-reply@funitclub.org
+#   Communication Service       : funitclub-comm（funitclub.org をリンク済み）
+#   Entra アプリ                : funitclub-smtp
+#                                 appId bdd9eab1-9a2d-4f46-be1d-47e7131bd2ff
+#                                 カスタムロール "funITclub Email Sender"（funitclub-comm スコープ）
+#                                 ※ 組み込みの "Communication and Email Service Owner" は
+#                                   広すぎるので外してある。メール送信に必要な3つの操作だけ。
+#   SMTP ユーザー名             : funitclub-smtp（username: no-reply@funitclub.org）
+#   Key Vault                   : funitclub-kv（RBAC 認可）
+#                                 シークレット funitclub-smtp-password
+#   App Service の設定          : EMAIL_HOST_USER は平文、EMAIL_HOST_PASSWORD は Key Vault 参照
+#                                 （システム割り当てマネージド ID に "Key Vault Secrets User"）
+#
+#   追加した DNS レコード（funitclub.org ゾーン）
+#     TXT   @                                        ms-domain-verification=37abf404-...
+#     TXT   @                                        v=spf1 include:spf.protection.outlook.com -all
+#     TXT   _dmarc                                   v=DMARC1; p=none; rua=mailto:<事務局アドレス>
+#     CNAME selector1-azurecomm-prod-net._domainkey  selector1-azurecomm-prod-net._domainkey.azurecomm.net
+#     CNAME selector2-azurecomm-prod-net._domainkey  selector2-azurecomm-prod-net._domainkey.azurecomm.net
+#
+#   クライアント シークレットの有効期限は2年（2028-08-19 まで）。
+#   切れる前に発行し直し、Key Vault を更新する。
+#   App Service の設定はバージョン無しの参照なので、Key Vault を更新すれば追従する
+#   （反映は最大24時間。すぐ反映したいなら az webapp restart）。
+#     az ad app credential reset --id bdd9eab1-9a2d-4f46-be1d-47e7131bd2ff --years 2
+#     az keyvault secret set --vault-name funitclub-kv --name funitclub-smtp-password --value "<新しい値>"
+#
+#   Key Vault 参照が解決できているかの確認
+#     az rest --method get --url "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)\
+# /resourceGroups/hirahira/providers/Microsoft.Web/sites/funITclub/config/configreferences/appsettings?api-version=2022-03-01"
+#
+#   DMARC は現在 p=none（監視のみ）。しばらくレポートを見て問題なければ
+#   p=quarantine → p=reject と段階的に強めると、funitclub.org を騙るメールを弾ける。
+#   ※ ACS の DMARC 検証（initiate-verification --verification-type DMARC）はサービス側が
+#     受け付けない。DNS にレコードがあれば機能するので、検証状態 NotStarted のままでよい。
+#
+#   メールを送らずに認証だけ確かめる（手元から）
+#     python -c "import os,smtplib; s=smtplib.SMTP('smtp.azurecomm.net',587); s.starttls(); \
+#       s.login('no-reply@funitclub.org', os.environ['EMAIL_HOST_PASSWORD']); print('ok'); s.quit()"
+
+# ---- 初回のみ（送信環境の作成） ----
+
+# 1. Email Communication Service（ドメインを持つ側）を作る。
+#    data-location は Japan。グローバルリソースなので location は global。
+az communication email create --name funitclub-email --resource-group hirahira \
+  --location global --data-location Japan
+
+# 2. 独自ドメイン funitclub.org を登録する（送信者ドメイン）。
+az communication email domain create --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira \
+  --location global --domain-management CustomerManaged
+
+# 3. 検証用の DNS レコードを確認する（Domain / SPF / DKIM / DKIM2 の4種類が出る）。
+az communication email domain show --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira \
+  --query verificationRecords
+
+# 4. 出てきた値を Azure DNS のゾーンに足す。TXT は2件、CNAME は2件。
+#    ※ SPF は既存の TXT があるなら1本にまとめること（v=spf1 は1ドメイン1レコード）。
+az network dns record-set txt add-record --resource-group hirahira --zone-name funitclub.org \
+  --record-set-name "@" --value "<Domain の TXT 値>"
+az network dns record-set txt add-record --resource-group hirahira --zone-name funitclub.org \
+  --record-set-name "@" --value "v=spf1 include:spf.protection.outlook.com -all"
+az network dns record-set cname set-record --resource-group hirahira --zone-name funitclub.org \
+  --record-set-name "selector1-azurecomm-prod-net._domainkey" --cname "<DKIM の値>"
+az network dns record-set cname set-record --resource-group hirahira --zone-name funitclub.org \
+  --record-set-name "selector2-azurecomm-prod-net._domainkey" --cname "<DKIM2 の値>"
+
+# 5. 検証を実行する（DNS の反映待ちで数分かかることがある。4種類すべて行う）。
+az communication email domain initiate-verification --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira --verification-type Domain
+az communication email domain initiate-verification --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira --verification-type SPF
+az communication email domain initiate-verification --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira --verification-type DKIM
+az communication email domain initiate-verification --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira --verification-type DKIM2
+
+#    状態の確認（すべて Verified になるまで待つ）
+az communication email domain show --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira \
+  --query verificationStates
+
+# 6. 差出人 no-reply@funitclub.org を作る（既定は DoNotReply のみ）。
+az communication email domain sender-username create --domain-name funitclub.org \
+  --email-service-name funitclub-email --resource-group hirahira \
+  --sender-username no-reply --username no-reply --display-name "fun IT club"
+
+# 7. Communication Service（送信する側）を作り、ドメインを紐づける。
+az communication create --name funitclub-comm --resource-group hirahira \
+  --location global --data-location Japan
+
+az communication update --name funitclub-comm --resource-group hirahira \
+  --linked-domains "$(az communication email domain show --domain-name funitclub.org \
+    --email-service-name funitclub-email --resource-group hirahira --query id -o tsv)"
+
+# 8. SMTP 認証用の Microsoft Entra アプリを作り、シークレットを発行する。
+#    出力の appId と password を控える（password は再表示できない）。
+az ad app create --display-name funitclub-smtp
+az ad sp create --id "<appId>"
+az ad app credential reset --id "<appId>" --years 2
+
+# 9. アプリに ACS への権限を与える（組み込みロール）。
+az role assignment create --assignee "<appId>" \
+  --role "Communication and Email Service Owner" \
+  --scope "$(az communication show --name funitclub-comm --resource-group hirahira --query id -o tsv)"
+
+# 10. SMTP ユーザー名を作る（Entra アプリと紐づける）。
+#     ユーザー名はメール形式にでき、その場合はリンク済みドメインである必要がある。
+az communication smtp-username create --smtp-username funitclub-smtp \
+  --comm-service-name funitclub-comm --resource-group hirahira \
+  --username no-reply@funitclub.org \
+  --entra-application-id "<appId>" --tenant-id "$(az account show --query tenantId -o tsv)"
+
+#     一覧で状態を確認する（使えるようになるまで少しかかる）
+az communication smtp-username list --comm-service-name funitclub-comm --resource-group hirahira
+
+# 11. App Service に認証情報を入れる。
+#     EMAIL_HOST_USER は SMTP ユーザー名、EMAIL_HOST_PASSWORD は 8. のシークレット。
+#     差出人（JOIN_FROM_EMAIL）と通知先（JOIN_NOTIFY_EMAIL）は既定値のままでよい。
+az webapp config appsettings set --name funITclub --settings \
+  EMAIL_HOST_USER="no-reply@funitclub.org" \
+  EMAIL_HOST_PASSWORD="<クライアント シークレット>"
+
+# ---- 確認 ----
+
+# App Service の SSH から送信テストする
+python manage.py sendtestemail contact@funitclub.org
+
+# 届かないときは、設定が入っているかとログを見る
+az webapp config appsettings list --name funITclub \
+  --query "[?name=='EMAIL_HOST_USER' || name=='EMAIL_HOST_PASSWORD'].name"
+az webapp log tail --name funITclub
+# ※ 送信に失敗しても画面は 500 にならず、フォームにエラーを出して再送を促す。
+
+# ---- 費用 ----
+
+# ACS Email は従量課金。メール1000通あたり数十円程度＋データ量。
+# 参加申し込みの規模なら月あたり数円〜。リソース自体の固定費はかからない。
 
 
 ########################################

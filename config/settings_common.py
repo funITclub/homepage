@@ -107,3 +107,20 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # サイト共通の表示情報（テンプレートから参照）
 SITE_NAME = 'fun IT club'
 SITE_TAGLINE = '佛教大学 通信教育課程 課外活動団体'
+
+# 参加フォーム（/join/）
+# 申し込みは大学から発行されたメールアドレスからのみ受け付ける。活動ツールが
+# 大学の Google Workspace 前提なので、私用アドレスでは先に進めないため。
+JOIN_ALLOWED_EMAIL_DOMAIN = 'bukkyo-u.ac.jp'
+
+# 申し込みの通知先。大学アカウントで受け取る（受信は制限されていない）。
+JOIN_NOTIFY_EMAIL = os.getenv('JOIN_NOTIFY_EMAIL', 'contact@funitclub.org')
+
+# 差出人。bukkyo-u.ac.jp は2段階認証が許可されておらず、アプリ パスワードを発行できない
+# ため、大学アカウントの SMTP では送れない。送信は Azure Communication Services を使い、
+# 独自ドメイン funitclub.org の差出人で出す。返信は JOIN_NOTIFY_EMAIL に向ける
+# （home/forms.py で Reply-To を付けている）ので、大学アドレスで受け取れる。
+JOIN_FROM_EMAIL = os.getenv('JOIN_FROM_EMAIL', 'no-reply@funitclub.org')
+
+DEFAULT_FROM_EMAIL = f'{SITE_NAME} <{JOIN_FROM_EMAIL}>'
+SERVER_EMAIL = DEFAULT_FROM_EMAIL

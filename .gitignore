@@ -23,3 +23,6 @@ staticfiles/
 
 # Azure
 .azure/
+
+# ローカルの秘密情報（メールのアプリパスワードなど）
+.env

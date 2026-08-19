@@ -61,6 +61,25 @@ DATABASES = {
     }
 }
 
+# 送信メール（参加フォーム /join/）。
+# Azure Communication Services（Email）の SMTP リレーを使う。
+#   ※ 大学アカウント（bukkyo-u.ac.jp）は2段階認証が許可されておらずアプリ パスワードを
+#     発行できないため、Gmail の SMTP では送れない。差出人は funitclub.org のアドレスにし、
+#     返信だけ大学アドレスに向ける（home/forms.py の Reply-To）。
+#
+# EMAIL_HOST_USER は ACS の「SMTP ユーザー名」、EMAIL_HOST_PASSWORD は紐づけた
+# Microsoft Entra アプリのクライアント シークレット。どちらも App Service の
+# アプリケーション設定から読む（リポジトリには持たない）。
+# 差出人アドレス（JOIN_FROM_EMAIL）とは別物なので混同しないこと。
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.azurecomm.net')
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_TIMEOUT = 20
+
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -72,6 +91,11 @@ LOGGING = {
     },
     'loggers': {
         'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        # 参加フォームの受付・送信失敗をログに残す
+        'home': {
             'handlers': ['console'],
             'level': 'INFO',
         },
