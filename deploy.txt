@@ -38,6 +38,10 @@ rm -f /tmp/funitclub-deploy.zip
 git ls-files --cached --others --exclude-standard -z \
   | xargs -0 zip -q -X /tmp/funitclub-deploy.zip
 
+#    docs/ は運用資料の置き場で、アプリの動作には関係ないので落とす。
+#    .gitignore に入れるとリポジトリからも消えてしまうため、ここで除外する。
+zip -q -d /tmp/funitclub-deploy.zip 'docs/*'
+
 # 2. 中身を確認する（venv や db.sqlite3 が混ざっていないこと）
 unzip -l /tmp/funitclub-deploy.zip
 
