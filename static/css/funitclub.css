@@ -37,6 +37,10 @@
 
 html {
     -webkit-text-size-adjust: 100%;
+    /* 各部品のサイズは rem で書いてあるので、ここを変えると全体が一律に動く。
+     * ブラウザ既定の 16px では、ラベルや注記（.72rem 前後）が 11〜12px になって
+     * 読みづらかったため引き上げた。 */
+    font-size: 17.5px;
 }
 
 body {
@@ -44,7 +48,7 @@ body {
     background: var(--navy);
     color: #FFFFFF;
     font-family: var(--sans);
-    font-size: 15px;
+    font-size: .92rem;
     line-height: 1.8;
     display: flex;
     flex-direction: column;
@@ -216,7 +220,7 @@ a:hover {
 .badge {
     display: inline-block;
     font-family: var(--mono);
-    font-size: .68rem;
+    font-size: .74rem;
     letter-spacing: .04em;
     line-height: 1.6;
     padding: 1px 8px;
@@ -343,7 +347,7 @@ a:hover {
     align-items: center;
     gap: 8px;
     font-family: var(--mono);
-    font-size: .72rem;
+    font-size: .76rem;
     letter-spacing: .04em;
     color: var(--ink-2);
     margin-bottom: 10px;
@@ -399,7 +403,7 @@ a:hover {
 
 .work-type {
     font-family: var(--mono);
-    font-size: .72rem;
+    font-size: .76rem;
     letter-spacing: .06em;
     color: var(--accent-ink);
 }
@@ -502,7 +506,7 @@ a:hover {
     margin-left: 8px;
     padding: 0 5px;
     font-family: var(--mono);
-    font-size: .62rem;
+    font-size: .7rem;
     font-weight: 400;
     color: var(--ink-2);
     border: 1px solid var(--line-ink);
@@ -512,7 +516,7 @@ a:hover {
 
 .tool-role {
     color: var(--ink-2);
-    font-size: .72rem;
+    font-size: .76rem;
     line-height: 1.6;
 }
 
@@ -697,7 +701,7 @@ a:hover {
 
 .editor-table th {
     font-family: var(--mono);
-    font-size: .72rem;
+    font-size: .76rem;
     letter-spacing: .04em;
     text-align: left;
     color: var(--ink-2);
@@ -774,7 +778,7 @@ a:hover {
 .form-row label {
     display: block;
     font-family: var(--mono);
-    font-size: .74rem;
+    font-size: .8rem;
     letter-spacing: .04em;
     color: var(--ink-2);
     margin-bottom: 6px;
@@ -836,7 +840,7 @@ a:hover {
 
 .form-help {
     margin: 6px 0 0;
-    font-size: .74rem;
+    font-size: .8rem;
     line-height: 1.7;
     color: var(--ink-2);
 }
@@ -845,7 +849,7 @@ a:hover {
     list-style: none;
     margin: 6px 0 0;
     padding: 0;
-    font-size: .78rem;
+    font-size: .82rem;
     color: #B3261E;
 }
 
@@ -920,7 +924,7 @@ a:hover {
 
 .form-optional {
     font-family: var(--mono);
-    font-size: .68rem;
+    font-size: .74rem;
     color: var(--ink-2);
     border: 1px solid var(--line-ink);
     border-radius: 2px;
