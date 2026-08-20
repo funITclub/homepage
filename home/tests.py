@@ -3,6 +3,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django import forms
+from django.conf import settings
 from django.core import mail
 from django.core.cache import cache
 from django.test import TestCase, override_settings
@@ -11,6 +12,7 @@ from django.urls import reverse
 
 from catalog.models import Wg
 from config.middleware import BlockedIpMiddleware
+from edit.models import Administrator
 
 from .models import BlockedIp
 
@@ -36,13 +38,21 @@ class JoinFormTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '大学のメールアドレス')
 
+    @override_settings(JOIN_NOTIFY_EMAIL='staff-inbox@example.com')
     def test_public_pages_show_the_role_address_only(self):
-        """公開ページに出すのは役割アドレス。学籍番号を含む大学アカウントは出さない。"""
+        """公開ページに出すのは役割アドレスだけ。通知先の受信箱は出さない。
+
+        通知先には個人の大学アカウント（学籍番号を含む）を設定するため、
+        公開ページに出ると恒久的に晒される。
+        """
+        Administrator.objects.create(email='staff-inbox@example.com',
+                                     is_public_contact=False, sort_order=5)
+
         for url in [reverse('home:index'), reverse('home:join'), self.url]:
             with self.subTest(url=url):
                 response = self.client.get(url)
-                self.assertContains(response, 'contact@funitclub.org')
-                self.assertNotContains(response, 'contact-address')
+                self.assertContains(response, settings.PUBLIC_CONTACT_EMAIL)
+                self.assertNotContains(response, 'staff-inbox@example.com')
 
     def test_guide_page_invites_contact(self):
         """問い合わせの案内は案内ページに置く（フォームのページには置かない）。"""
@@ -98,7 +108,7 @@ class JoinFormTests(TestCase):
         self.assertEqual(auto_reply.from_email, 'fun IT club <no-reply@funitclub.org>')
 
         # 事務局あて。返信するとそのまま申込者に届く。
-        self.assertEqual(notification.to, ['contact@funitclub.org'])
+        self.assertEqual(notification.to, [settings.JOIN_NOTIFY_EMAIL])
         self.assertEqual(notification.reply_to, ['bu0000000000@bukkyo-u.ac.jp'])
         self.assertIn('佛教 太郎', notification.body)
         self.assertIn('WG-01 データ分析', notification.body)
@@ -107,9 +117,8 @@ class JoinFormTests(TestCase):
         self.assertEqual(auto_reply.to, ['bu0000000000@bukkyo-u.ac.jp'])
         self.assertIn('受け付けました', auto_reply.subject)
         self.assertIn('心当たりがない場合', auto_reply.body)
-        # 申込者に見えるのは役割アドレス（学籍番号を含む大学アカウントは出さない）
-        self.assertIn('contact@funitclub.org', auto_reply.body)
-        self.assertNotIn('contact-address', auto_reply.body)
+        # 申込者に見えるのは役割アドレスだけ
+        self.assertIn(settings.PUBLIC_CONTACT_EMAIL, auto_reply.body)
 
     def test_form_has_no_free_text_field(self):
         """自由記述は持たせない。
@@ -272,9 +281,7 @@ class BurstDetectionTests(TestCase):
 
         response = self.client.get(reverse('home:index'))
 
-        self.assertContains(response, 'contact@funitclub.org', status_code=403)
-        # 公開ページに学籍番号を含む大学アカウントは出さない
-        self.assertNotContains(response, 'contact-address', status_code=403)
+        self.assertContains(response, settings.PUBLIC_CONTACT_EMAIL, status_code=403)
         self.assertContains(response, '心当たりがない場合', status_code=403)
         self.assertContains(response, '同じ回線を共有', status_code=403)
         # 遮断中は静的ファイルも 403 なので、外部 CSS を読ませない
@@ -285,7 +292,7 @@ class BurstDetectionTests(TestCase):
             self.post()
 
         notice, = [m for m in mail.outbox if 'IP を遮断しました' in m.subject]
-        self.assertEqual(notice.to, ['contact@funitclub.org'])
+        self.assertEqual(notice.to, [settings.JOIN_NOTIFY_EMAIL])
         self.assertIn('127.0.0.1', notice.body)
         self.assertIn('1回目', notice.body)
         self.assertIn('巻き添え', notice.body)

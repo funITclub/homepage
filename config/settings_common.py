@@ -130,19 +130,16 @@ SITE_TAGLINE = '佛教大学 通信教育課程 課外活動団体'
 # 大学の Google Workspace 前提なので、私用アドレスでは先に進めないため。
 JOIN_ALLOWED_EMAIL_DOMAIN = 'bukkyo-u.ac.jp'
 
-# 申し込みの通知先。大学アカウントで受け取る（受信は制限されていない）。
-# ※ これは運営が受け取るための宛先。公開ページには出さない（下記の理由）。
-JOIN_NOTIFY_EMAIL = os.getenv('JOIN_NOTIFY_EMAIL', 'contact@funitclub.org')
-
 # 公開する問い合わせ先。自分たちのドメインの役割アドレスを使い、転送で受け取る。
 #
-# 大学アカウント（contact-address@...）のローカル部は学籍番号そのもので、公開ページに
-# 出すと特定の学生の学籍番号がサイトと紐づいて恒久的に晒される。収集ボットの標的にも
-# なるし、担当者が卒業・交代しても残り続ける。役割アドレスなら、転送先を変えるだけで
-# 引き継げて、スパムが増えたら捨てられる。
-#
-# 実体は管理者テーブル（edit.Administrator）にあり、ここはテーブルを読めないときの予備。
+# 個人の大学アカウント（学籍番号がローカル部になっている）は、公開ページにも
+# **このリポジトリにも**書かない。リポジトリは公開なので、コードに残せば検索でき、
+# フォークやアーカイブにも残る。役割アドレスなら転送先を変えるだけで引き継げる。
 PUBLIC_CONTACT_EMAIL = os.getenv('PUBLIC_CONTACT_EMAIL', 'contact@funitclub.org')
+
+# 通知の宛先。運営が実際に読む受信箱を、App Service のアプリケーション設定で指定する。
+# 未設定なら役割アドレスに送る（転送されて同じ受信箱に届く）。
+JOIN_NOTIFY_EMAIL = os.getenv('JOIN_NOTIFY_EMAIL', PUBLIC_CONTACT_EMAIL)
 
 # 参加フォームの連続送信とみなす条件。(件数, 秒) を超えた IP を遮断する。
 # 同一IPからの申し込みを数える。問い合わせフォームとして一般的な水準にしてある
@@ -193,10 +190,10 @@ LOGIN_FAILURE_RULE = (5, 600)
 # **シークレットを更新したらこの値も必ず更新すること。**
 EMAIL_SECRET_EXPIRES_ON = os.getenv('EMAIL_SECRET_EXPIRES_ON', '2028-08-19')
 
-# 差出人。bukkyo-u.ac.jp は2段階認証が許可されておらず、アプリ パスワードを発行できない
-# ため、大学アカウントの SMTP では送れない。送信は Azure Communication Services を使い、
-# 独自ドメイン funitclub.org の差出人で出す。返信は JOIN_NOTIFY_EMAIL に向ける
-# （home/forms.py で Reply-To を付けている）ので、大学アドレスで受け取れる。
+# 差出人。大学のドメイン（bukkyo-u.ac.jp）は2段階認証が許可されておらず、アプリ
+# パスワードを発行できないため、大学アカウントの SMTP では送れない。送信は Azure
+# Communication Services を使い、独自ドメイン funitclub.org の差出人で出す。
+# 返信は問い合わせ先に向ける（home/forms.py で Reply-To を付けている）。
 JOIN_FROM_EMAIL = os.getenv('JOIN_FROM_EMAIL', 'no-reply@funitclub.org')
 
 DEFAULT_FROM_EMAIL = f'{SITE_NAME} <{JOIN_FROM_EMAIL}>'

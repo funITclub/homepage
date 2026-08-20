@@ -75,7 +75,7 @@ docs/                  補足資料（セキュリティ対応一覧など）。
 活動ツールが大学の Google Workspace 前提なので、**私用アドレスでは受け付けない**。
 送信すると2通のメールが出る。
 
-1. 事務局（`JOIN_NOTIFY_EMAIL` ＝ `contact@funitclub.org`）あての通知。
+1. 事務局（`JOIN_NOTIFY_EMAIL`）あての通知。
    `Reply-To` が申込者なので、そのまま返信すれば本人に届く。
 2. 申込者あての控え（自動返信）。`Reply-To` は事務局の大学アドレス。
    第三者のアドレスが入力された場合にもこのメールは届くので、
@@ -99,7 +99,7 @@ docs/                  補足資料（セキュリティ対応一覧など）。
 | `EMAIL_HOST_USER` | ACS の「SMTP ユーザー名」。Entra アプリに紐づく認証用の名前 |
 | `EMAIL_HOST_PASSWORD` | 紐づけた Microsoft Entra アプリのクライアント シークレット |
 | `JOIN_FROM_EMAIL` | 差出人アドレス（既定 `no-reply@funitclub.org`） |
-| `JOIN_NOTIFY_EMAIL` | 通知先（既定 `contact@funitclub.org`） |
+| `JOIN_NOTIFY_EMAIL` | 通知先（未設定なら公開の問い合わせ先に送る） |
 
 本番のシークレットは App Service に平文で置かず、**Azure Key Vault**（`funitclub-kv`）に入れて
 アプリケーション設定から参照している。取り出せるのは App Service のマネージド ID だけで、
@@ -124,7 +124,7 @@ cp .env.example .env
 どうかは、フォームを使わずに確かめられる。
 
 ```bash
-python manage.py sendtestemail contact@funitclub.org --settings=config.settings_dev
+python manage.py sendtestemail <確認用のアドレス> --settings=config.settings_dev
 ```
 
 認証情報が空のときは送信せず、メールの内容を runserver のログに出力する
@@ -263,13 +263,14 @@ python manage.py createsuperuser --settings=config.settings_dev
 
 | 種別 | アドレス | 用途 |
 |---|---|---|
-| 通知の宛先 | `contact@funitclub.org` | 運営が実際に読む受信箱。**公開しない** |
+| 通知の宛先 | 環境変数 `JOIN_NOTIFY_EMAIL` | 運営が実際に読む受信箱。**公開しない** |
 | 公開の問い合わせ先 | `contact@funitclub.org` | サイトに出す。転送で上記に届く |
 
-**大学アカウントを公開ページに出さない。** ローカル部が学籍番号そのもので、公開すると
-特定の学生の学籍番号がサイトと紐づいて恒久的に晒される。収集ボットの標的にもなり、
-担当者が卒業・交代しても残り続ける。役割アドレスなら転送先を変えるだけで引き継げて、
-スパムが増えたら捨てられる。
+**個人の大学アカウントは、公開ページにも、このリポジトリにも書かない。** ローカル部が
+学籍番号そのもので、公開すると特定の学生の学籍番号が恒久的に晒される。**リポジトリは
+公開なので、コードやテストに書けば検索でき、フォークやアーカイブにも残る。** 実際の
+受信箱は App Service のアプリケーション設定（`JOIN_NOTIFY_EMAIL`）と管理者テーブルで
+持ち、コードには役割アドレスだけを置く。
 
 テーブルを読めないときの予備も、公開側は `settings.PUBLIC_CONTACT_EMAIL` に落とす
 （`JOIN_NOTIFY_EMAIL` に倒すと、障害時に学籍番号が公開ページへ出てしまう）。

@@ -112,7 +112,7 @@ python manage.py createsuperuser
 python manage.py createcachetable
 
 # 7. 管理者（通知の宛先・公開の問い合わせ先）を確認する。
-#    migrate で contact@funitclub.org が登録される。増減は /admin/ →「管理者」。
+#    migrate で公開の問い合わせ先が登録される。増減は /admin/ →「管理者」。
 #    ※ 設定ファイルやテンプレートにアドレスを書かないこと。参照先はこのテーブルだけ。
 
 
@@ -122,7 +122,7 @@ python manage.py createcachetable
 
 # Azure Communication Services（ACS）の Email を使い、独自ドメイン funitclub.org の
 # 差出人（no-reply@funitclub.org）で送る。申し込みの通知先と Reply-To は
-# 大学アドレス contact@funitclub.org のままなので、受信はこれまで通り。
+# 運営の受信箱（JOIN_NOTIFY_EMAIL）のままなので、受信はこれまで通り。
 #
 # ※ 大学アカウント（bukkyo-u.ac.jp）の SMTP は使えない。Google Workspace 側で
 #    2段階認証が許可されておらず、アプリ パスワードを発行できないため。
@@ -273,15 +273,20 @@ az webapp config appsettings set --name funITclub --settings \
   EMAIL_HOST_USER="no-reply@funitclub.org" \
   EMAIL_HOST_PASSWORD="<クライアント シークレット>"
 
+#     通知を受け取る受信箱も設定する（リポジトリには書かない）。
+#     未設定なら公開の問い合わせ先へ送られ、転送で同じ受信箱に届く。
+az webapp config appsettings set --name funITclub --settings \
+  JOIN_NOTIFY_EMAIL="<運営の受信箱アドレス>"
+
 # ---- 問い合わせ先（受信）の設定 ----
 
 # 公開する問い合わせ先 contact@funitclub.org は「転送」で受け取る。
 # ACS は送信専用で受信できないため、メール転送サービスに MX を向ける。
-#   ※ 大学アカウント（contact-address@...）は公開ページに出さないこと。
+#   ※ 個人の大学アカウントは公開ページにもリポジトリにも書かないこと。
 #     ローカル部が学籍番号そのもので、晒すと恒久的に残る。
 #
 # 1. 転送サービス（ImprovMX / Forward Email など）に funitclub.org を登録し、
-#    contact@funitclub.org → contact@funitclub.org の転送を作る。
+#    contact@funitclub.org → 運営の受信箱 への転送を作る。
 #    ※ アカウント作成は手作業。無料枠で足りる。
 #
 # 2. 指定された MX レコードを Azure DNS に足す（例は ImprovMX の場合）。
@@ -302,7 +307,7 @@ dig +short MX funitclub.org @8.8.8.8
 # ---- 確認 ----
 
 # App Service の SSH から送信テストする
-python manage.py sendtestemail contact@funitclub.org
+python manage.py sendtestemail <確認用のアドレス>
 
 # 届かないときは、設定が入っているかとログを見る
 az webapp config appsettings list --name funITclub \

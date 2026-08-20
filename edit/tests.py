@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.cache import cache
@@ -15,15 +16,22 @@ class AdministratorTests(TestCase):
     """管理者情報はこのテーブルだけを見る。設定やテンプレートには書かない。"""
 
     def test_accounts_are_registered_by_migration(self):
-        """通知は大学アカウント、公開は役割アドレスで受ける。"""
-        self.assertEqual(notification_emails(), ['contact@funitclub.org'])
-        self.assertEqual(public_contact_email(), 'contact@funitclub.org')
+        """公開は役割アドレス、通知は設定した宛先で受ける。"""
+        self.assertEqual(public_contact_email(), settings.PUBLIC_CONTACT_EMAIL)
+        self.assertEqual(notification_emails(), [settings.JOIN_NOTIFY_EMAIL])
 
-    def test_role_address_does_not_receive_notifications(self):
-        """役割アドレスは転送なので、通知を送ると同じ受信箱に二重で届く。"""
-        role = Administrator.objects.get(email='contact@funitclub.org')
-        self.assertFalse(role.receives_notifications)
+    def test_role_address_is_the_public_contact(self):
+        role = Administrator.objects.get(email=settings.PUBLIC_CONTACT_EMAIL)
         self.assertTrue(role.is_public_contact)
+
+    def test_no_real_admin_address_in_the_repository(self):
+        """個人の大学アカウントはコードにもテストにも書かない。
+
+        リポジトリは公開なので、書けば検索でき、フォークにも残る。
+        宛先は設定（環境変数）と管理者テーブルで持つ。
+        """
+        self.assertNotIn('bukkyo-u.ac.jp', settings.PUBLIC_CONTACT_EMAIL)
+        self.assertNotIn('bukkyo-u.ac.jp', settings.JOIN_NOTIFY_EMAIL)
 
     def test_notification_goes_to_every_active_administrator(self):
         Administrator.objects.create(email='second@example.com', sort_order=1)
@@ -33,7 +41,7 @@ class AdministratorTests(TestCase):
                                      is_active=False)
 
         self.assertEqual(notification_emails(),
-                         ['contact@funitclub.org', 'second@example.com'])
+                         [settings.JOIN_NOTIFY_EMAIL, 'second@example.com'])
 
     def test_public_contact_is_the_first_one(self):
         Administrator.objects.create(email='front@example.com', sort_order=-9)
@@ -53,16 +61,16 @@ class AdministratorTests(TestCase):
         """
         Administrator.objects.all().delete()
 
-        self.assertEqual(notification_emails(), ['contact@funitclub.org'])
-        self.assertEqual(public_contact_email(), 'contact@funitclub.org')
+        self.assertEqual(notification_emails(), [settings.JOIN_NOTIFY_EMAIL])
+        self.assertEqual(public_contact_email(), settings.PUBLIC_CONTACT_EMAIL)
 
     def test_falls_back_when_the_table_cannot_be_read(self):
         with mock.patch('edit.models.Administrator.objects') as objects:
             objects.notified.side_effect = RuntimeError('boom')
             objects.public_contacts.side_effect = RuntimeError('boom')
 
-            self.assertEqual(notification_emails(), ['contact@funitclub.org'])
-            self.assertEqual(public_contact_email(), 'contact@funitclub.org')
+            self.assertEqual(notification_emails(), [settings.JOIN_NOTIFY_EMAIL])
+            self.assertEqual(public_contact_email(), settings.PUBLIC_CONTACT_EMAIL)
 
 
 class JoinMailRecipientTests(TestCase):
@@ -79,9 +87,9 @@ class JoinMailRecipientTests(TestCase):
 
         notification, auto_reply = mail.outbox
         self.assertEqual(notification.to,
-                         ['contact@funitclub.org', 'second@example.com'])
+                         [settings.JOIN_NOTIFY_EMAIL, 'second@example.com'])
         # 自動返信の返信先は公開用の役割アドレス
-        self.assertEqual(auto_reply.reply_to, ['contact@funitclub.org'])
+        self.assertEqual(auto_reply.reply_to, [settings.PUBLIC_CONTACT_EMAIL])
 
 
 @override_settings(LOGIN_FAILURE_RULE=(3, 600))
@@ -106,7 +114,7 @@ class LoginFailureTests(TestCase):
 
         notice, = mail.outbox
         self.assertIn('ログイン失敗が続いています', notice.subject)
-        self.assertEqual(notice.to, ['contact@funitclub.org'])
+        self.assertEqual(notice.to, [settings.JOIN_NOTIFY_EMAIL])
         self.assertIn('10分間に3回', notice.body)
         self.assertIn('changepassword', notice.body)
 
@@ -244,7 +252,7 @@ class ErrorNotificationTests(TestCase):
 
         notice, = mail.outbox
         self.assertEqual(notice.to,
-                         ['contact@funitclub.org', 'second@example.com'])
+                         [settings.JOIN_NOTIFY_EMAIL, 'second@example.com'])
         self.assertIn('Internal Server Error', notice.subject)
 
     def test_error_notifications_are_capped(self):
@@ -259,7 +267,6 @@ class ErrorNotificationTests(TestCase):
                 name='config.middleware', level=logging.ERROR, pathname=__file__,
                 lineno=1, msg='遮断リストの取得に失敗しました', args=(), exc_info=None))
 
-        from django.conf import settings
         self.assertEqual(len(mail.outbox), settings.ERROR_NOTIFY_MAX_PER_HOUR)
 
     def test_capping_does_not_notify_about_itself(self):
@@ -274,6 +281,4 @@ class ErrorNotificationTests(TestCase):
             self.assertTrue(line.startswith('WARNING'), line)
 
     def test_admins_setting_is_not_used(self):
-        from django.conf import settings
-
         self.assertFalse(getattr(settings, 'ADMINS', []))
