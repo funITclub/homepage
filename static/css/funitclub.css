@@ -862,9 +862,21 @@ a:hover {
 
 /* 参加を申し込む（/join/apply/）。1カラムの狭いページ */
 
+/* 広い画面ではフォームと掲示を左右に並べ、全体が1画面に収まるようにする。
+ * 狭い画面では縦積みに戻す（下のレスポンシブ指定）。 */
+
 .apply {
-    max-width: 620px;
-    padding: 48px 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 24px 36px;
+    align-items: start;
+    padding: 40px 0 48px;
+}
+
+/* 見出しと完了メッセージは横幅いっぱいに置く */
+.apply > .section-head,
+.apply > .form-messages {
+    grid-column: 1 / -1;
 }
 
 .cta-note {
@@ -874,14 +886,20 @@ a:hover {
     color: var(--ink-2);
 }
 
+/* 申し込みページの掲示（情報の扱い・アクセス制限）。
+ * 読み飛ばされると意味がないので、注記の小ささではなく本文並みの大きさで出す。 */
+
 .notice {
-    margin-top: 24px;
+    padding: 22px 26px;
+    background: var(--navy-2);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--radius);
 }
 
 .notice-title {
-    margin: 20px 0 6px;
+    margin: 22px 0 8px;
     font-family: var(--mono);
-    font-size: .72rem;
+    font-size: .84rem;
     letter-spacing: .04em;
     color: var(--accent);
 }
@@ -892,9 +910,9 @@ a:hover {
 
 .notice p:not(.notice-title) {
     margin: 0;
-    font-size: .78rem;
-    line-height: 1.9;
-    color: var(--muted);
+    font-size: .9rem;
+    line-height: 1.95;
+    color: #FFFFFF;
 }
 
 /* 参加フォームの部品。白いカードの中に置く */
@@ -1080,7 +1098,8 @@ a:hover {
 
 @media (max-width: 900px) {
     .hero,
-    .join {
+    .join,
+    .apply {
         grid-template-columns: 1fr;
         gap: 32px;
     }
