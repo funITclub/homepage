@@ -255,8 +255,32 @@ python manage.py createsuperuser --settings=config.settings_dev
 |---|---|
 | 参加申し込みの通知先 | 有効かつ「通知を受け取る」の全員 |
 | 自動返信の `Reply-To` | 「公開ページの問い合わせ先にする」の先頭1件 |
-| アクセス制限画面（403）の連絡先 | 同上 |
+| フッター・申し込みページ・403画面の連絡先 | 同上 |
 | IP遮断・ログイン失敗・500エラーの通知先 | 有効かつ「通知を受け取る」の全員 |
+
+### 受け取る宛先と、公開する宛先を分ける
+
+| 種別 | アドレス | 用途 |
+|---|---|---|
+| 通知の宛先 | `contact@funitclub.org` | 運営が実際に読む受信箱。**公開しない** |
+| 公開の問い合わせ先 | `contact@funitclub.org` | サイトに出す。転送で上記に届く |
+
+**大学アカウントを公開ページに出さない。** ローカル部が学籍番号そのもので、公開すると
+特定の学生の学籍番号がサイトと紐づいて恒久的に晒される。収集ボットの標的にもなり、
+担当者が卒業・交代しても残り続ける。役割アドレスなら転送先を変えるだけで引き継げて、
+スパムが増えたら捨てられる。
+
+テーブルを読めないときの予備も、公開側は `settings.PUBLIC_CONTACT_EMAIL` に落とす
+（`JOIN_NOTIFY_EMAIL` に倒すと、障害時に学籍番号が公開ページへ出てしまう）。
+
+役割アドレスは**転送で受け取るので、通知は送らない**（同じ受信箱に二重で届くため）。
+
+テンプレートからは `{{ public_contact }}` で参照する（`edit/context_processors.py`）。
+アドレスを HTML に書かないので、担当者が代わってもテーブルを直すだけで全ページに反映される。
+
+> **転送の設定が前提。** `contact@funitclub.org` はメール転送サービス（ImprovMX など）に
+> MX レコードを向けて実現する。設定しないと届かないので、公開前に必ず疎通を確認すること。
+> 手順は [deploy.txt](deploy.txt) の「メール送信」を参照。
 
 テーブルが空、または DB を読めないときは `settings.JOIN_NOTIFY_EMAIL` に落とす。
 宛先が無いせいで異常に気づけない事態を避けるための保険。
@@ -395,7 +419,8 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `EMAIL_HOST_USER` | ACS の SMTP ユーザー名。未設定だと送信できない |
 | `EMAIL_HOST_PASSWORD` | 紐づけた Entra アプリのクライアント シークレット。本番は Key Vault 参照（`@Microsoft.KeyVault(...)`）で入れている |
 | `JOIN_FROM_EMAIL` | 任意。差出人アドレス。既定は `no-reply@funitclub.org` |
-| `JOIN_NOTIFY_EMAIL` | 任意。管理者テーブルが空のときの予備の宛先 |
+| `JOIN_NOTIFY_EMAIL` | 任意。管理者テーブルが空のときの予備の宛先（通知用） |
+| `PUBLIC_CONTACT_EMAIL` | 任意。同じく予備の公開問い合わせ先。既定は `contact@funitclub.org` |
 | `EMAIL_SECRET_EXPIRES_ON` | シークレットの期限（`YYYY-MM-DD`）。更新時に必ず直す |
 | `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 任意。IP遮断の停止・除外（ロックアウトからの復旧用） |
 | `DEBUG` | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |

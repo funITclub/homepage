@@ -14,10 +14,16 @@ from .models import Administrator, notification_emails, public_contact_email
 class AdministratorTests(TestCase):
     """管理者情報はこのテーブルだけを見る。設定やテンプレートには書かない。"""
 
-    def test_current_account_is_registered_by_migration(self):
-        admin = Administrator.objects.get()
-        self.assertEqual(admin.email, 'contact@funitclub.org')
-        self.assertEqual(admin.name, '事務局')
+    def test_accounts_are_registered_by_migration(self):
+        """通知は大学アカウント、公開は役割アドレスで受ける。"""
+        self.assertEqual(notification_emails(), ['contact@funitclub.org'])
+        self.assertEqual(public_contact_email(), 'contact@funitclub.org')
+
+    def test_role_address_does_not_receive_notifications(self):
+        """役割アドレスは転送なので、通知を送ると同じ受信箱に二重で届く。"""
+        role = Administrator.objects.get(email='contact@funitclub.org')
+        self.assertFalse(role.receives_notifications)
+        self.assertTrue(role.is_public_contact)
 
     def test_notification_goes_to_every_active_administrator(self):
         Administrator.objects.create(email='second@example.com', sort_order=1)
@@ -30,7 +36,7 @@ class AdministratorTests(TestCase):
                          ['contact@funitclub.org', 'second@example.com'])
 
     def test_public_contact_is_the_first_one(self):
-        Administrator.objects.create(email='front@example.com', sort_order=-1)
+        Administrator.objects.create(email='front@example.com', sort_order=-9)
         self.assertEqual(public_contact_email(), 'front@example.com')
 
     def test_public_contact_skips_non_public(self):
@@ -40,7 +46,11 @@ class AdministratorTests(TestCase):
         self.assertEqual(public_contact_email(), 'window@example.com')
 
     def test_falls_back_when_the_table_is_empty(self):
-        """宛先が無いせいで異常に気づけない、という事態を避ける。"""
+        """宛先が無いせいで異常に気づけない、という事態を避ける。
+
+        ただし公開側は役割アドレスに落とす。大学アカウントに倒すと、テーブルを
+        読めないときに学籍番号が公開ページへ出てしまう。
+        """
         Administrator.objects.all().delete()
 
         self.assertEqual(notification_emails(), ['contact@funitclub.org'])
@@ -70,7 +80,7 @@ class JoinMailRecipientTests(TestCase):
         notification, auto_reply = mail.outbox
         self.assertEqual(notification.to,
                          ['contact@funitclub.org', 'second@example.com'])
-        # 自動返信の返信先は公開用の問い合わせ先
+        # 自動返信の返信先は公開用の役割アドレス
         self.assertEqual(auto_reply.reply_to, ['contact@funitclub.org'])
 
 

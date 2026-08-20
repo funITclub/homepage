@@ -269,6 +269,32 @@ az webapp config appsettings set --name funITclub --settings \
   EMAIL_HOST_USER="no-reply@funitclub.org" \
   EMAIL_HOST_PASSWORD="<クライアント シークレット>"
 
+# ---- 問い合わせ先（受信）の設定 ----
+
+# 公開する問い合わせ先 contact@funitclub.org は「転送」で受け取る。
+# ACS は送信専用で受信できないため、メール転送サービスに MX を向ける。
+#   ※ 大学アカウント（contact-address@...）は公開ページに出さないこと。
+#     ローカル部が学籍番号そのもので、晒すと恒久的に残る。
+#
+# 1. 転送サービス（ImprovMX / Forward Email など）に funitclub.org を登録し、
+#    contact@funitclub.org → contact@funitclub.org の転送を作る。
+#    ※ アカウント作成は手作業。無料枠で足りる。
+#
+# 2. 指定された MX レコードを Azure DNS に足す（例は ImprovMX の場合）。
+az network dns record-set mx add-record --resource-group hirahira --zone-name funitclub.org \
+  --record-set-name "@" --exchange mx1.improvmx.com --preference 10
+az network dns record-set mx add-record --resource-group hirahira --zone-name funitclub.org \
+  --record-set-name "@" --exchange mx2.improvmx.com --preference 20
+
+#    ※ SPF は触らないこと。SPF は「送信」の話で、転送の受信には関係ない。
+#      いまの v=spf1 include:spf.protection.outlook.com -all は ACS 送信用。
+
+# 3. 反映を確認する
+dig +short MX funitclub.org @8.8.8.8
+
+# 4. 実際に contact@funitclub.org へ送って、大学アドレスに届くことを確認する。
+#    ※ 届かないうちに公開ページへ出すと、問い合わせが宙に浮く。
+
 # ---- 確認 ----
 
 # App Service の SSH から送信テストする

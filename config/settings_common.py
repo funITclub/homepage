@@ -61,6 +61,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # 問い合わせ先（管理者テーブル）をどのページからも参照できるようにする
+                'edit.context_processors.public_contact',
             ],
         },
     },
@@ -129,7 +131,18 @@ SITE_TAGLINE = '佛教大学 通信教育課程 課外活動団体'
 JOIN_ALLOWED_EMAIL_DOMAIN = 'bukkyo-u.ac.jp'
 
 # 申し込みの通知先。大学アカウントで受け取る（受信は制限されていない）。
+# ※ これは運営が受け取るための宛先。公開ページには出さない（下記の理由）。
 JOIN_NOTIFY_EMAIL = os.getenv('JOIN_NOTIFY_EMAIL', 'contact@funitclub.org')
+
+# 公開する問い合わせ先。自分たちのドメインの役割アドレスを使い、転送で受け取る。
+#
+# 大学アカウント（contact-address@...）のローカル部は学籍番号そのもので、公開ページに
+# 出すと特定の学生の学籍番号がサイトと紐づいて恒久的に晒される。収集ボットの標的にも
+# なるし、担当者が卒業・交代しても残り続ける。役割アドレスなら、転送先を変えるだけで
+# 引き継げて、スパムが増えたら捨てられる。
+#
+# 実体は管理者テーブル（edit.Administrator）にあり、ここはテーブルを読めないときの予備。
+PUBLIC_CONTACT_EMAIL = os.getenv('PUBLIC_CONTACT_EMAIL', 'contact@funitclub.org')
 
 # 参加フォームの連続送信とみなす条件。(件数, 秒) を超えた IP を遮断する。
 # 同一IPからの申し込みを数える。問い合わせフォームとして一般的な水準にしてある

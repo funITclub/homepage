@@ -80,10 +80,15 @@ def notification_emails():
 
 
 def public_contact_email():
-    """公開ページに出す問い合わせ先（先頭の1件）。"""
+    """公開ページに出す問い合わせ先（先頭の1件）。
+
+    予備は settings.PUBLIC_CONTACT_EMAIL（役割アドレス）にする。
+    JOIN_NOTIFY_EMAIL に落とすと、テーブルを読めないときに個人の大学アカウントが
+    公開ページへ出てしまう。学籍番号を含むアドレスなので、そちらには絶対に倒さない。
+    """
     try:
         email = Administrator.objects.public_contacts().values_list(
             'email', flat=True).first()
     except Exception:
         email = None
-    return email or settings.JOIN_NOTIFY_EMAIL
+    return email or settings.PUBLIC_CONTACT_EMAIL

@@ -530,7 +530,7 @@ a:hover {
 }
 
 .cta p {
-    margin: 0 0 28px;
+    margin: 0 0 24px;
     color: var(--ink-2);
     font-size: .9rem;
     line-height: 2;
@@ -877,13 +877,6 @@ a:hover {
 .apply > .section-head,
 .apply > .form-messages {
     grid-column: 1 / -1;
-}
-
-.cta-note {
-    margin: 16px 0 0;
-    font-size: .74rem;
-    line-height: 1.8;
-    color: var(--ink-2);
 }
 
 /* 申し込みページの掲示（情報の扱い・アクセス制限）。

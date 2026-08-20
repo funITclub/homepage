@@ -36,6 +36,14 @@ class JoinFormTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '大学のメールアドレス')
 
+    def test_public_pages_show_the_role_address_only(self):
+        """公開ページに出すのは役割アドレス。学籍番号を含む大学アカウントは出さない。"""
+        for url in [reverse('home:index'), reverse('home:join'), self.url]:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, 'contact@funitclub.org')
+                self.assertNotContains(response, 'contact-address')
+
     def test_apply_page_states_how_the_input_is_handled(self):
         """個人情報の扱いとアクセス制限の方針を掲示する（具体的な閾値は書かない）。"""
         response = self.client.get(self.url)
@@ -82,7 +90,9 @@ class JoinFormTests(TestCase):
         self.assertEqual(auto_reply.to, ['bu0000000000@bukkyo-u.ac.jp'])
         self.assertIn('受け付けました', auto_reply.subject)
         self.assertIn('心当たりがない場合', auto_reply.body)
+        # 申込者に見えるのは役割アドレス（学籍番号を含む大学アカウントは出さない）
         self.assertIn('contact@funitclub.org', auto_reply.body)
+        self.assertNotIn('contact-address', auto_reply.body)
 
     def test_form_has_no_free_text_field(self):
         """自由記述は持たせない。
@@ -246,6 +256,8 @@ class BurstDetectionTests(TestCase):
         response = self.client.get(reverse('home:index'))
 
         self.assertContains(response, 'contact@funitclub.org', status_code=403)
+        # 公開ページに学籍番号を含む大学アカウントは出さない
+        self.assertNotContains(response, 'contact-address', status_code=403)
         self.assertContains(response, '心当たりがない場合', status_code=403)
         self.assertContains(response, '同じ回線を共有', status_code=403)
         # 遮断中は静的ファイルも 403 なので、外部 CSS を読ませない
