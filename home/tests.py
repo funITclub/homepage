@@ -22,6 +22,7 @@ class JoinFormTests(TestCase):
 
     def setUp(self):
         self.url = reverse('home:join_apply')
+        self.done_url = reverse('home:join_apply_done')
         self.wg = Wg.objects.create(code='WG-01', name='データ分析', description='説明')
 
     def post(self, **overrides):
@@ -48,7 +49,7 @@ class JoinFormTests(TestCase):
         Administrator.objects.create(email='staff-inbox@example.com',
                                      is_public_contact=False, sort_order=5)
 
-        for url in [reverse('home:index'), reverse('home:join'), self.url]:
+        for url in [reverse('home:index'), reverse('home:join'), self.url, self.done_url]:
             with self.subTest(url=url):
                 response = self.client.get(url)
                 self.assertContains(response, settings.PUBLIC_CONTACT_EMAIL)
@@ -95,9 +96,9 @@ class JoinFormTests(TestCase):
         self.assertNotContains(response, '<form')
         self.assertContains(response, f'href="{self.url}"')
 
-    def test_valid_post_sends_two_mails_and_redirects(self):
+    def test_valid_post_sends_two_mails_and_redirects_to_done_page(self):
         response = self.post()
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, self.done_url)
 
         self.assertEqual(len(mail.outbox), 2)
         notification, auto_reply = mail.outbox
@@ -117,8 +118,34 @@ class JoinFormTests(TestCase):
         self.assertEqual(auto_reply.to, ['bu0000000000@bukkyo-u.ac.jp'])
         self.assertIn('受け付けました', auto_reply.subject)
         self.assertIn('心当たりがない場合', auto_reply.body)
+        # いつまで待てばいいか分からないと、待てない人が再送に向かう
+        self.assertIn('7日以内', auto_reply.body)
         # 申込者に見えるのは役割アドレスだけ
         self.assertIn(settings.PUBLIC_CONTACT_EMAIL, auto_reply.body)
+
+    def test_done_page_opens_without_login(self):
+        response = self.client.get(self.done_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '受け付けました')
+
+    def test_done_page_has_no_form_and_no_way_back_to_it(self):
+        """完了ページから再送できないようにする。
+
+        送れたか分からず押し直した人が連続送信とみなされ、IP ごと遮断されるのを
+        防ぐためのページなので、フォームも申し込みページへのリンクも置かない。
+        """
+        response = self.client.get(self.done_url)
+
+        self.assertNotContains(response, '<form')
+        self.assertNotContains(response, f'href="{self.url}"')
+
+    def test_done_page_states_the_reply_window(self):
+        """いつまで待てばいいかを画面にも書く（自動返信が届かない場合の受け皿）。"""
+        response = self.client.get(self.done_url)
+
+        self.assertContains(response, '7日以内')
+        self.assertContains(response, '迷惑メール')
 
     def test_form_has_no_free_text_field(self):
         """自由記述は持たせない。
@@ -395,5 +422,5 @@ class BurstDetectionTests(TestCase):
         with mock.patch('home.views.cache.get', side_effect=RuntimeError('boom')):
             response = self.post()
 
-        self.assertRedirects(response, self.url)
+        self.assertRedirects(response, reverse('home:join_apply_done'))
         self.assertEqual(len(mail.outbox), 2)

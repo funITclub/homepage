@@ -11,14 +11,6 @@
             <a class="section-more" href="{% url 'home:join' %}"><i class="fas fa-arrow-left me-1"></i>参加案内に戻る</a>
         </div>
 
-        {% if messages %}
-        <ul class="form-messages">
-            {% for message in messages %}
-            <li>{{ message }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-
         <div class="card">
             <form method="post" action="{% url 'home:join_apply' %}" novalidate>
                 {% csrf_token %}

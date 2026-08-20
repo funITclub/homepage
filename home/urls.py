@@ -12,6 +12,7 @@ urlpatterns = [
     path('works/', views.WorkListView.as_view(), name='work_list'),
     path('join/', views.JoinView.as_view(), name='join'),
     path('join/apply/', views.JoinApplyView.as_view(), name='join_apply'),
+    path('join/apply/done/', views.JoinDoneView.as_view(), name='join_apply_done'),
 
     # サブアプリ未実装のためのプレースホルダ
     path('coming-soon/', views.ComingSoonView.as_view(), name='coming_soon'),

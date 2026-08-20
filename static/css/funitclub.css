@@ -885,9 +885,8 @@ a:hover {
     padding: 40px 0 48px;
 }
 
-/* 見出しと完了メッセージは横幅いっぱいに置く */
-.apply > .section-head,
-.apply > .form-messages {
+/* 見出しは横幅いっぱいに置く */
+.apply > .section-head {
     grid-column: 1 / -1;
 }
 
@@ -932,22 +931,78 @@ a:hover {
     margin-left: 8px;
 }
 
-.form-messages {
-    list-style: none;
-    margin: 0 0 24px;
-    padding: 10px 14px;
-    border-left: 2px solid var(--accent-ink);
-    background: rgba(14, 107, 168, .08);
-    color: var(--ink);
-    font-size: .85rem;
-    line-height: 1.9;
-}
-
 .form-note {
     margin: 16px 0 0;
     font-size: .74rem;
     line-height: 1.8;
     color: var(--ink-2);
+}
+
+/* ---------- 申し込みの完了ページ（/join/apply/done/） ----------
+ * 読ませたい手順と注記があるので、.coming のような中央寄せにはせず左揃えで置く。 */
+
+.done {
+    display: grid;
+    gap: 24px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 0;
+}
+
+.done .card {
+    padding: 40px 34px;
+}
+
+.done-label {
+    font-family: var(--mono);
+    font-size: .78rem;
+    letter-spacing: .08em;
+    color: var(--accent-ink);
+    margin: 0 0 14px;
+}
+
+.done h1 {
+    margin: 0 0 18px;
+    color: var(--ink);
+    font-size: 1.5rem;
+}
+
+.done-lead {
+    margin: 0 0 28px;
+    color: var(--ink-2);
+    line-height: 1.9;
+}
+
+.done-steps {
+    margin: 0;
+    padding: 0 0 0 1.4em;
+    color: var(--ink-2);
+}
+
+.done-steps li {
+    margin-bottom: 18px;
+    line-height: 1.9;
+}
+
+.done-steps li:last-child {
+    margin-bottom: 0;
+}
+
+.done-step-title {
+    display: block;
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.done-mono {
+    font-family: var(--mono);
+    word-break: break-all;
+}
+
+.done-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
 /* ---------- サブアプリ：カウントアップ＆ダウン（/countdown/） ---------- */

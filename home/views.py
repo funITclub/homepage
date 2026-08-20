@@ -13,7 +13,6 @@ import time
 from datetime import timedelta
 
 from django.conf import settings
-from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.cache import cache
 from django.core.mail import BadHeaderError
@@ -188,7 +187,8 @@ class JoinApplyView(NavMixin, FormView):
     template_name = 'home/join_apply.html'
     nav = 'join'
     form_class = JoinForm
-    success_url = reverse_lazy('home:join_apply')
+    #: 送信後はこのページに戻さず、完了ページへ送る（JoinDoneView の説明を参照）
+    success_url = reverse_lazy('home:join_apply_done')
 
     def form_valid(self, form):
         detect_and_block_burst_submissions(self.request)
@@ -204,12 +204,31 @@ class JoinApplyView(NavMixin, FormView):
                                  'お手数ですが時間をおいて再度お試しください。')
             return self.form_invalid(form)
 
-        messages.success(self.request, '参加の申し込みを受け付けました。'
-                                       '確認のメールをお送りしましたのでご確認ください。')
+        # 受付の知らせは完了ページ（JoinDoneView）に持たせているので、
+        # ここでメッセージは出さない。
+        #
         # 申込者のメールアドレスはログに残さない（ログの閲覧権限を持つ全員に
         # 個人情報が見えてしまうため）。内容はメールで事務局に届いている。
         logger.info('参加申し込みを受け付けました')
         return super().form_valid(form)
+
+
+@method_decorator(login_not_required, name='dispatch')
+class JoinDoneView(NavMixin, TemplateView):
+    """申し込みの完了ページ。**フォームを置かないこと**が目的のページ。
+
+    以前は送信後に申し込みページ自身へ戻していたが、それだと完了メッセージの下に
+    空のフォームと「申し込む」ボタンが並ぶ。送れたのか分からず押し直した人は、
+    detect_and_block_burst_submissions() の上限（settings.JOIN_BURST_RULES、
+    既定で10分に3件）を超えて遮断されうる。大学の構内ネットワークは出口IPを
+    共有しているため、巻き添えで同じ回線の他の人まで 403 になる。
+
+    直接開かれることもある（ブックマーク・戻る操作）ので、申し込みの有無は問わず
+    同じ内容を出す。個人情報は載せない。
+    """
+
+    template_name = 'home/join_done.html'
+    nav = 'join'
 
 
 @method_decorator(login_not_required, name='dispatch')
