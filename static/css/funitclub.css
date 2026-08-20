@@ -516,6 +516,14 @@ a:hover {
     line-height: 1.6;
 }
 
+/* 参加案内の右カラム。申し込みカードの下に問い合わせ先を置く */
+
+.join-side {
+    display: grid;
+    gap: 20px;
+    align-content: start;
+}
+
 .cta {
     background: var(--card);
     border-radius: var(--radius);
@@ -1078,12 +1086,13 @@ a:hover {
 .footer-inner {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
+    gap: 12px 24px;
     flex-wrap: wrap;
-    padding-top: 20px;
-    padding-bottom: 20px;
+    padding-top: 24px;
+    padding-bottom: 24px;
     font-family: var(--mono);
-    font-size: .72rem;
+    font-size: .84rem;
+    line-height: 1.8;
     color: var(--muted);
 }
 

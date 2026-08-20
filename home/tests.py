@@ -44,6 +44,15 @@ class JoinFormTests(TestCase):
                 self.assertContains(response, 'contact@funitclub.org')
                 self.assertNotContains(response, 'contact-address')
 
+    def test_guide_page_invites_contact(self):
+        """問い合わせの案内は案内ページに置く（フォームのページには置かない）。"""
+        guide = self.client.get(reverse('home:join'))
+        self.assertContains(guide, 'ご質問は')
+        self.assertContains(guide, 'mailto:contact@funitclub.org')
+
+        apply_page = self.client.get(self.url)
+        self.assertNotContains(apply_page, 'ご質問は')
+
     def test_apply_page_states_how_the_input_is_handled(self):
         """個人情報の扱いとアクセス制限の方針を掲示する（具体的な閾値は書かない）。"""
         response = self.client.get(self.url)
@@ -53,6 +62,14 @@ class JoinFormTests(TestCase):
         self.assertContains(response, '共有の回線')
         # 閾値を書くとギリギリを狙われるので出さない
         self.assertNotContains(response, '10分')
+
+    def test_guide_page_offers_a_contact_for_non_students(self):
+        """フォームを使えない人（大学のアドレスが無い人）の連絡先を案内する。"""
+        response = self.client.get(reverse('home:join'))
+
+        self.assertContains(response, 'お問い合わせ')
+        self.assertContains(response, '大学のメールアドレスをお持ちの方が対象')
+        self.assertContains(response, 'contact@funitclub.org')
 
     def test_guide_page_explains_the_tools(self):
         """活動ツールは Classroom を起点に説明する。"""

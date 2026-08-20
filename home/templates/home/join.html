@@ -42,14 +42,25 @@
             </div>
         </div>
 
-        <div class="cta">
-            <h2>一緒につくりませんか</h2>
-            <p>
-                プログラミング初心者歓迎。<br>
-                興味があれば気軽にお申し込みください。<br>
-                オンライン・全国参加可。
-            </p>
-            <a class="btn btn-lg" href="{% url 'home:join_apply' %}">参加を申し込む <i class="fas fa-arrow-right ms-1"></i></a>
+        <div class="join-side">
+            <div class="cta">
+                <h2>一緒につくりませんか</h2>
+                <p>
+                    プログラミング初心者歓迎。<br>
+                    興味があれば気軽にお申し込みください。<br>
+                    オンライン・全国参加可。
+                </p>
+                <a class="btn btn-lg" href="{% url 'home:join_apply' %}">参加を申し込む <i class="fas fa-arrow-right ms-1"></i></a>
+            </div>
+
+            <div class="notice">
+                <p class="notice-title">お問い合わせ</p>
+                <p>
+                    申し込みフォームは、大学のメールアドレスをお持ちの方が対象です。
+                    活動内容についてのご質問は
+                    <a href="mailto:{{ public_contact }}">{{ public_contact }}</a> までどうぞ。
+                </p>
+            </div>
         </div>
 
     </section>
