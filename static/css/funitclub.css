@@ -305,34 +305,56 @@ a:hover {
     line-height: 1.6;
 }
 
-/* ---------- TOP：お知らせ ---------- */
+/* ---------- お知らせ（TOP・一覧） ----------
+ * ネイビーの地に淡色ではなく、ここだけ白い面に濃い文字へ反転させる。
+ * 区切り線と文字色も白背景用（--line-ink / --ink / --ink-2）に替える。
+ * 一覧を追うところなので、本文・日付とも本文より小さめ・行間は詰める。
+ * バッジ（.badge）はネイビー地のままで、反転した面の上でそのまま目印になる。 */
 
 .news {
-    border-top: 1px solid var(--line);
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 2px 18px;
 }
 
 .news-item {
     display: grid;
-    grid-template-columns: 110px 1fr auto;
+    grid-template-columns: 96px 1fr;
     align-items: center;
-    gap: 16px;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--line);
+    gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line-ink);
+}
+
+/* 最後の行の下は面の縁と重なるので引かない */
+.news-item:last-child {
+    border-bottom: none;
 }
 
 .news-date {
     font-family: var(--mono);
-    font-size: .78rem;
-    color: var(--muted);
+    font-size: .68rem;
+    line-height: 1.45;
+    color: var(--ink-2);
 }
 
 .news-text {
-    font-size: .92rem;
+    font-size: .78rem;
+    line-height: 1.45;
+    color: var(--ink);
+}
+
+/* バッジは本文の文末に続けて置く（行の右端には寄せない）。
+ * 既定（.74rem）のままだと本文より大きく見えるので、日付に合わせる。 */
+.news-text .badge {
+    font-size: .68rem;
+    margin-left: 8px;
+    vertical-align: 1px;
 }
 
 .news-empty .news-text {
     grid-column: 1 / -1;
-    color: var(--muted);
+    color: var(--ink-2);
 }
 
 /* ---------- WG一覧 ---------- */
@@ -1199,13 +1221,10 @@ a:hover {
         grid-template-columns: 1fr;
     }
 
+    /* 日付の下に本文（＋文末のバッジ）を回す */
     .news-item {
-        grid-template-columns: 1fr auto;
-        row-gap: 4px;
-    }
-
-    .news-text {
-        grid-column: 1 / -1;
+        grid-template-columns: 1fr;
+        row-gap: 2px;
     }
 
     .tools {

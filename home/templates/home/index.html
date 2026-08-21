@@ -35,7 +35,7 @@
     <section class="section">
         <div class="section-head">
             <p class="section-label">// お知らせ</p>
-            <a class="section-more" href="{% url 'home:coming_soon' %}">すべて見る <i class="fas fa-arrow-right ms-1"></i></a>
+            <a class="section-more" href="{% url 'home:news_list' %}">すべて見る<i class="fas fa-arrow-right ms-1"></i></a>
         </div>
 
         {# お知らせは news アプリのモデルから。編集は /edit/ で行う。 #}
@@ -43,12 +43,8 @@
             {% for news in news_list %}
             <div class="news-item">
                 <span class="news-date">{{ news.published_on|date:"Y-m-d" }}</span>
-                <span class="news-text">{{ news.text }}</span>
-                {% if news.is_new %}
-                <span class="badge badge-new">NEW</span>
-                {% elif news.badge %}
-                <span class="badge">{{ news.badge }}</span>
-                {% endif %}
+                {# バッジは本文の文末に続けて出す（改行・空白を挟むと隙間ができる） #}
+                <span class="news-text">{{ news.text }}{% if news.is_new %}<span class="badge badge-new">NEW</span>{% elif news.badge %}<span class="badge">{{ news.badge }}</span>{% endif %}</span>
             </div>
             {% empty %}
             <div class="news-item news-empty">

@@ -13,6 +13,7 @@ from django.urls import reverse
 from catalog.models import Wg, Work
 from config.middleware import BlockedIpMiddleware
 from edit.models import Administrator
+from news.models import News
 
 from .models import BlockedIp
 
@@ -424,6 +425,49 @@ class BurstDetectionTests(TestCase):
 
         self.assertRedirects(response, reverse('home:join_apply_done'))
         self.assertEqual(len(mail.outbox), 2)
+
+
+class NewsListTests(TestCase):
+    """お知らせ一覧（/news/）。TOP の「すべて見る」の行き先。"""
+
+    def setUp(self):
+        self.url = reverse('home:news_list')
+        today = timezone.localdate()
+        self.published = [
+            News.objects.create(published_on=today - timedelta(days=i), text=f'お知らせ{i}')
+            for i in range(6)
+        ]
+        self.draft = News.objects.create(text='下書き', is_published=False)
+        self.scheduled = News.objects.create(
+            published_on=today + timedelta(days=1), text='掲載日が未来')
+
+    def test_top_links_to_the_list(self):
+        """TOP の「すべて見る」は「作成中」ではなく一覧に行く。"""
+        response = self.client.get(reverse('home:index'))
+
+        self.assertContains(response, f'href="{self.url}"')
+        self.assertNotContains(response, reverse('home:coming_soon'))
+
+    def test_shows_all_published_news(self):
+        """TOP は5件までだが、一覧は公開中を全件出す。"""
+        response = self.client.get(self.url)
+
+        self.assertEqual(list(response.context['news_list']), self.published)
+        self.assertContains(response, 'お知らせ5')
+
+    def test_hides_drafts_and_future_news(self):
+        response = self.client.get(self.url)
+
+        self.assertNotContains(response, '下書き')
+        self.assertNotContains(response, '掲載日が未来')
+
+    def test_opens_without_login(self):
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+    def test_says_so_when_empty(self):
+        News.objects.all().delete()
+
+        self.assertContains(self.client.get(self.url), 'お知らせはまだありません。')
 
 
 class ComingSoonTests(TestCase):

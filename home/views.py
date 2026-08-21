@@ -126,6 +126,7 @@ class IndexView(NavMixin, TemplateView):
     """TOP。ヒーロー・活動サマリ・お知らせ。
 
     活動サマリの件数は、公開中のWG（活動中のみ）と成果物の登録数に連動する。
+    お知らせは新しい news_limit 件だけを出し、残りは NewsListView に送る。
     """
 
     #: TOP に載せるお知らせの件数
@@ -139,6 +140,23 @@ class IndexView(NavMixin, TemplateView):
         context['news_list'] = News.objects.published()[:self.news_limit]
         context['active_wg_count'] = Wg.objects.published().filter(status=Wg.ACTIVE).count()
         context['work_count'] = Work.objects.published().count()
+        return context
+
+
+@method_decorator(login_not_required, name='dispatch')
+class NewsListView(NavMixin, TemplateView):
+    """お知らせ一覧。TOP は新しい5件だけなので、残りはここで読む。
+
+    ナビには項目を置いていない（TOP の「すべて見る」から来る）ため、
+    nav は空にして現在地をどこにも当てない。
+    """
+
+    template_name = 'home/news_list.html'
+    nav = ''
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['news_list'] = News.objects.published()
         return context
 
 

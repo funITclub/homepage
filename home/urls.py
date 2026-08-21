@@ -8,6 +8,7 @@ app_name = 'home'
 
 urlpatterns = [
     path('', views.IndexView.as_view(), name='index'),
+    path('news/', views.NewsListView.as_view(), name='news_list'),
     path('wg/', views.WgListView.as_view(), name='wg_list'),
     path('works/', views.WorkListView.as_view(), name='work_list'),
     path('join/', views.JoinView.as_view(), name='join'),
