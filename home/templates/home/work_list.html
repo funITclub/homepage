@@ -23,7 +23,8 @@
                     {% else %}
                     <span></span>
                     {% endif %}
-                    <a class="work-link" href="{% if work.url %}{{ work.url }}{% else %}{% url 'home:coming_soon' %}{% endif %}" aria-label="詳細を見る"><i class="fas fa-arrow-right"></i></a>
+                    {# 公開先は別タブで開く。未設定のときの「作成中」は戻れなくなるので同じタブ。 #}
+                    <a class="work-link" href="{% if work.url %}{{ work.url }}{% else %}{% url 'home:coming_soon' %}?from=works{% endif %}"{% if work.url %} target="_blank" rel="noopener noreferrer" aria-label="詳細を見る（別タブで開きます）"{% else %} aria-label="詳細を見る"{% endif %}><i class="fas fa-arrow-right"></i></a>
                 </div>
             </div>
             {% empty %}

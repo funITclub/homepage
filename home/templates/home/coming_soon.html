@@ -12,7 +12,8 @@
                 各WGのWebアプリ・成果物ページは準備中です。<br>
                 公開までもうしばらくお待ちください。
             </p>
-            <a class="btn btn-primary" href="{% url 'home:index' %}">TOPへ戻る</a>
+            {# 戻り先は ?from= で決まる。直接開かれたときは TOP。 #}
+            <a class="btn btn-primary" href="{{ back_url }}">{{ back_label }}</a>
         </div>
     </section>
 </div>

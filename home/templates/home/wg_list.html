@@ -22,9 +22,10 @@
                 <p class="wg-desc">{{ wg.description|linebreaksbr }}</p>
                 <div class="wg-actions">
                     {% if wg.is_active %}
-                    <a class="btn btn-primary" href="{% if wg.app_url %}{{ wg.app_url }}{% else %}{% url 'home:coming_soon' %}{% endif %}"><i class="fas fa-play me-1"></i>Webアプリを見る</a>
+                    {# 外部サイトは別タブで開く。未設定のときの「作成中」は戻れなくなるので同じタブ。 #}
+                    <a class="btn btn-primary" href="{% if wg.app_url %}{{ wg.app_url }}{% else %}{% url 'home:coming_soon' %}?from=wg{% endif %}"{% if wg.app_url %} target="_blank" rel="noopener noreferrer" aria-label="Webアプリを見る（別タブで開きます）"{% endif %}><i class="fas fa-play me-1"></i>Webアプリを見る</a>
                     {% if wg.link_label %}
-                    <a class="btn btn-ghost" href="{% if wg.link_url %}{{ wg.link_url }}{% else %}{% url 'home:coming_soon' %}{% endif %}">{{ wg.link_label }}</a>
+                    <a class="btn btn-ghost" href="{% if wg.link_url %}{{ wg.link_url }}{% else %}{% url 'home:coming_soon' %}?from=wg{% endif %}"{% if wg.link_url %} target="_blank" rel="noopener noreferrer" aria-label="{{ wg.link_label }}（別タブで開きます）"{% endif %}>{{ wg.link_label }}</a>
                     {% endif %}
                     {% else %}
                     <a class="btn btn-ghost" href="{% url 'home:join' %}">参加する</a>

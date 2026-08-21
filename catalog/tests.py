@@ -90,6 +90,41 @@ class CatalogEditorTests(TestCase):
         self.assertContains(page, 'テスト成果物')
         self.assertContains(page, 'https://example.com/')
 
+    def test_registered_url_opens_in_new_tab(self):
+        """編集画面から登録した URL は、公開ページで別タブとして出る。
+
+        スキームを省いて入れても Django が補うため、常に外部リンク扱いになる。
+        """
+        self.client.post(reverse('edit:catalog:wg_create'), {
+            'code': 'WG-12',
+            'name': '別タブWG',
+            'description': '説明文',
+            'status': Wg.ACTIVE,
+            'app_url': 'example.com/app',
+            'link_label': 'GitHub',
+            'link_url': 'https://example.com/repo',
+            'sort_order': 0,
+            'is_published': 'on',
+        })
+        self.client.post(reverse('edit:catalog:work_create'), {
+            'category': 'Web App',
+            'title': '別タブ成果物',
+            'description': '説明文',
+            'url': 'https://example.com/work',
+            'sort_order': 0,
+            'is_published': 'on',
+        })
+
+        wg_html = self.client.get(reverse('home:wg_list')).content.decode()
+        work_html = self.client.get(reverse('home:work_list')).content.decode()
+
+        self.assertIn('href="http://example.com/app" target="_blank" rel="noopener noreferrer"',
+                      wg_html)
+        self.assertIn('href="https://example.com/repo" target="_blank" rel="noopener noreferrer"',
+                      wg_html)
+        self.assertIn('href="https://example.com/work" target="_blank" rel="noopener noreferrer"',
+                      work_html)
+
     def test_delete(self):
         wg = Wg.objects.create(code='WG-11', name='消すWG', description='説明')
         work = Work.objects.create(category='Notebook', title='消す成果物', description='説明')

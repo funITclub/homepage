@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 
-from catalog.models import Wg
+from catalog.models import Wg, Work
 from config.middleware import BlockedIpMiddleware
 from edit.models import Administrator
 
@@ -424,3 +424,54 @@ class BurstDetectionTests(TestCase):
 
         self.assertRedirects(response, reverse('home:join_apply_done'))
         self.assertEqual(len(mail.outbox), 2)
+
+
+class ComingSoonTests(TestCase):
+    """「作成中」ページ（/coming-soon/）の戻り先。"""
+
+    def setUp(self):
+        self.url = reverse('home:coming_soon')
+
+    def test_back_to_list_it_came_from(self):
+        for value, label, name in [('wg', 'WG一覧へ戻る', 'home:wg_list'),
+                                   ('works', '成果物へ戻る', 'home:work_list')]:
+            with self.subTest(value=value):
+                response = self.client.get(self.url, {'from': value})
+
+                self.assertContains(response, label)
+                self.assertEqual(response.context['back_url'], reverse(name))
+
+    def test_back_to_top_by_default(self):
+        """直接開かれたときや想定外の値のときは TOP に戻す。"""
+        for params in [{}, {'from': 'https://example.com'}, {'from': 'news'}]:
+            with self.subTest(params=params):
+                response = self.client.get(self.url, params)
+
+                self.assertContains(response, 'TOPへ戻る')
+                self.assertEqual(response.context['back_url'], reverse('home:index'))
+
+
+class ExternalLinkTests(TestCase):
+    """一覧カードのリンク。外部サイトは別タブ、「作成中」は同じタブ。"""
+
+    def test_wg_links(self):
+        Wg.objects.create(code='WG-01', name='外部あり', description='説明',
+                          app_url='https://example.com/app',
+                          link_label='GitHub', link_url='https://example.com/repo')
+        Wg.objects.create(code='WG-02', name='外部なし', description='説明')
+
+        html = self.client.get(reverse('home:wg_list')).content.decode()
+
+        self.assertIn('href="https://example.com/app" target="_blank" rel="noopener noreferrer"', html)
+        self.assertIn('href="https://example.com/repo" target="_blank" rel="noopener noreferrer"', html)
+        self.assertNotIn('?from=wg" target="_blank"', html)
+
+    def test_work_link(self):
+        Work.objects.create(category='Web App', title='外部あり', description='説明',
+                            url='https://example.com/work')
+        Work.objects.create(category='Notebook', title='外部なし', description='説明')
+
+        html = self.client.get(reverse('home:work_list')).content.decode()
+
+        self.assertIn('href="https://example.com/work" target="_blank" rel="noopener noreferrer"', html)
+        self.assertNotIn('?from=works" target="_blank"', html)
