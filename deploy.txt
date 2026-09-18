@@ -13,7 +13,106 @@
 
 
 ########################################
-# 通常のデプロイ（コード更新のみ）
+# 通常のデプロイ（main に push するだけ）
+########################################
+
+# main に push すると GitHub Actions（.github/workflows/deploy.yml）が
+# zip を作って App Service に送る。完了まで2〜3分。
+#   - docs/・README.md・deploy.txt だけの変更ではデプロイしない
+#   - 同じものをもう一度送りたいときは GitHub の Actions →「Deploy」→「Run workflow」
+#   - 送るのはコミット済みの中身だけ。作業ツリーの未コミットの変更は上がらない
+#   - デプロイが重なったら、先のものが終わるまで次は待つ
+#
+# 結果は GitHub の Actions タブで見る。失敗したら下の「状態の確認」とログを見る。
+#
+# ※ migrate と createcachetable は自動では走らない。DB は VNet の中にあり、
+#   GitHub のランナーからは届かない。テーブルが増えたら、デプロイの完了後に
+#   App Service の SSH から実行する。
+
+# 状態の確認
+az webapp show --name funITclub --query state
+
+# 反映されないときは再起動
+az webapp restart --name funITclub
+
+# ログを見る（問題があるとき）
+az webapp log tail --name funITclub
+
+
+########################################
+# 自動デプロイの設定（初回のみ・構築済み）
+########################################
+
+# GitHub Actions から Azure へは OIDC（フェデレーション資格情報）でログインする。
+# パスワードや発行プロファイルは使わない。
+#
+# ※ SCM の基本認証はオフになっている。発行プロファイル方式は動かないが、
+#   オンに戻さないこと。OIDC なら基本認証は要らない。
+# ※ ポータルの「デプロイ センター」は使わない。自前のワークフローを main に
+#   直接コミットしてくるうえ、ランナー上でビルドし docs/ も除外しない。
+#
+# ---- 現在の構成 ----
+#   マネージド ID           : funitclub-github-deploy（hirahira / Japan West）
+#                             クライアント ID 4cc3caab-2f2f-439b-9918-09b16392efec
+#   フェデレーション資格情報 : github-main
+#                             subject repo:funITclub@316769444/homepage@1333670349:ref:refs/heads/main
+#   ロール                  : Web サイト共同作成者（App Service funITclub スコープのみ）
+#   GitHub の secrets       : AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#
+# ---- 作り直すときの手順（Azure ポータル） ----
+#
+# 1. マネージド ID を作る
+#    検索「マネージド ID」→「作成」
+#      リソースグループ : hirahira
+#      リージョン       : Japan West
+#      名前             : funitclub-github-deploy
+#
+# 2. main ブランチを信頼させる
+#    funitclub-github-deploy →「設定」→「フェデレーション資格情報」→「資格情報の追加」
+#      シナリオ      : GitHub Actions による Azure リソースのデプロイ
+#      組織          : funITclub
+#      組織 ID       : 316769444
+#      リポジトリ    : homepage
+#      リポジトリ ID : 1333670349
+#      エンティティ  : ブランチ
+#      ブランチ      : main
+#      名前          : github-main
+#    ※ このリポジトリの OIDC トークンは ID 入りのサブジェクト（use_immutable_subject）を
+#      使う。名前を変えても ID は変わらないので、なりすましたリポジトリを弾ける。
+#      サブジェクト識別子は手で編集せず、自動生成の
+#      repo:funITclub@316769444/homepage@1333670349:ref:refs/heads/main のままにする。
+#      1文字でも違うとログインに失敗する。
+#    ※ ID の調べ方
+#      gh api repos/funITclub/homepage --jq '{owner_id: .owner.id, repo_id: .id}'
+#      gh api repos/funITclub/homepage/actions/oidc/customization/sub   # sub_claim_prefix
+#    ※ main 以外のブランチからはログインできない（それで正しい）。
+#
+# 3. デプロイの権限を付ける
+#    App Service funITclub →「アクセス制御 (IAM)」→「追加」→「ロールの割り当ての追加」
+#      ロール   : Web サイト共同作成者（Website Contributor）
+#      割り当て先 : マネージド ID → funitclub-github-deploy
+#    ※ リソースグループ hirahira には付けないこと。hirahira-room・hirahira-db・
+#      Key Vault まで触れるようになる。アプリ1つに絞る。
+#
+# 4. funitclub-github-deploy の「概要」でクライアント ID を控える
+#
+# 5. GitHub の funITclub/homepage → Settings → Secrets and variables → Actions に
+#    Repository secret を3つ登録する（リポジトリの管理者権限が要る）。
+#      AZURE_CLIENT_ID       : 4. のクライアント ID
+#      AZURE_TENANT_ID       : az account show --query tenantId -o tsv
+#      AZURE_SUBSCRIPTION_ID : az account show --query id -o tsv
+#
+# 確認（資格情報とロールが入っているか）
+az identity federated-credential list --identity-name funitclub-github-deploy \
+  --resource-group hirahira --query "[].subject"
+#   ※ --all は .azure/config の既定の group とぶつかってエラーになるので、scope で指定する。
+az role assignment list --assignee 4cc3caab-2f2f-439b-9918-09b16392efec \
+  --scope "$(az webapp show --name funITclub --query id -o tsv)" \
+  --query "[].{role:roleDefinitionName,scope:scope}"
+
+
+########################################
+# 手動のデプロイ（GitHub Actions が使えないとき）
 ########################################
 
 # zip デプロイを使う。アプリのコンテンツだけを差し替えるので、
@@ -38,9 +137,9 @@ rm -f /tmp/funitclub-deploy.zip
 git ls-files --cached --others --exclude-standard -z \
   | xargs -0 zip -q -X /tmp/funitclub-deploy.zip
 
-#    docs/ は運用資料の置き場で、アプリの動作には関係ないので落とす。
-#    .gitignore に入れるとリポジトリからも消えてしまうため、ここで除外する。
-zip -q -d /tmp/funitclub-deploy.zip 'docs/*'
+#    docs/ は運用資料、.github/ は自動デプロイの設定で、アプリの動作には
+#    関係ないので落とす。.gitignore に入れるとリポジトリからも消えてしまうため、ここで除外する。
+zip -q -d /tmp/funitclub-deploy.zip 'docs/*' '.github/*'
 
 # 2. 中身を確認する（venv や db.sqlite3 が混ざっていないこと）
 unzip -l /tmp/funitclub-deploy.zip
@@ -51,18 +150,6 @@ az webapp deploy --name funITclub --resource-group hirahira \
 
 # 4. 使い終わった zip を消す
 rm /tmp/funitclub-deploy.zip
-
-# ※ 参加フォームの連続送信検知を入れたときのデプロイでは、初回だけ
-#   App Service の SSH から createcachetable が必要（テーブル funitclub_cache）。
-
-# 状態の確認
-az webapp show --name funITclub --query state
-
-# 反映されないときは再起動
-az webapp restart --name funITclub
-
-# ログを見る（問題があるとき）
-az webapp log tail --name funITclub
 
 
 ########################################

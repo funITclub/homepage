@@ -1,0 +1,55 @@
+# main への push で App Service（funITclub）にデプロイする。
+# 手順は deploy.txt の「通常のデプロイ」と同じ（zip を作って az webapp deploy）。
+# pip install と collectstatic は App Service 側で走る（SCM_DO_BUILD_DURING_DEPLOYMENT=True）。
+#
+# Azure へのログインは OIDC。マネージド ID funitclub-github-deploy に
+# このリポジトリの main を信頼させ、App Service funITclub だけに
+# Web サイト共同作成者を付けてある。SCM の基本認証はオフのままでよい。
+#
+# ※ migrate と createcachetable は自動では走らない。DB は VNet の中にあり、
+#   GitHub のランナーからは届かない。テーブルが増えたらデプロイ後に SSH から実行する。
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    # 運用資料だけの変更ではデプロイしない
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'deploy.txt'
+  workflow_dispatch:
+
+# デプロイが重なったら、先のものが終わるまで次を待たせる
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # .gitignore を除外リストとして使うので、チェックアウトした中身をそのまま固めればよい。
+      # docs/ は運用資料なので落とす。
+      - name: Build zip
+        run: |
+          git ls-files -z | xargs -0 zip -q -X "$RUNNER_TEMP/funitclub-deploy.zip"
+          zip -q -d "$RUNNER_TEMP/funitclub-deploy.zip" 'docs/*' '.github/*'
+          unzip -l "$RUNNER_TEMP/funitclub-deploy.zip"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy
+        run: |
+          az webapp deploy --name funITclub --resource-group hirahira \
+            --src-path "$RUNNER_TEMP/funitclub-deploy.zip" --type zip

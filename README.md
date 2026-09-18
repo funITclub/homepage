@@ -28,6 +28,7 @@ edit/                  編集画面の枠（ログイン・メニュー・共通
 templates/base.html    公開サイトのヘッダー・ナビ・フッター（編集画面では使わない）
 static/css/funitclub.css   デザイン一式（公開サイト・編集画面とも）
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
+.github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
 docs/                  補足資料（セキュリティ対応一覧など）。デプロイの zip からは除外する
 ```
 
@@ -399,6 +400,8 @@ hirahira_room と同じ構成。設定を3ファイルに分け、**既定は本
 **`--settings` を付け忘れると本番設定（PostgreSQL）で動いて DB 接続に失敗する。**
 ローカルで `manage.py` を叩くときは毎回付けること。
 
+**main に push すると自動でデプロイされる**（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）。
+migrate は自動では走らないので、テーブルが増えたときはデプロイ後に App Service の SSH から実行する。
 デプロイと本番環境の作成手順は [deploy.txt](deploy.txt) にまとめてある。
 
 ## データベース
