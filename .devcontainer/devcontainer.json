@@ -1,5 +1,6 @@
 // funITclub の開発環境（Dev Container）。
-// VS Code の Dev Containers でも GitHub Codespaces でも、この定義から同じ環境が立つ。
+// VS Code の Dev Containers 拡張機能が、この定義から Docker のコンテナを立てる。
+// 全員が同じ環境（Python・パッケージ・VS Code の拡張機能）で開発できる。
 // 手順は docs/development.md を参照。
 {
     "name": "funITclub homepage",

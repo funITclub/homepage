@@ -31,7 +31,7 @@ deploy.txt             Azure へのデプロイ・本番環境の作成手順（
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
 docs/                  補足資料（開発の手順・セキュリティ対応一覧など）。デプロイの zip からは除外する
-.devcontainer/         開発環境（Dev Container / Codespaces）の定義。デプロイの zip からは除外する
+.devcontainer/         開発環境（VS Code の Dev Container）の定義。デプロイの zip からは除外する
 .vscode/               VS Code の共通設定（起動構成・タスク）。デプロイの zip からは除外する
 ```
 
@@ -358,7 +358,7 @@ python manage.py check_secret_expiry --settings=config.settings_dev
 
 ## セットアップ
 
-**開発環境は VS Code ＋ Dev Container（または GitHub Codespaces）で揃える。** 手順は
+**開発環境は VS Code ＋ Docker Desktop（Dev Container）で揃える。** 手順は
 [docs/development.md](docs/development.md)。コンテナを作ると、パッケージの導入・`.env` の
 用意・`migrate`・`createcachetable` まで済む。コンテナの中では `DJANGO_SETTINGS_MODULE` が
 `config.settings_dev` になっているので、`--settings=...` は付けなくてよい。
