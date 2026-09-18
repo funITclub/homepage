@@ -13,15 +13,16 @@
 # 失敗扱いになり、GitHub Actions が赤くなって気づける。テーブルが足りないまま
 # 動かして一部のページだけ 500 になるより、そのほうが見つけやすい。
 # ※ インスタンスを2つ以上に増やすと migrate が同時に走る。増やすときは見直すこと。
+# ログは日本語が化けるので、echo は英語にしている。
 set -euo pipefail
 
-echo "startup.sh: migrate を実行する"
+echo "startup.sh: running migrate"
 python manage.py migrate --noinput
 
 # 参加フォームの連続送信の検知に使うキャッシュ用テーブル。既にあれば何もしない。
 python manage.py createcachetable
 
-echo "startup.sh: gunicorn を起動する"
+echo "startup.sh: starting gunicorn"
 # 以前 Oryx が自動生成していた起動と同じ設定（sync ワーカー1つ・タイムアウト600秒・アクセスログあり）。
 exec python -m gunicorn --bind=0.0.0.0:"${PORT:-8000}" --timeout 600 \
   --access-logfile '-' --error-logfile '-' config.wsgi
