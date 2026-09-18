@@ -33,7 +33,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # .gitignore を除外リストとして使うので、チェックアウトした中身をそのまま固めればよい。
       # docs/ は運用資料なので落とす。
@@ -43,7 +43,7 @@ jobs:
           zip -q -d "$RUNNER_TEMP/funitclub-deploy.zip" 'docs/*' '.github/*'
           unzip -l "$RUNNER_TEMP/funitclub-deploy.zip"
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
