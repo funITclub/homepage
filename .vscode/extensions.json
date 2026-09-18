@@ -1,0 +1,12 @@
+// リポジトリを開いたときに「おすすめの拡張機能」として出る。
+// Python まわりの拡張機能はコンテナ側に入る（.devcontainer/devcontainer.json）。
+{
+    "recommendations": [
+        "ms-ceintl.vscode-language-pack-ja",
+        "ms-vscode-remote.remote-containers",
+        "github.codespaces",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "batisteo.vscode-django"
+    ]
+}

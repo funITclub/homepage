@@ -1,0 +1,30 @@
+// 「実行とデバッグ」（F5）の構成。ブレークポイントで止めて中身を見られる。
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "サイトを起動（runserver）",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/manage.py",
+            "args": ["runserver", "8000"],
+            "django": true,
+            "justMyCode": true,
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "config.settings_dev"
+            }
+        },
+        {
+            "name": "テストを実行",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/manage.py",
+            "args": ["test"],
+            "django": true,
+            "justMyCode": true,
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "config.settings_dev"
+            }
+        }
+    ]
+}

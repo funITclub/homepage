@@ -19,6 +19,8 @@ on:
       - 'docs/**'
       - 'README.md'
       - 'deploy.txt'
+      - '.devcontainer/**'
+      - '.vscode/**'
   workflow_dispatch:
 
 # デプロイが重なったら、先のものが終わるまで次を待たせる
@@ -37,11 +39,11 @@ jobs:
       - uses: actions/checkout@v7
 
       # .gitignore を除外リストとして使うので、チェックアウトした中身をそのまま固めればよい。
-      # docs/ は運用資料なので落とす。
+      # docs/ は運用資料、.devcontainer/ と .vscode/ は開発環境の設定なので落とす。
       - name: Build zip
         run: |
           git ls-files -z | xargs -0 zip -q -X "$RUNNER_TEMP/funitclub-deploy.zip"
-          zip -q -d "$RUNNER_TEMP/funitclub-deploy.zip" 'docs/*' '.github/*'
+          zip -q -d "$RUNNER_TEMP/funitclub-deploy.zip" 'docs/*' '.github/*' '.devcontainer/*' '.vscode/*'
           unzip -l "$RUNNER_TEMP/funitclub-deploy.zip"
 
       - uses: azure/login@v3

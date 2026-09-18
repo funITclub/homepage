@@ -1,5 +1,9 @@
-# VSCodeの設定ファイル
-.vscode/
+# VS Code の設定ファイル。リポジトリで共有するものだけ入れる（docs/development.md）。
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # Pythonのコンパイルファイル
 __pycache__/

@@ -31,6 +31,13 @@ _csrf = os.environ.get('CSRF_TRUSTED_ORIGINS', '').strip()
 if _csrf:
     CSRF_TRUSTED_ORIGINS += [o.strip() for o in _csrf.split(',') if o.strip()]
 
+# GitHub Codespaces では、転送したポートが https://<codespace 名>-8000.app.github.dev で開く。
+# そのホスト名で届くので、許可に加える（CSRF はログインなどの POST に要る）。
+_codespaces_domain = os.environ.get('GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN', '').strip()
+if os.environ.get('CODESPACES') == 'true' and _codespaces_domain:
+    ALLOWED_HOSTS.append(f'.{_codespaces_domain}')
+    CSRF_TRUSTED_ORIGINS.append(f'https://*.{_codespaces_domain}')
+
 # DB は既定で SQLite（settings_common）。お知らせ（news アプリ）はここに保存される。
 # 環境変数 DB_HOST が渡されたときだけ PostgreSQL に切り替える。
 # ※ hirahira-db は公開アクセス無効（VNet 内からのみ）なので、手元から直接は繋がらない。

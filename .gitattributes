@@ -1,0 +1,7 @@
+# 改行コードはリポジトリでも作業ツリーでも LF に揃える。
+# Windows で clone しても CRLF にしない（startup.sh が CRLF だと本番が起動しない）。
+* text=auto eol=lf
+
+*.xlsx binary
+*.pptx binary
+*.sqlite3 binary

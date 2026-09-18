@@ -1,0 +1,41 @@
+// よく使う manage.py のコマンド。「ターミナル → タスクの実行」から選ぶ。
+// Python は VS Code で選んでいるもの（コンテナの Python、または手元の venv）を使う。
+{
+    "version": "2.0.0",
+    "options": {
+        "env": {
+            "DJANGO_SETTINGS_MODULE": "config.settings_dev"
+        }
+    },
+    "tasks": [
+        {
+            "label": "テスト（test）",
+            "type": "shell",
+            "command": "${command:python.interpreterPath}",
+            "args": ["manage.py", "test"],
+            "group": {"kind": "test", "isDefault": true},
+            "problemMatcher": []
+        },
+        {
+            "label": "マイグレーションを作る（makemigrations）",
+            "type": "shell",
+            "command": "${command:python.interpreterPath}",
+            "args": ["manage.py", "makemigrations"],
+            "problemMatcher": []
+        },
+        {
+            "label": "DB に反映する（migrate）",
+            "type": "shell",
+            "command": "${command:python.interpreterPath}",
+            "args": ["manage.py", "migrate"],
+            "problemMatcher": []
+        },
+        {
+            "label": "ログイン用のアカウントを作る（createsuperuser）",
+            "type": "shell",
+            "command": "${command:python.interpreterPath}",
+            "args": ["manage.py", "createsuperuser"],
+            "problemMatcher": []
+        }
+    ]
+}

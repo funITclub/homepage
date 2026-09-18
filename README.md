@@ -30,7 +30,9 @@ static/css/funitclub.css   デザイン一式（公開サイト・編集画面�
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
-docs/                  補足資料（セキュリティ対応一覧など）。デプロイの zip からは除外する
+docs/                  補足資料（開発の手順・セキュリティ対応一覧など）。デプロイの zip からは除外する
+.devcontainer/         開発環境（Dev Container / Codespaces）の定義。デプロイの zip からは除外する
+.vscode/               VS Code の共通設定（起動構成・タスク）。デプロイの zip からは除外する
 ```
 
 公開ページの掲載内容はすべて DB から読む。HTML を編集する必要はない。
@@ -356,8 +358,13 @@ python manage.py check_secret_expiry --settings=config.settings_dev
 
 ## セットアップ
 
-hirahira_room と同じく、リポジトリ直下の `venv` を使う（`.claude/launch.json` も
-`venv/bin/python` を呼ぶ）。
+**開発環境は VS Code ＋ Dev Container（または GitHub Codespaces）で揃える。** 手順は
+[docs/development.md](docs/development.md)。コンテナを作ると、パッケージの導入・`.env` の
+用意・`migrate`・`createcachetable` まで済む。コンテナの中では `DJANGO_SETTINGS_MODULE` が
+`config.settings_dev` になっているので、`--settings=...` は付けなくてよい。
+
+コンテナを使わずに手元の Python で動かすこともできる。hirahira_room と同じく、リポジトリ直下の
+`venv` を使う（`.claude/launch.json` も `venv/bin/python` を呼ぶ）。このときは `--settings` が要る。
 
 ```bash
 python3 -m venv venv
@@ -389,7 +396,7 @@ hirahira_room と同じ構成。設定を3ファイルに分け、**既定は本
 | | 開発（ローカル） | 本番（Azure App Service） |
 |---|---|---|
 | 設定モジュール | `config.settings_dev` | `config.settings`（既定） |
-| 指定方法 | 毎回 `--settings=config.settings_dev` を付ける | 指定不要（`manage.py` と `wsgi.py` の既定） |
+| 指定方法 | 毎回 `--settings=config.settings_dev` を付ける（Dev Container の中では不要） | 指定不要（`manage.py` と `wsgi.py` の既定） |
 | DEBUG | `True` | 既定 `False`。環境変数 `DEBUG=True` で一時的に有効化できる |
 | DB | SQLite（`DB_HOST` を渡したときだけ PostgreSQL） | PostgreSQL（funITclub 専用DB） |
 | 静的ファイル | runserver が配信 | WhiteNoise（圧縮＋ハッシュ付き） |

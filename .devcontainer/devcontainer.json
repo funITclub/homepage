@@ -1,0 +1,41 @@
+// funITclub の開発環境（Dev Container）。
+// VS Code の Dev Containers でも GitHub Codespaces でも、この定義から同じ環境が立つ。
+// 手順は docs/development.md を参照。
+{
+    "name": "funITclub homepage",
+
+    // 本番（App Service）と同じ Python 3.11 に揃える。
+    "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+
+    // コンテナの中では開発用の設定を既定にする。manage.py に毎回
+    // --settings=config.settings_dev を付けなくてよい（付けても動く）。
+    "containerEnv": {
+        "DJANGO_SETTINGS_MODULE": "config.settings_dev"
+    },
+
+    // 作成時に一度だけ走る（パッケージの導入・migrate など）。
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+    "forwardPorts": [8000],
+    "portsAttributes": {
+        "8000": {
+            "label": "Django",
+            "onAutoForward": "notify"
+        }
+    },
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.debugpy",
+                "batisteo.vscode-django"
+            ],
+            "settings": {
+                // 手元の venv/（Mac や Windows 用）はコンテナでは動かないので、
+                // コンテナの Python を使う。
+                "python.defaultInterpreterPath": "/usr/local/bin/python"
+            }
+        }
+    }
+}

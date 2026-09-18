@@ -1,0 +1,38 @@
+// リポジトリで共有する VS Code の設定。個人の好み（テーマ・フォントなど）はここに書かず、
+// ユーザー設定に置く。
+{
+    // 改行コードは LF に揃える（.gitattributes と同じ）。Windows でも CRLF にしない。
+    // startup.sh が CRLF になると本番のアプリが起動しなくなる。
+    "files.eol": "\n",
+    "files.encoding": "utf8",
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "files.trimTrailingWhitespace": true,
+    "[markdown]": {
+        // Markdown の行末の空白2つは改行の意味を持つので消さない。
+        "files.trimTrailingWhitespace": false
+    },
+
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false,
+    "editor.rulers": [100],
+
+    // テンプレートを Django テンプレートとして扱う（{% %} の色分け・補完）。
+    "files.associations": {
+        "**/templates/**/*.html": "django-html"
+    },
+    "emmet.includeLanguages": {
+        "django-html": "html"
+    },
+
+    // 生成物・手元専用のファイルは検索に出さない。
+    "search.exclude": {
+        "**/venv": true,
+        "**/.venv": true,
+        "**/staticfiles": true
+    },
+    "files.exclude": {
+        "**/__pycache__": true
+    }
+}
