@@ -28,6 +28,7 @@ edit/                  編集画面の枠（ログイン・メニュー・共通
 templates/base.html    公開サイトのヘッダー・ナビ・フッター（編集画面では使わない）
 static/css/funitclub.css   デザイン一式（公開サイト・編集画面とも）
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
+startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
 docs/                  補足資料（セキュリティ対応一覧など）。デプロイの zip からは除外する
 ```
@@ -215,6 +216,7 @@ CSS を埋め込んで自己完結させてある**（外部ファイルを読�
 数える土台に DB キャッシュ（テーブル `funitclub_cache`）を使う。ローカルメモリだと
 worker ごとに別勘定になり、再起動でも消えて検知漏れするため。**初回だけ
 `createcachetable` が必要**。テーブルが無くても申し込み自体は通る（検知だけ働かない）。
+本番では起動時に [startup.sh](startup.sh) が流す。
 
 ```bash
 python manage.py createcachetable --settings=config.settings_dev
@@ -401,7 +403,8 @@ hirahira_room と同じ構成。設定を3ファイルに分け、**既定は本
 ローカルで `manage.py` を叩くときは毎回付けること。
 
 **main に push すると自動でデプロイされる**（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）。
-migrate は自動では走らないので、テーブルが増えたときはデプロイ後に App Service の SSH から実行する。
+本番の `migrate` と `createcachetable` はアプリの起動時に [startup.sh](startup.sh) が流す。
+migrate が失敗するとアプリは起動せず、デプロイも失敗扱いになる。
 デプロイと本番環境の作成手順は [deploy.txt](deploy.txt) にまとめてある。
 
 ## データベース

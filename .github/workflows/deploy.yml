@@ -6,8 +6,9 @@
 # このリポジトリの main を信頼させ、App Service funITclub だけに
 # Web サイト共同作成者を付けてある。SCM の基本認証はオフのままでよい。
 #
-# ※ migrate と createcachetable は自動では走らない。DB は VNet の中にあり、
-#   GitHub のランナーからは届かない。テーブルが増えたらデプロイ後に SSH から実行する。
+# migrate と createcachetable は App Service の起動時に startup.sh が流す。
+# DB は VNet の中にあり、GitHub のランナーからは届かないため。
+# migrate が失敗するとアプリが起動せず、下の az webapp deploy が失敗して赤くなる。
 name: Deploy
 
 on:

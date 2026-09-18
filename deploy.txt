@@ -25,9 +25,12 @@
 #
 # 結果は GitHub の Actions タブで見る。失敗したら下の「状態の確認」とログを見る。
 #
-# ※ migrate と createcachetable は自動では走らない。DB は VNet の中にあり、
-#   GitHub のランナーからは届かない。テーブルが増えたら、デプロイの完了後に
-#   App Service の SSH から実行する。
+# migrate と createcachetable は、アプリの起動時に startup.sh が実行する。
+# デプロイのたびにコンテナが作り直されるので、手で流す必要はない。
+#   - migrate が失敗するとアプリは起動しない。デプロイも失敗扱いになり、
+#     GitHub Actions が赤くなる。原因はログ（az webapp log tail）の
+#     「startup.sh:」の行のあたりを見る。
+#   - GitHub のランナーからは DB（VNet の中）に届かないので、ワークフローでは流さない。
 
 # 状態の確認
 az webapp show --name funITclub --query state
@@ -58,6 +61,7 @@ az webapp log tail --name funITclub
 #                             subject repo:funITclub@316769444/homepage@1333670349:ref:refs/heads/main
 #   ロール                  : Web サイト共同作成者（App Service funITclub スコープのみ）
 #   GitHub の secrets       : AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#   スタートアップ コマンド : bash startup.sh（起動時に migrate → gunicorn）
 #
 # ---- 作り直すときの手順（Azure ポータル） ----
 #
@@ -101,6 +105,16 @@ az webapp log tail --name funITclub
 #      AZURE_CLIENT_ID       : 4. のクライアント ID
 #      AZURE_TENANT_ID       : az account show --query tenantId -o tsv
 #      AZURE_SUBSCRIPTION_ID : az account show --query id -o tsv
+#
+# 6. スタートアップ コマンドを設定する（起動時に migrate を流すため）
+#    App Service funITclub →「設定」→「構成」→「スタックの設定」
+#      スタートアップ コマンド : bash startup.sh
+#    または
+#      az webapp config set --name funITclub --startup-file "bash startup.sh"
+#    ※ 設定すると再起動する。startup.sh がデプロイ済みでないと起動に失敗するので、
+#      先に startup.sh を含むコミットをデプロイしてから設定すること。
+#    ※ 戻すときは空にする（Oryx の自動生成の起動に戻る。migrate は流れなくなる）。
+#      az webapp config set --name funITclub --startup-file ""
 #
 # 確認（資格情報とロールが入っているか）
 az identity federated-credential list --identity-name funitclub-github-deploy \
@@ -188,17 +202,14 @@ az webapp vnet-integration add --name funITclub --resource-group hirahira --vnet
 #      hirahira_vnet_apps   10.1.1.0/24  hirahira-room
 #      funitclub_vnet_apps  10.1.2.0/24  funITclub
 
-# 5. マイグレーションと編集画面のアカウント作成。
+# 5. 編集画面のアカウントを作る。
 #    App Service の SSH から実行する（手元からは hirahira-db に繋がらない）。
-#    ※ アプリを更新してテーブルが増えたときも、デプロイ後に migrate が必要。
-python manage.py migrate
+#    ※ migrate と createcachetable（参加フォームの連続送信の検知用テーブル）は、
+#      アプリの起動時に startup.sh が流す。スタートアップ コマンドの設定は
+#      「自動デプロイの設定」の 6. を参照。
 python manage.py createsuperuser
 
-# 6. キャッシュ用テーブルを作る。参加フォームの連続送信を数えるのに使う。
-#    ※ 一度だけでよい。作られていないと検知が働かない（申し込み自体は通る）。
-python manage.py createcachetable
-
-# 7. 管理者（通知の宛先・公開の問い合わせ先）を確認する。
+# 6. 管理者（通知の宛先・公開の問い合わせ先）を確認する。
 #    migrate で公開の問い合わせ先が登録される。増減は /admin/ →「管理者」。
 #    ※ 設定ファイルやテンプレートにアドレスを書かないこと。参照先はこのテーブルだけ。
 
