@@ -163,7 +163,21 @@ git config --global user.email "12345678+ユーザー名@users.noreply.github.co
 3. 「**Dev Containers**」（**Microsoft**、青いチェックマーク付き）の「**インストール**」を押す。
 4. 左下に「><」のような青いマークが出れば完了。
 
-## 6. リポジトリを開く（初回だけ）
+## 6. リポジトリをクローンして開く（初回だけ）
+
+**クローン（チェックアウト）とは：** GitHub にある WG のコード一式（リポジトリ）を、自分の
+作業部屋に写してくること。写したもので作業し、コミットして GitHub に送り返す（下の「変更を届ける」）。
+一度クローンすれば、次からは VS Code の「最近使用した項目」から開ける。
+
+**まず、リポジトリの URL をコピーする（GitHub で）**
+
+1. WG のリポジトリを開く。`https://github.com/funITclub/wg-<WG の名前>`
+   （名前は WG のチームと同じ。例：`wg-protein`。分からなければ WG の仲間か運営に聞く）
+2. 右上の緑の「**Code**」を押す。
+3. 「**Local**」タブの「**HTTPS**」を選ぶ。
+4. `https://github.com/funITclub/wg-….git` の右の**コピーのボタン**を押す。
+
+**VS Code でクローンして開く**
 
 1. **Docker Desktop を起動しておく**（クジラが緑になっていること）。
 2. VS Code でコマンド パレットを開く：メニューの「**表示**」→「**コマンド パレット**」
@@ -171,9 +185,8 @@ git config --global user.email "12345678+ユーザー名@users.noreply.github.co
 3. 上に出た入力欄に `Clone Repository in Container Volume` と入力し、出てきた
    「**開発コンテナー: コンテナー ボリュームにリポジトリを複製...**」
    （英語表示なら「Dev Containers: Clone Repository in Container Volume...」）を選ぶ。
-4. リポジトリの URL を貼り付けて Enter。
-   - WG のリポジトリ：`https://github.com/funITclub/wg-<WG の名前>`
-   - homepage：`https://github.com/funITclub/homepage`
+4. さきほどコピーした URL を貼り付けて Enter。
+   - homepage を開くときは `https://github.com/funITclub/homepage`
 5. 「開発コンテナー内のリポジトリを複製すると、任意のコードが実行される場合があります」と
    出たら、URL が **funITclub のリポジトリ** であることを確かめてから先へ進む。
    （知らない人のリポジトリでは進まないこと）
