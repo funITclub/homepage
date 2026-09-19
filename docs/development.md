@@ -43,7 +43,7 @@ WG のリポジトリは [funITclub/wg-template](https://github.com/funITclub/wg
 1. [github.com](https://github.com/) を開き、右上の「**Sign up**」からアカウントを作る。
    - ユーザー名は公開される。本名でもよい（使いたくなければ別の名前でよい）。
      **学籍番号は入れない**（大学のメールアドレスと同じなので、誰のアドレスか分かってしまう）。
-2. 運営に **GitHub のユーザー名と自分の名前** を伝える（誰のアカウントか運営が分かるように）。
+2. 運営に **GitHub のユーザー名** を伝える。
 3. 数日以内に「funITclub への招待」メールが届く。メールの「**Join @funITclub**」を押して参加する。
 4. **メールアドレスを非公開にする。** GitHub 右上の自分のアイコン →「**Settings**」→
    左の「**Emails**」→「**Keep my email addresses private**」にチェック。
