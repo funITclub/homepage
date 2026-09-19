@@ -447,7 +447,10 @@ az webapp log tail --name funITclub
 #
 #   WG ごとの準備: チーム wg-<名前> を作ってリポジトリに Write を付け、編集画面の
 #   WG紹介の「GitHub のチーム」に入れる（WG 立ち上げガイドの資料 01）。
-#     例: WG-01 → リポジトリ funITclub/wg-protein・チーム wg-protein
+#   いまの WG（リポジトリとチームは同じ名前）:
+#     WG-01 生成AIによるタンパク質設計       → wg-protein
+#     WG-02 教育実習マッチングシステム       → wg-practicum
+#     WG-03 映画鑑賞向け 音声字幕システム    → wg-subtitles
 
 # ---- 入れ替えるとき ----
 # 運営（クラスの先生）が替わった・許可を取り消した・パスワードを変えた
