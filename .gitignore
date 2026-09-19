@@ -34,3 +34,7 @@ staticfiles/
 # Google Cloud からダウンロードした OAuth クライアントの JSON（秘密）。
 # 読み込んだら消す（manage.py wgjoin_google_authorize --client-json）。
 client_secret*.json
+
+# GitHub App の秘密鍵とクライアント シークレット（秘密）。.env に入れたら消す。
+*.pem
+github_app_secret*
