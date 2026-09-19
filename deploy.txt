@@ -420,6 +420,58 @@ az webapp log tail --name funITclub
 
 
 ########################################
+# WG への参加（/wg/<id>/join/）
+########################################
+
+# WG 一覧の「WG に参加」。大学のアドレスでクラブの Classroom のクラスの名簿を引き
+# （運営＝クラスの先生の許可）、確認のメールから GitHub の WG のチームに登録する。
+# 仕組みは README の「WG への参加」。会員の情報はどこにも保存しない。
+
+# ---- 現在の構成（2026-09-19 に構築） ----
+#   Google Cloud プロジェクト   : 大学のアカウントで作成（プロジェクト番号 75278251249）
+#                                 Google Classroom API を有効化
+#                                 OAuth 同意画面は「内部」、スコープは classroom.rosters.readonly だけ
+#                                 OAuth クライアントは「デスクトップ アプリ」
+#   運営の許可                   : クラブのクラスの先生のアカウントで wgjoin_google_authorize を実行
+#   GitHub App                  : funitclub-wg-join（org funITclub 所有・インストール済み）
+#                                 App ID 4998453 / 権限は Organization の Members: Read and write だけ
+#                                 Redirect URI: https://funitclub.org/wg/join/github/callback/
+#                                              （手元用に localhost:8000 / 8010 も登録）
+#   Key Vault（funitclub-kv）   : funitclub-google-oauth-client-secret
+#                                 funitclub-google-oauth-refresh-token
+#                                 funitclub-github-app-client-secret
+#                                 funitclub-github-app-private-key
+#   App Service の設定          : CLUB_CLASSROOM_COURSE / GOOGLE_OAUTH_CLIENT_ID /
+#                                 GITHUB_APP_ID / GITHUB_APP_CLIENT_ID は平文、
+#                                 残りの4つは上の Key Vault 参照
+#
+#   WG ごとの準備: チーム wg-<名前> を作ってリポジトリに Write を付け、編集画面の
+#   WG紹介の「GitHub のチーム」に入れる（WG 立ち上げガイドの資料 01）。
+#     例: WG-01 → リポジトリ funITclub/wg-protein・チーム wg-protein
+
+# ---- 入れ替えるとき ----
+# 運営（クラスの先生）が替わった・許可を取り消した・パスワードを変えた
+#   → 「名簿を確かめられませんでした」の ERROR 通知が届く。次の先生のアカウントで許可し直す。
+#     手元で:
+#       python manage.py wgjoin_google_authorize --settings=config.settings_dev
+#     表示されたトークンを Key Vault に入れる（チャットやリポジトリに貼らない）:
+#       az keyvault secret set --vault-name funitclub-kv --name funitclub-google-oauth-refresh-token --value "<トークン>"
+#       az webapp restart --name funITclub
+#
+# GitHub App の秘密鍵・シークレットを作り直した
+#   → App の設定画面（Settings → Developer settings → GitHub Apps → funitclub-wg-join）で発行し、
+#     Key Vault の funitclub-github-app-private-key / funitclub-github-app-client-secret を更新して
+#     az webapp restart。古い鍵は App の設定画面から消す（新しいのを作ってからでないと消せない）。
+
+# ---- 確認 ----
+#   Key Vault 参照が解決できているか（Resolved になっていること）
+#     az rest --method get --url "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)\
+# /resourceGroups/hirahira/providers/Microsoft.Web/sites/funITclub/config/configreferences/appsettings?api-version=2022-03-01"
+#   ログ（WG の識別子と結果だけが出る。アドレスやユーザー名は出ない）
+#     az webapp log tail --name funITclub | grep "WG への参加"
+
+
+########################################
 # 一時的にデバッグする（本番）
 ########################################
 
