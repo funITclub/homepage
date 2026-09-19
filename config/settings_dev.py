@@ -57,6 +57,10 @@ LOGGING = {
             'handlers': ['console'],
             'level': 'DEBUG',
         },
+        'wgjoin': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
     },
     'handlers': {
         'console': {

@@ -23,6 +23,7 @@ from django.views.generic import FormView, TemplateView
 
 from catalog.models import Wg, Work
 from news.models import News
+from wgjoin.config import is_enabled as wgjoin_enabled
 
 from .forms import JoinForm
 from .models import BlockedIp
@@ -170,6 +171,8 @@ class WgListView(NavMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['wg_list'] = Wg.objects.published()
+        # 「WG に参加」は設定がそろい（wgjoin.config）、WG に授業とチームが登録されているときだけ出す
+        context['wg_join_enabled'] = wgjoin_enabled()
         return context
 
 

@@ -608,6 +608,39 @@ a:hover {
     margin: 0 auto;
 }
 
+/* ---------- WG への参加（/wg/<id>/join/） ---------- */
+/* 作成中ページと同じ白いカードに、手順と注記を足す */
+
+.wgjoin .btn {
+    max-width: 360px;
+}
+
+.wgjoin-steps {
+    margin: 0 0 28px;
+    padding-left: 1.4em;
+    text-align: left;
+    color: var(--ink-2);
+    font-size: .9rem;
+    line-height: 1.8;
+}
+
+.wgjoin-steps li + li {
+    margin-top: 12px;
+}
+
+.wgjoin-steps strong {
+    display: block;
+    color: var(--ink);
+}
+
+.coming p.wgjoin-note {
+    margin: 24px 0 0;
+    text-align: left;
+    font-size: .8rem;
+    line-height: 1.8;
+    color: var(--ink-2);
+}
+
 /* ---------- メンテナンス画面（/news-editor/） ---------- */
 
 .editor {

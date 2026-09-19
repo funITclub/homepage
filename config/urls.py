@@ -9,6 +9,10 @@ urlpatterns = [
     # 公開サイト（認証なし）
     path('', include('home.urls', namespace='home')),
 
+    # WG への参加（認証なし。本人の Google・GitHub のログインで確かめる）。
+    # /wg/ 自体は home の WG 一覧で、この下の /wg/<id>/join/ などを持つ。
+    path('wg/', include('wgjoin.urls', namespace='wgjoin')),
+
     # 編集画面（ログイン必須）。公開サイトからはリンクせず、この URL を直接開いて使う。
     # お知らせ・WG紹介・成果物紹介の編集はすべてこの下にある。
     path('edit/', include('edit.urls', namespace='edit')),

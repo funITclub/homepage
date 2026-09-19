@@ -27,7 +27,11 @@
                     {% if wg.link_label %}
                     <a class="btn btn-ghost" href="{% if wg.link_url %}{{ wg.link_url }}{% else %}{% url 'home:coming_soon' %}?from=wg{% endif %}"{% if wg.link_url %} target="_blank" rel="noopener noreferrer" aria-label="{{ wg.link_label }}（別タブで開きます）"{% endif %}>{{ wg.link_label }}</a>
                     {% endif %}
-                    {% else %}
+                    {% endif %}
+                    {# WG に参加：メンバーかどうかは参加の手続きの中で確かめる（wgjoin）。 #}
+                    {% if wg_join_enabled and wg.accepts_join %}
+                    <a class="btn btn-ghost" href="{% url 'wgjoin:start' wg.pk %}">WG に参加</a>
+                    {% elif not wg.is_active %}
                     <a class="btn btn-ghost" href="{% url 'home:join' %}">参加する</a>
                     {% endif %}
                 </div>

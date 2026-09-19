@@ -116,5 +116,10 @@ LOGGING = {
             'handlers': ['console', 'admin_email'],
             'level': 'INFO',
         },
+        # WG への参加（Google・GitHub の手続きの失敗）。ユーザー名やアドレスは出さない
+        'wgjoin': {
+            'handlers': ['console', 'admin_email'],
+            'level': 'INFO',
+        },
     },
 }

@@ -7,6 +7,7 @@
 - 掲載内容（お知らせ・WG紹介・成果物紹介）はモデル化済みで、編集画面から編集する
 - **参加の申し込みフォーム（`/join/apply/`）**。大学のメールアドレス（`@bukkyo-u.ac.jp`）のみ受け付ける
 - **サブアプリ（WGごとのWebアプリ）は未実装**。URL 未設定のリンクは「作成中」ページ（`/coming-soon/`）へ流す
+- **WG への参加（`/wg/<id>/join/`）**。クラブのメンバー（Classroom のクラブのクラスにいる人）だけが、自分で GitHub の WG のチームに入れる。会員の情報はサイトに持たない
 - デザインは `ホームページのイメージ案.pptx` に準拠（ネイビー #001E3C ＋ アクセント #5BB8FF、Consolas ＋ Meiryo）
 
 ## 構成
@@ -19,6 +20,7 @@ home/                  公開サイトの4ページ＋作成中ページ（モ�
   templates/home/      index / wg_list / work_list / join / join_apply / coming_soon
 news/                  お知らせ（モデル＋編集画面＋admin 登録）
 catalog/               WG紹介・成果物紹介（モデル＋編集画面＋admin 登録）
+wgjoin/                WG への参加（/wg/<id>/join/）。Classroom でメンバーか確かめ、GitHub のチームに登録する
 edit/                  編集画面の枠（ログイン・メニュー・共通レイアウト）＋運営まわり
   models.py            管理者（連絡先）。通知の宛先と公開の問い合わせ先はここだけを見る
   notify.py            管理者への通知メールの共通部分
@@ -46,6 +48,7 @@ docs/                  補足資料（開発の手順・WG 立ち上げガイド
 | `/join/apply/` | 参加を申し込む（フォーム） |
 | `/join/apply/done/` | 申し込みの完了ページ（送信後の行き先） |
 | `/coming-soon/` | 作成中プレースホルダ |
+| `/wg/<id>/join/` | WG に参加（本人の Google・GitHub のログインで進む。設定がそろったときだけ出る） |
 
 ここまでがログイン不要の公開ページ。以下はログイン必須。
 
@@ -223,6 +226,74 @@ worker ごとに別勘定になり、再起動でも消えて検知漏れする�
 ```bash
 python manage.py createcachetable --settings=config.settings_dev
 ```
+
+## WG への参加（`/wg/<id>/join/`）
+
+WG 一覧の各カードの「WG に参加」から、**クラブのメンバーだけが**自分で WG に参加できる。
+運営の手作業は要らない。
+
+```
+「WG に参加」→ 大学の Google アカウントでログイン
+            → Classroom のクラブのクラスにいるか（＝メンバーか）を確かめる。いなければここで止める
+            → GitHub でログイン（アカウントがなければその画面で作る）
+            → WG の GitHub のチームに追加。まだ org にいない人には、そのアカウントあてに招待が届く
+            → 結果の画面で、Classroom のクラスの「授業」にある WG の Chat のリンクへ案内する
+```
+
+- **会員の情報はサイトに持たない**（会の方針）。名簿は Classroom のクラブのクラスで、WG の
+  参加状態は GitHub のチームと Chat スペースのメンバーで分かる。サイトの session には
+  「どの WG の手続きか」と OAuth の state だけを置き、トークンは使い終わったらすぐ取り消す。
+  Google のメールアドレスは要求しない。GitHub のユーザー名はその場で使うだけで、
+  ログにも出さない。
+- **Chat にはサイトは何もしない**。WG の Chat スペースのリンクはクラブのクラスの授業にあり、
+  本人が開いて入る。
+- **Google の権限は「Classroom のクラスを見る」（`classroom.courses.readonly`）だけ**。
+  運営のアカウントの権限は使わない。
+- GitHub のチームを操作する GitHub App は org 全体のメンバーを変えられるので、追加できる
+  チームは `wg-` で始まる名前に絞っている（`wgjoin/links.py`）。すでにチームにいる人は
+  そのままにする（リーダーの maintainer を member に下げないため）。
+- Google で確かめたのと同じブラウザ・同じ WG の手続きで、1時間以内
+  （`WG_JOIN_STEP_TIMEOUT`）でないと GitHub の手順に進めない。
+
+### 表示の条件
+
+「WG に参加」は、次の両方がそろったカードにだけ出る。どちらかが欠けていれば、これまでどおり
+（準備中の WG は「参加する」＝クラブの参加案内）。
+
+1. 下の環境変数がすべて入っている（`wgjoin.config.is_enabled`）
+2. WG 紹介の「GitHub のチーム」に `wg-<名前>` が入っている（編集画面の WG紹介）
+
+チームは先に運営が作り、WG のリポジトリに Write で付けておく（WG 立ち上げガイドの資料 01）。
+人をチームに入れるのはこの仕組みが行う。
+
+### 準備（最初に一度だけ）
+
+**大学への確認が先。** 学生が大学の Google アカウントで、クラブのアプリに Classroom の
+読み取りを許可できるか（大学の管理者の設定次第）。できなければこの機能は使えない。
+
+1. **Google Cloud の OAuth クライアント**（大学のアカウントで作る）
+   - プロジェクトを作り、「Google Classroom API」を有効にする
+   - OAuth 同意画面：ユーザーの種類は「内部」（大学のアカウントだけが使える）。
+     スコープは `.../auth/classroom.courses.readonly` だけ
+   - 認証情報 → OAuth クライアント ID → ウェブアプリケーション。承認済みのリダイレクト URI に
+     `https://funitclub.org/wg/join/google/callback/`（手元で試すなら
+     `http://localhost:8000/wg/join/google/callback/` も）
+2. **GitHub App**（org funITclub の Settings → Developer settings → GitHub Apps → New GitHub App）
+   - Callback URL：`https://funitclub.org/wg/join/github/callback/`（手元用に localhost も足せる）
+   - Webhook：Active を外す
+   - 権限：Organization permissions の **Members を Read and write** だけ
+   - 作ったら Client secret と Private key（.pem）を発行し、org funITclub に Install する
+3. **App Service の設定**（秘密のものは Key Vault に入れて参照する。メールと同じやり方）
+
+| 変数 | 中身 |
+|---|---|
+| `CLUB_CLASSROOM_COURSE` | クラブの Classroom のクラスの URL か ID。ここにいる人をメンバーとみなす |
+| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | 1 の OAuth クライアント（シークレットは Key Vault） |
+| `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 2 の App ID と Client ID |
+| `GITHUB_APP_CLIENT_SECRET` / `GITHUB_APP_PRIVATE_KEY` | 2 の Client secret と秘密鍵（Key Vault。鍵は PEM のまま） |
+| `GITHUB_ORG` | 任意。既定は `funITclub` |
+
+手元で試すときは同じ値を `.env` に書く（鍵は1行にして改行を `\n` と書く）。
 
 ## 編集画面（`/edit/`）
 
@@ -451,6 +522,7 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `EMAIL_SECRET_EXPIRES_ON` | シークレットの期限（`YYYY-MM-DD`）。更新時に必ず直す |
 | `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 任意。IP遮断の停止・除外（ロックアウトからの復旧用） |
 | `DEBUG` | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
+| `CLUB_CLASSROOM_COURSE` ほか | WG への参加の設定。一覧は「[WG への参加](#wg-への参加wgidjoin)」。そろうまで「WG に参加」は出ない |
 
 `DJANGO_SETTINGS_MODULE` は不要（`manage.py` と `wsgi.py` の既定が `config.settings`）。
 

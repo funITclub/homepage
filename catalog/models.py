@@ -59,6 +59,15 @@ class Wg(models.Model):
         blank=True,
         help_text='空欄なら「作成中」ページに繋ぎます。',
     )
+    # WG への参加（wgjoin）。チームが登録されているときだけ「WG に参加」を出す。
+    # 個人の情報ではなく、WG のチームの名前だけを持つ。
+    github_team = models.CharField(
+        'GitHub のチーム',
+        max_length=100,
+        blank=True,
+        help_text='「WG に参加」で登録する WG のチームの名前（例: wg-countdown）。'
+                  'wg- で始まるものだけ。空欄なら「WG に参加」を出さない。',
+    )
     sort_order = models.IntegerField(
         '表示順',
         default=0,
@@ -86,6 +95,12 @@ class Wg(models.Model):
     @property
     def is_active(self):
         return self.status == self.ACTIVE
+
+    @property
+    def accepts_join(self):
+        """「WG に参加」で受け付けられるだけの登録があるか。"""
+        from wgjoin.links import is_wg_team
+        return is_wg_team(self.github_team)
 
 
 class Work(models.Model):

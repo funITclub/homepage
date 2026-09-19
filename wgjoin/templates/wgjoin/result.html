@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{{ wg.name }} に参加 — fun IT club{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="coming wgjoin">
+        <div class="card">
+            <p class="coming-label">// {{ wg.code }} に参加</p>
+
+            {% if outcome == 'done' %}
+            <h1>{{ wg.name }} に参加しました</h1>
+            {% if invited %}
+            <p>
+                GitHub から <strong>funITclub への招待</strong>が届きます（メールと github.com の通知）。
+                招待を開いて「Join @funITclub」を押すと、WG のリポジトリに書き込めるようになります。
+                招待の期限は 7 日です。
+            </p>
+            {% else %}
+            <p>GitHub の WG のチームに登録しました。WG のリポジトリに書き込めます。</p>
+            {% endif %}
+            <p>
+                最後に、WG の Chat に入ってください。クラブのクラスの「授業」にある
+                {{ wg.name }} に、Chat スペースのリンクがあります。
+            </p>
+            <a class="btn btn-lg" href="{{ classroom_url }}" target="_blank" rel="noopener noreferrer">Classroom を開く</a>
+
+            {% elif outcome == 'not_member' %}
+            <h1>メンバーとして確認できませんでした</h1>
+            <p>
+                WG に参加できるのは fun IT club のメンバーだけです。
+                ログインした大学の Google アカウントが、Classroom のクラブのクラスに登録されていませんでした。<br>
+                まだ登録していない方は、先に参加の申し込みをしてください。
+                申し込み済みの方は、別の Google アカウントでログインしていないか確かめてください。
+            </p>
+            <a class="btn btn-primary" href="{% url 'home:join' %}">参加の申し込みへ</a>
+
+            {% elif outcome == 'cancelled' or outcome == 'github_cancelled' %}
+            <h1>手続きを中止しました</h1>
+            <p>もう一度参加するときは、WG 一覧の「WG に参加」から始めてください。</p>
+
+            {% elif outcome == 'expired' %}
+            <h1>時間が経ったため、手続きをやり直してください</h1>
+            <p>メンバーの確認から時間が経ちました。もう一度「WG に参加」から始めてください。</p>
+
+            {% else %}
+            <h1>手続きの途中で失敗しました</h1>
+            <p>
+                時間をおいて、もう一度「WG に参加」から始めてください。続くときは
+                <a href="mailto:{{ public_contact }}">{{ public_contact }}</a> までお知らせください。
+            </p>
+            {% endif %}
+
+            {% if outcome != 'not_member' %}
+            <a class="btn btn-primary" href="{% url 'home:wg_list' %}">WG一覧へ戻る</a>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}
