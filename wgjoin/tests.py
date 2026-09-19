@@ -306,3 +306,20 @@ class HttpTests(SimpleTestCase):
             call('GET', 'https://api.github.com/orgs/funITclub/teams/wg-x/memberships/octo-student')
         self.assertIn('api.github.com', str(ctx.exception))
         self.assertNotIn('octo-student', str(ctx.exception))
+
+
+class SaveToEnvTests(SimpleTestCase):
+
+    def test_replaces_existing_keys_and_appends_new_ones(self):
+        import tempfile
+        from pathlib import Path
+
+        from .management.commands.wgjoin_google_authorize import save_to_env
+
+        with tempfile.TemporaryDirectory() as d:
+            env = Path(d) / '.env'
+            env.write_text('# コメント\nEMAIL_HOST_USER=keep\nGOOGLE_OAUTH_CLIENT_ID=old\n', encoding='utf-8')
+            save_to_env({'GOOGLE_OAUTH_CLIENT_ID': 'new', 'GOOGLE_OAUTH_REFRESH_TOKEN': 'token'}, env)
+            self.assertEqual(env.read_text(encoding='utf-8').splitlines(), [
+                '# コメント', 'EMAIL_HOST_USER=keep', 'GOOGLE_OAUTH_CLIENT_ID=new', 'GOOGLE_OAUTH_REFRESH_TOKEN=token'])
+            self.assertEqual(env.stat().st_mode & 0o777, 0o600)

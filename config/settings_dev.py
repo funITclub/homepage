@@ -2,13 +2,15 @@
 
 import os
 import sys
-
-from .settings_common import *
+from pathlib import Path
 
 # ローカルの秘密情報（メールのアプリパスワードなど）は .env から読む。
 # .env は .gitignore 済みで、リポジトリにも zip デプロイにも入らない。
 # 既に環境変数がある場合はそちらを優先する（setdefault）。
-_env_file = BASE_DIR / '.env'
+#
+# settings_common より先に読むこと。settings_common も環境変数を読む
+# （WG への参加の設定など）ので、後から読むと .env の値が届かない。
+_env_file = Path(__file__).resolve().parent.parent / '.env'
 if _env_file.exists():
     for _line in _env_file.read_text(encoding='utf-8').splitlines():
         _line = _line.strip()
@@ -16,6 +18,8 @@ if _env_file.exists():
             continue
         _key, _value = _line.split('=', 1)
         os.environ.setdefault(_key.strip(), _value.strip().strip('\'"'))
+
+from .settings_common import *  # noqa: E402  .env を読んでから
 
 SECRET_KEY = 'django-insecure-funitclub-local-development-key'
 

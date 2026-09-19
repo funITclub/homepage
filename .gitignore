@@ -30,3 +30,7 @@ staticfiles/
 
 # ローカルの秘密情報（メールのアプリパスワードなど）
 .env
+
+# Google Cloud からダウンロードした OAuth クライアントの JSON（秘密）。
+# 読み込んだら消す（manage.py wgjoin_google_authorize --client-json）。
+client_secret*.json
