@@ -30,7 +30,7 @@ static/css/funitclub.css   デザイン一式（公開サイト・編集画面�
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
-docs/                  補足資料（開発の手順・セキュリティ対応一覧など）。デプロイの zip からは除外する
+docs/                  補足資料（開発の手順・WG 立ち上げガイド・セキュリティ対応一覧など）。デプロイの zip からは除外する
 .devcontainer/         開発環境（VS Code の Dev Container）の定義。デプロイの zip からは除外する
 .vscode/               VS Code の共通設定（起動構成・タスク）。デプロイの zip からは除外する
 ```
