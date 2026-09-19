@@ -20,6 +20,11 @@ def club_classroom_url():
     return 'https://classroom.google.com/c/' + base64.b64encode(course_id.encode()).decode().rstrip('=')
 
 
+def repo_url(team):
+    """WG のリポジトリの URL。リポジトリはチームと同じ名前にする決まり（WG 立ち上げガイドの資料 01）。"""
+    return f'https://github.com/{settings.GITHUB_ORG}/{team}'
+
+
 def is_enabled():
     """「WG に参加」を受け付けられるだけの設定がそろっているか。
 

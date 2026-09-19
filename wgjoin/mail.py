@@ -25,7 +25,7 @@ def _footer(contact):
     )
 
 
-def send_link(email, wg, url):
+def send_link(email, wg, url, repo):
     """メンバーあて。リンクを開くと GitHub の登録に進む。"""
     contact = public_contact_email()
     minutes = settings.WG_JOIN_LINK_MAX_AGE // 60
@@ -37,6 +37,8 @@ def send_link(email, wg, url):
             f'{url}\n\n'
             'WG の Chat には、Classroom のクラブのクラスの「授業」にある\n'
             f'{wg.name} のリンクから入ってください。\n\n'
+            'WG のリポジトリ（パソコンの準備で VS Code にクローンするもの）:\n'
+            f'{repo}\n\n'
             + _footer(contact)
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,

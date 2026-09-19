@@ -60,6 +60,7 @@ WG への参加は、公開サイトから自分でできる。GitHub の WG の
      github.com の通知）を開き、「**Join @funITclub**」を押す。押すまでリポジトリに書き込めない。
 6. 画面の「**Classroom を開く**」から、クラブのクラスの「授業」にある WG を開き、
    **Chat スペースのリンク**から WG の Chat に入る。
+   - 画面には **WG のリポジトリの URL** も出る（手順 6 でクローンするもの）。
 
 **GitHub のメールアドレスを非公開にする（初回だけ）**
 
@@ -172,7 +173,7 @@ git config --global user.email "12345678+ユーザー名@users.noreply.github.co
 **まず、リポジトリの URL をコピーする（GitHub で）**
 
 1. WG のリポジトリを開く。`https://github.com/funITclub/wg-<WG の名前>`
-   （名前は WG のチームと同じ。例：`wg-protein`。分からなければ WG の仲間か運営に聞く）
+   （「WG に参加」の完了画面と確認のメールにもリンクが出ている。名前は WG のチームと同じ。例：`wg-protein`）
 2. 右上の緑の「**Code**」を押す。
 3. 「**Local**」タブの「**HTTPS**」を選ぶ。
 4. `https://github.com/funITclub/wg-….git` の右の**コピーのボタン**を押す。

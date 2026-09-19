@@ -24,6 +24,10 @@
                 {{ wg.name }} に、Chat スペースのリンクがあります。
             </p>
             <a class="btn btn-lg" href="{{ classroom_url }}" target="_blank" rel="noopener noreferrer">Classroom を開く</a>
+            <p class="wgjoin-note">
+                WG のリポジトリ：<a href="{{ repo_url }}" target="_blank" rel="noopener noreferrer">{{ repo_url }}</a><br>
+                パソコンの準備（WG 立ち上げガイドの資料 02）で、この URL を VS Code にクローンします。
+            </p>
 
             {% elif outcome == 'github_cancelled' %}
             <h1>手続きを中止しました</h1>

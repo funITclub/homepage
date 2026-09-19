@@ -33,7 +33,7 @@ from catalog.models import Wg
 from home.netutils import client_ip
 
 from . import github, google, mail
-from .config import club_classroom_url, club_course_id, is_enabled
+from .config import club_classroom_url, club_course_id, is_enabled, repo_url
 from .forms import JoinEmailForm
 from .http import ServiceError
 from .verify import LinkInvalid, allow_send, is_used, make_link_token, mark_used, read_link_token
@@ -53,7 +53,8 @@ def _wg_or_404(pk):
 
 
 def _page(request, template, wg, status=200, **extra):
-    context = {'nav': 'wg', 'wg': wg, 'classroom_url': club_classroom_url(), **extra}
+    context = {'nav': 'wg', 'wg': wg, 'classroom_url': club_classroom_url(),
+               'repo_url': repo_url(wg.github_team), **extra}
     return render(request, template, context, status=status)
 
 
@@ -78,7 +79,7 @@ def start(request, pk):
     try:
         if google.is_club_member(email, club_course_id()):
             url = request.build_absolute_uri(reverse('wgjoin:verify', args=[make_link_token(wg.pk)]))
-            mail.send_link(email, wg, url)
+            mail.send_link(email, wg, url, repo_url(wg.github_team))
             logger.info('WG への参加: %s 確認のメールを送りました', wg.code)
         else:
             mail.send_not_member(email, wg, request.build_absolute_uri(reverse('home:join')))
