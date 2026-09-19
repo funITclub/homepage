@@ -188,6 +188,8 @@ git config --global user.email "12345678+ユーザー名@users.noreply.github.co
    （英語表示なら「Dev Containers: Clone Repository in Container Volume...」）を選ぶ。
 4. さきほどコピーした URL を貼り付けて Enter。
    - homepage を開くときは `https://github.com/funITclub/homepage`
+   - WG のリポジトリは**非公開**なので、初回は「GitHub にサインイン」を求められる。
+     「**許可**」を押し、ブラウザで「**Authorize**」を押す（WG のチームに入っている GitHub アカウントで）。
 5. 「開発コンテナー内のリポジトリを複製すると、任意のコードが実行される場合があります」と
    出たら、URL が **funITclub のリポジトリ** であることを確かめてから先へ進む。
    （知らない人のリポジトリでは進まないこと）
@@ -243,7 +245,8 @@ git config --global user.email "12345678+ユーザー名@users.noreply.github.co
 
 VS Code の左の「**ソース管理**」から操作する。
 
-- **WG のリポジトリ**：`main` には直接 push できない（ルールで止めてある）。
+- **WG のリポジトリ**：`main` には直接 push しない。`main` のままコミットしようとすると VS Code が
+  新しいブランチを作るよう促し、`main` への push も送る前に止まる。
   ブランチを切ってプルリクエストを出す。手順は
   [wg-template の README](https://github.com/funITclub/wg-template#開発の流れ) の「開発の流れ」。
 - **homepage**：`main` に push すると、そのまま本番（funitclub.org）に出る。テストを通してから push する。
