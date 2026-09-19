@@ -12,11 +12,11 @@
 
             <ol class="wgjoin-steps">
                 <li>
-                    <strong>大学の Google アカウントでログイン</strong>
-                    <span>クラブのメンバーか（Classroom のクラブのクラスにいるか）を確かめます。</span>
+                    <strong>大学のメールアドレスを入れる</strong>
+                    <span>クラブの Classroom に登録されているかを確かめ、確認のメールを送ります。</span>
                 </li>
                 <li>
-                    <strong>GitHub でログイン</strong>
+                    <strong>メールのリンクを開き、GitHub でログイン</strong>
                     <span>WG のチームに登録します。GitHub アカウントがなければ、その画面で作れます
                     （大学のメールアドレスで登録してください）。</span>
                 </li>
@@ -26,11 +26,31 @@
                 </li>
             </ol>
 
-            <a class="btn btn-lg" href="{% url 'wgjoin:google_start' wg.pk %}">大学の Google アカウントで始める</a>
+            <form class="wgjoin-form" method="post" action="{% url 'wgjoin:start' wg.pk %}" novalidate>
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                <ul class="form-errors">
+                    {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+                </ul>
+                {% endif %}
+                {% with field=form.email %}
+                <div class="form-row">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    <p class="form-help">{{ field.help_text }}</p>
+                    {% if field.errors %}
+                    <ul class="form-errors">
+                        {% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+                {% endwith %}
+                <button class="btn btn-lg" type="submit">確認のメールを送る</button>
+            </form>
 
             <p class="wgjoin-note">
-                このサイトは、あなたの名前やメールアドレス、GitHub のユーザー名を保存しません。
-                Google には「Classroom のクラスを見る」ことだけを許可してもらいます。<br>
+                このサイトは、あなたのメールアドレスや GitHub のユーザー名を保存しません。
+                アドレスは、Classroom の名簿で確かめて確認のメールを送るためだけに使います。<br>
                 まだクラブに登録していない方は、先に<a href="{% url 'home:join' %}">参加の申し込み</a>をしてください。
             </p>
         </div>

@@ -633,6 +633,22 @@ a:hover {
     color: var(--ink);
 }
 
+.wgjoin-form {
+    max-width: 420px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.wgjoin-form .btn {
+    width: 100%;
+}
+
+/* 注記やボタンのあとに続くボタンは間を空ける（完了・結果の画面で縦に並ぶ） */
+.wgjoin-note + .btn,
+.wgjoin .btn + .btn {
+    margin-top: 16px;
+}
+
 .coming p.wgjoin-note {
     margin: 24px 0 0;
     text-align: left;

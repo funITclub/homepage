@@ -7,7 +7,7 @@
 - 掲載内容（お知らせ・WG紹介・成果物紹介）はモデル化済みで、編集画面から編集する
 - **参加の申し込みフォーム（`/join/apply/`）**。大学のメールアドレス（`@bukkyo-u.ac.jp`）のみ受け付ける
 - **サブアプリ（WGごとのWebアプリ）は未実装**。URL 未設定のリンクは「作成中」ページ（`/coming-soon/`）へ流す
-- **WG への参加（`/wg/<id>/join/`）**。クラブのメンバー（Classroom のクラブのクラスにいる人）だけが、自分で GitHub の WG のチームに入れる。会員の情報はサイトに持たない
+- **WG への参加（`/wg/<id>/join/`）**。クラブのメンバー（Classroom のクラブのクラスにいる人）だけが、大学のアドレスの確認を経て、自分で GitHub の WG のチームに入れる。会員の情報はサイトに持たない
 - デザインは `ホームページのイメージ案.pptx` に準拠（ネイビー #001E3C ＋ アクセント #5BB8FF、Consolas ＋ Meiryo）
 
 ## 構成
@@ -48,7 +48,7 @@ docs/                  補足資料（開発の手順・WG 立ち上げガイド
 | `/join/apply/` | 参加を申し込む（フォーム） |
 | `/join/apply/done/` | 申し込みの完了ページ（送信後の行き先） |
 | `/coming-soon/` | 作成中プレースホルダ |
-| `/wg/<id>/join/` | WG に参加（本人の Google・GitHub のログインで進む。設定がそろったときだけ出る） |
+| `/wg/<id>/join/` | WG に参加（大学のアドレスの確認メール → GitHub のログインで進む。設定がそろったときだけ出る） |
 
 ここまでがログイン不要の公開ページ。以下はログイン必須。
 
@@ -233,27 +233,33 @@ WG 一覧の各カードの「WG に参加」から、**クラブのメンバー
 運営の手作業は要らない。
 
 ```
-「WG に参加」→ 大学の Google アカウントでログイン
-            → Classroom のクラブのクラスにいるか（＝メンバーか）を確かめる。いなければここで止める
+「WG に参加」→ 大学のメールアドレスを入れる
+            → サイトが Classroom のクラブのクラスの名簿を引く（運営の権限）
+            → メンバーなら確認のメール（リンク付き）、そうでなければ「確認できませんでした」のメール
+               ※ 画面はどちらも「メールを送りました」。他人のアドレスでメンバーかを探れないように
+            → 本人がメールのリンクを開く（＝そのアドレスの持ち主だと確かめられる）
             → GitHub でログイン（アカウントがなければその画面で作る）
             → WG の GitHub のチームに追加。まだ org にいない人には、そのアカウントあてに招待が届く
             → 結果の画面で、Classroom のクラスの「授業」にある WG の Chat のリンクへ案内する
 ```
 
 - **会員の情報はサイトに持たない**（会の方針）。名簿は Classroom のクラブのクラスで、WG の
-  参加状態は GitHub のチームと Chat スペースのメンバーで分かる。サイトの session には
-  「どの WG の手続きか」と OAuth の state だけを置き、トークンは使い終わったらすぐ取り消す。
-  Google のメールアドレスは要求しない。GitHub のユーザー名はその場で使うだけで、
-  ログにも出さない。
+  参加状態は GitHub のチームと Chat スペースのメンバーで分かる。
+  - 入力されたアドレスは、名簿を引いてメールを送るのに使うだけ。DB にもログにも残さない。
+  - 確認のリンクには「どの WG の手続きか」と使い捨ての番号だけを署名して入れる（アドレスは
+    入れない）。期限は1時間（`WG_JOIN_LINK_MAX_AGE`）。登録に使ったリンクは使えなくなる。
+  - 送りすぎの歯止め（`WG_JOIN_SEND_LIMITS`）は、アドレスを鍵付きハッシュにして数える。
+    IP の遮断はしない（構内の回線は共有のため）。
+  - GitHub のユーザー名とトークンはその場で使って捨てる。ログにも出さない。
 - **Chat にはサイトは何もしない**。WG の Chat スペースのリンクはクラブのクラスの授業にあり、
   本人が開いて入る。
-- **Google の権限は「Classroom のクラスを見る」（`classroom.courses.readonly`）だけ**。
-  運営のアカウントの権限は使わない。
+- **名簿を読むのは運営のアカウント（クラスの先生）の権限**。頼む権限は「名簿を見る」
+  （`classroom.rosters.readonly`）だけで、アドレスで1人ずつ引く（一覧は取らない）。
+  権限が切れたとき（運営がパスワードを変えた・先生から外れた）は「名簿を確かめられません
+  でした」を ERROR で記録し、管理者に通知が届く。**全員をメンバーでない扱いにはしない。**
 - GitHub のチームを操作する GitHub App は org 全体のメンバーを変えられるので、追加できる
   チームは `wg-` で始まる名前に絞っている（`wgjoin/links.py`）。すでにチームにいる人は
   そのままにする（リーダーの maintainer を member に下げないため）。
-- Google で確かめたのと同じブラウザ・同じ WG の手続きで、1時間以内
-  （`WG_JOIN_STEP_TIMEOUT`）でないと GitHub の手順に進めない。
 
 ### 表示の条件
 
@@ -268,32 +274,40 @@ WG 一覧の各カードの「WG に参加」から、**クラブのメンバー
 
 ### 準備（最初に一度だけ）
 
-**大学への確認が先。** 学生が大学の Google アカウントで、クラブのアプリに Classroom の
-読み取りを許可できるか（大学の管理者の設定次第）。できなければこの機能は使えない。
-
 1. **Google Cloud の OAuth クライアント**（大学のアカウントで作る）
    - プロジェクトを作り、「Google Classroom API」を有効にする
    - OAuth 同意画面：ユーザーの種類は「内部」（大学のアカウントだけが使える）。
-     スコープは `.../auth/classroom.courses.readonly` だけ
-   - 認証情報 → OAuth クライアント ID → ウェブアプリケーション。承認済みのリダイレクト URI に
-     `https://funitclub.org/wg/join/google/callback/`（手元で試すなら
-     `http://localhost:8000/wg/join/google/callback/` も）
-2. **GitHub App**（org funITclub の Settings → Developer settings → GitHub Apps → New GitHub App）
+     スコープは `.../auth/classroom.rosters.readonly` だけ
+   - 認証情報 → OAuth クライアント ID → **デスクトップ アプリ**
+2. **運営の許可**（クラブのクラスの**先生**のアカウントで、手元で一度だけ）
+
+   ```bash
+   python manage.py wgjoin_google_authorize
+   ```
+
+   ブラウザが開くので、先生のアカウントで許可する。表示されたリフレッシュトークンを
+   `GOOGLE_OAUTH_REFRESH_TOKEN` に入れる。**運営のアカウントの鍵なので、チャットや
+   リポジトリに貼らないこと。** 運営が替わったら、次の先生のアカウントで流し直す。
+   ここで「このアプリはブロックされています」と出たら、大学の管理者の設定で止められている。
+3. **GitHub App**（org funITclub の Settings → Developer settings → GitHub Apps → New GitHub App）
    - Callback URL：`https://funitclub.org/wg/join/github/callback/`（手元用に localhost も足せる）
    - Webhook：Active を外す
    - 権限：Organization permissions の **Members を Read and write** だけ
    - 作ったら Client secret と Private key（.pem）を発行し、org funITclub に Install する
-3. **App Service の設定**（秘密のものは Key Vault に入れて参照する。メールと同じやり方）
+4. **App Service の設定**（秘密のものは Key Vault に入れて参照する。メールと同じやり方）
 
 | 変数 | 中身 |
 |---|---|
 | `CLUB_CLASSROOM_COURSE` | クラブの Classroom のクラスの URL か ID。ここにいる人をメンバーとみなす |
 | `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | 1 の OAuth クライアント（シークレットは Key Vault） |
-| `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 2 の App ID と Client ID |
-| `GITHUB_APP_CLIENT_SECRET` / `GITHUB_APP_PRIVATE_KEY` | 2 の Client secret と秘密鍵（Key Vault。鍵は PEM のまま） |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | 2 で受け取ったもの（Key Vault） |
+| `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 3 の App ID と Client ID |
+| `GITHUB_APP_CLIENT_SECRET` / `GITHUB_APP_PRIVATE_KEY` | 3 の Client secret と秘密鍵（Key Vault。鍵は PEM のまま） |
 | `GITHUB_ORG` | 任意。既定は `funITclub` |
 
-手元で試すときは同じ値を `.env` に書く（鍵は1行にして改行を `\n` と書く）。
+手元で試すときは同じ値を `.env` に書く（鍵は1行にして改行を `\n` と書く）。確認のメールは
+参加フォームと同じ送信の仕組みを使うので、`.env` にメールの認証情報がなければ runserver の
+ログに出る（リンクもそこに出る）。
 
 ## 編集画面（`/edit/`）
 

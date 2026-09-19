@@ -200,31 +200,38 @@ JOIN_FROM_EMAIL = os.getenv('JOIN_FROM_EMAIL', 'no-reply@funitclub.org')
 DEFAULT_FROM_EMAIL = f'{SITE_NAME} <{JOIN_FROM_EMAIL}>'
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
-# WG への参加（wgjoin）。WG 一覧の「WG に参加」から、本人の大学の Google アカウントで
-# クラブの Classroom のクラスにいるか（＝メンバーか）を確かめ、GitHub の WG のチームに登録する。
-# WG の Chat には、クラスの授業にあるリンクから本人が入る（サイトは何もしない）。
+# WG への参加（wgjoin）。WG 一覧の「WG に参加」で大学のアドレスを入れてもらい、運営の権限で
+# Classroom のクラブのクラスの名簿を引いてメンバーか確かめる。メンバーなら確認のメールの
+# リンクから、GitHub の WG のチームに登録する。WG の Chat には、クラスの授業にあるリンクから
+# 本人が入る（サイトは何もしない）。
 # 会員の情報はサイトに持たない（名簿は Classroom）。値はすべて環境変数から読み、
 # どれかが欠けていれば「WG に参加」を出さない（wgjoin.config.is_enabled）。
 #
 #   CLUB_CLASSROOM_COURSE      … クラブの Classroom のクラス（URL か ID）。ここにいる人をメンバーとみなす
 #   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET
-#                              … Google Cloud の OAuth クライアント（ウェブアプリ）
+#                              … Google Cloud の OAuth クライアント（デスクトップ アプリ）
+#   GOOGLE_OAUTH_REFRESH_TOKEN … クラスの先生（運営）が名簿の読み取りを許可したもの
+#                                （manage.py wgjoin_google_authorize で受け取る）
 #   GITHUB_APP_ID / GITHUB_APP_CLIENT_ID / GITHUB_APP_CLIENT_SECRET / GITHUB_APP_PRIVATE_KEY
 #                              … funITclub の GitHub App（org の Members を読み書きできるもの）
 GITHUB_ORG = os.getenv('GITHUB_ORG', 'funITclub')
 CLUB_CLASSROOM_COURSE = os.getenv('CLUB_CLASSROOM_COURSE', '')
 GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '')
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '')
+GOOGLE_OAUTH_REFRESH_TOKEN = os.getenv('GOOGLE_OAUTH_REFRESH_TOKEN', '')
 GITHUB_APP_ID = os.getenv('GITHUB_APP_ID', '')
 GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
 # 秘密鍵（PEM）。.env では1行に書けるよう、\n と書いた改行を戻す。
 GITHUB_APP_PRIVATE_KEY = os.getenv('GITHUB_APP_PRIVATE_KEY', '').replace('\\n', '\n')
 
-# Google ログインの画面で大学のアカウントを選びやすくする（hd）。確認そのものは
-# クラブの授業にいるかで行うので、ここは案内だけ。
-WG_JOIN_GOOGLE_DOMAIN = JOIN_ALLOWED_EMAIL_DOMAIN
+# 確認のメールのリンクの有効期限（秒）。
+WG_JOIN_LINK_MAX_AGE = 60 * 60
 
-# Google で確かめてから GitHub の手続きを終えるまでの猶予（秒）。GitHub アカウントを
+# リンクを開いてから GitHub の手続きを終えるまでの猶予（秒）。GitHub アカウントを
 # その場で作る人がいるので、長めに取る。
 WG_JOIN_STEP_TIMEOUT = 60 * 60
+
+# 確認のメールを送りすぎないための上限。((件数, 秒) 同じ IP, (件数, 秒) 同じアドレス)。
+# 超えたら送らずに「時間をおいて」と出すだけで、IP の遮断はしない（構内の回線は共有のため）。
+WG_JOIN_SEND_LIMITS = ((10, 60 * 60), (3, 60 * 60))

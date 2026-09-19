@@ -1,4 +1,3 @@
-import json
 import time
 from unittest import mock
 from urllib.error import URLError
@@ -7,6 +6,8 @@ from urllib.parse import parse_qs, urlparse
 import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from django.core import mail as outbox
+from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
@@ -17,11 +18,13 @@ from . import github, google
 from .http import ServiceError, call
 from .config import club_classroom_url
 from .links import decode_course_id, is_wg_team
+from .verify import make_link_token
 from .views import SESSION_KEY
 
 ENABLED = dict(
     CLUB_CLASSROOM_COURSE='https://classroom.google.com/c/OTg3NjU0MzIxMDk4',  # 987654321098
     GOOGLE_OAUTH_CLIENT_ID='google-client', GOOGLE_OAUTH_CLIENT_SECRET='google-secret',
+    GOOGLE_OAUTH_REFRESH_TOKEN='staff-refresh',
     GITHUB_APP_ID='1', GITHUB_APP_CLIENT_ID='gh-client', GITHUB_APP_CLIENT_SECRET='gh-secret',
     GITHUB_APP_PRIVATE_KEY='dummy',
 )
@@ -90,102 +93,114 @@ class WgListButtonTests(TestCase):
         self.assertEqual(self.client.get(reverse('wgjoin:start', args=[self.joinable.pk])).status_code, 404)
 
 
+MEMBER = 'bu1111111111@bukkyo-u.ac.jp'
+
+
 @override_settings(**ENABLED)
 class JoinFlowTests(TestCase):
 
     def setUp(self):
+        cache.clear()
         self.wg = Wg.objects.create(code='WG-04', name='カウントダウン', description='説明',
                                     status=Wg.ACTIVE, github_team='wg-countdown')
+        self.start_url = reverse('wgjoin:start', args=[self.wg.pk])
 
-    def begin_google(self):
-        response = self.client.get(reverse('wgjoin:google_start', args=[self.wg.pk]))
-        return parse_qs(urlparse(response['Location']).query)
+    def submit(self, email=MEMBER, member=True):
+        with mock.patch.object(google, 'is_club_member', return_value=member) as check:
+            response = self.client.post(self.start_url, {'email': email})
+        return response, check
 
-    def google_callback(self, **params):
-        return self.client.get(reverse('wgjoin:google_callback'), params)
+    def link_in_mail(self):
+        body = outbox.outbox[-1].body
+        return next(line for line in body.splitlines() if '/wg/join/verify/' in line)
 
-    def test_start_page_explains_the_two_steps(self):
-        response = self.client.get(reverse('wgjoin:start', args=[self.wg.pk]))
-        self.assertContains(response, '大学の Google アカウントで始める')
+    def test_start_page_explains_the_steps(self):
+        response = self.client.get(self.start_url)
+        self.assertContains(response, '大学のメールアドレス')
         self.assertContains(response, 'GitHub でログイン')
         self.assertContains(response, 'Chat スペースのリンク')
 
-    def test_google_login_asks_only_to_see_classes_with_pkce(self):
-        query = self.begin_google()
-        self.assertEqual(query['scope'][0].split(), google.SCOPES)
-        self.assertEqual(query['code_challenge_method'], ['S256'])
-        self.assertEqual(query['hd'], ['bukkyo-u.ac.jp'])
-        self.assertEqual(query['state'][0], self.client.session[SESSION_KEY]['google_state'])
+    def test_only_university_addresses(self):
+        response, check = self.submit(email='someone@gmail.com')
+        self.assertContains(response, '大学から発行されたメールアドレス')
+        check.assert_not_called()
+        self.assertEqual(len(outbox.outbox), 0)
 
-    def test_wrong_state_is_rejected(self):
-        self.begin_google()
-        with mock.patch.object(google, 'exchange_code') as exchange:
-            response = self.google_callback(state='forged', code='c')
-        self.assertRedirects(response, reverse('home:wg_list'))
-        exchange.assert_not_called()
+    def test_member_gets_a_link_by_mail(self):
+        response, check = self.submit()
+        self.assertRedirects(response, reverse('wgjoin:sent', args=[self.wg.pk]))
+        check.assert_called_once_with(MEMBER, '987654321098')
+        self.assertEqual(outbox.outbox[0].to, [MEMBER])
+        self.assertIn('http://testserver/wg/join/verify/', self.link_in_mail())
+        # リンクにアドレスは入れない
+        self.assertNotIn('bu1111111111', self.link_in_mail())
 
-    @mock.patch.object(google, 'revoke')
-    @mock.patch.object(google, 'is_club_member', return_value=False)
-    @mock.patch.object(google, 'exchange_code', return_value='google-token')
-    def test_non_member_stops_before_github(self, exchange, member, revoke):
-        state = self.begin_google()['state'][0]
-        response = self.google_callback(state=state, code='c')
+    def test_non_member_gets_a_notice_but_the_screen_is_the_same(self):
+        """他人のアドレスを入れて、その人がメンバーかを画面から探れない。"""
+        member_response, _ = self.submit()
+        other_response, _ = self.submit(email='bu2222222222@bukkyo-u.ac.jp', member=False)
+        self.assertEqual(member_response['Location'], other_response['Location'])
+        notice = outbox.outbox[-1]
+        self.assertIn('確認できませんでした', notice.body)
+        self.assertNotIn('/wg/join/verify/', notice.body)
 
-        self.assertEqual(response.status_code, 403)
-        self.assertContains(response, 'メンバーとして確認できませんでした', status_code=403)
-        member.assert_called_once_with('google-token', '987654321098')
-        revoke.assert_called_once_with('google-token')
-        self.assertNotIn(SESSION_KEY, self.client.session)
-        # GitHub の手続きには進めない
-        self.assertRedirects(self.client.get(reverse('wgjoin:github_step', args=[self.wg.pk])),
-                             reverse('wgjoin:start', args=[self.wg.pk]))
+    def test_address_is_not_logged(self):
+        with self.assertLogs('wgjoin', level='INFO') as logs:
+            self.submit()
+        self.assertNotIn('bu1111111111', '\n'.join(logs.output))
 
-    @mock.patch.object(google, 'revoke')
-    @mock.patch.object(google, 'is_club_member', return_value=True)
-    @mock.patch.object(google, 'exchange_code', return_value='google-token')
-    def test_member_moves_on_to_github(self, exchange, member, revoke):
-        state = self.begin_google()['state'][0]
-        response = self.google_callback(state=state, code='c')
-
-        self.assertRedirects(response, reverse('wgjoin:github_step', args=[self.wg.pk]))
-        revoke.assert_called_once_with('google-token')
-        # session に残すのは手続きの印だけ。トークンや個人の情報は持たない
-        flow = self.client.session[SESSION_KEY]
-        self.assertEqual(set(flow), {'wg', 'member_at'})
-        self.assertNotIn('google-token', json.dumps(flow))
-
-    @mock.patch.object(google, 'revoke')
-    @mock.patch.object(google, 'is_club_member', side_effect=ServiceError('down'))
-    @mock.patch.object(google, 'exchange_code', return_value='google-token')
-    def test_classroom_failure_is_reported(self, exchange, member, revoke):
-        state = self.begin_google()['state'][0]
-        response = self.google_callback(state=state, code='c')
+    def test_roster_failure_is_reported_without_sending(self):
+        with mock.patch.object(google, 'is_club_member', side_effect=ServiceError('403')):
+            response = self.client.post(self.start_url, {'email': MEMBER})
         self.assertContains(response, '手続きの途中で失敗しました', status_code=502)
-        revoke.assert_called_once_with('google-token')
+        self.assertEqual(len(outbox.outbox), 0)
 
-    def test_cancelled_google_login(self):
-        state = self.begin_google()['state'][0]
-        response = self.google_callback(state=state, error='access_denied')
-        self.assertContains(response, '手続きを中止しました')
+    @override_settings(WG_JOIN_SEND_LIMITS=((10, 3600), (2, 3600)))
+    def test_too_many_mails_to_the_same_address_are_refused(self):
+        self.submit()
+        self.submit()
+        response, check = self.submit()
+        self.assertEqual(response.status_code, 429)
+        check.assert_not_called()
+        self.assertEqual(len(outbox.outbox), 2)
 
-    def pass_google_check(self, checked_at=None):
-        session = self.client.session
-        session[SESSION_KEY] = {'wg': self.wg.pk, 'member_at': checked_at or time.time()}
-        session.save()
+    def test_link_opens_the_github_step(self):
+        self.submit()
+        response = self.client.get(self.link_in_mail())
+        self.assertRedirects(response, reverse('wgjoin:github_step', args=[self.wg.pk]))
+        self.assertContains(self.client.get(response['Location']), 'GitHub でログインして登録する')
+        self.assertEqual(set(self.client.session[SESSION_KEY]), {'wg', 'member_at', 'nonce'})
 
-    def begin_github(self):
+    def test_broken_or_expired_link_is_refused(self):
+        self.assertEqual(self.client.get(reverse('wgjoin:verify', args=['broken'])).status_code, 400)
+        token = make_link_token(self.wg.pk)
+        with override_settings(WG_JOIN_LINK_MAX_AGE=-1):
+            self.assertEqual(self.client.get(reverse('wgjoin:verify', args=[token])).status_code, 400)
+
+    def test_github_step_needs_the_link(self):
+        self.assertRedirects(self.client.get(reverse('wgjoin:github_step', args=[self.wg.pk])), self.start_url)
+        other = Wg.objects.create(code='WG-05', name='別', description='説明', status=Wg.ACTIVE,
+                                  github_team='wg-other')
+        self.client.get(reverse('wgjoin:verify', args=[make_link_token(self.wg.pk)]))
+        self.assertRedirects(self.client.get(reverse('wgjoin:github_start', args=[other.pk])),
+                             reverse('wgjoin:start', args=[other.pk]))
+
+    def open_link_and_begin_github(self, token=None):
+        self.client.get(reverse('wgjoin:verify', args=[token or make_link_token(self.wg.pk)]))
         response = self.client.get(reverse('wgjoin:github_start', args=[self.wg.pk]))
         return parse_qs(urlparse(response['Location']).query)['state'][0]
+
+    def finish_github(self, state):
+        return self.client.get(reverse('wgjoin:github_callback'), {'state': state, 'code': 'c'})
 
     @mock.patch.object(github, 'add_to_team', return_value=github.PENDING)
     @mock.patch.object(github, 'revoke_user_token')
     @mock.patch.object(github, 'login_name', return_value='octo-student')
     @mock.patch.object(github, 'exchange_code', return_value='gh-token')
-    def test_member_is_added_to_the_wg_team(self, exchange, login, revoke, add):
-        self.pass_google_check()
-        state = self.begin_github()
+    def test_github_account_is_added_to_the_wg_team(self, exchange, login, revoke, add):
+        state = self.open_link_and_begin_github()
         with self.assertLogs('wgjoin', level='INFO') as logs:
-            response = self.client.get(reverse('wgjoin:github_callback'), {'state': state, 'code': 'c'})
+            response = self.finish_github(state)
 
         add.assert_called_once_with('wg-countdown', 'octo-student')
         revoke.assert_called_once_with('gh-token')
@@ -194,26 +209,54 @@ class JoinFlowTests(TestCase):
         # Chat には本人が入る。クラブのクラスへ案内する
         self.assertContains(response, 'https://classroom.google.com/c/OTg3NjU0MzIxMDk4')
         self.assertNotIn(SESSION_KEY, self.client.session)
-        # ユーザー名はログに出さない
         self.assertNotIn('octo-student', '\n'.join(logs.output))
 
-    def test_github_step_needs_the_google_check_of_the_same_wg(self):
-        other = Wg.objects.create(code='WG-05', name='別', description='説明', status=Wg.ACTIVE,
-                                  github_team='wg-other')
-        self.pass_google_check()
-        self.assertRedirects(self.client.get(reverse('wgjoin:github_start', args=[other.pk])),
-                             reverse('wgjoin:start', args=[other.pk]))
+    @mock.patch.object(github, 'add_to_team', return_value=github.ACTIVE)
+    @mock.patch.object(github, 'revoke_user_token')
+    @mock.patch.object(github, 'login_name', return_value='octo-student')
+    @mock.patch.object(github, 'exchange_code', return_value='gh-token')
+    def test_a_link_registers_only_once(self, *mocks):
+        """転送されたリンクで、別の人の GitHub アカウントを後から足せない。"""
+        token = make_link_token(self.wg.pk)
+        self.finish_github(self.open_link_and_begin_github(token))
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('wgjoin:verify', args=[token])).status_code, 400)
 
     @mock.patch.object(github, 'add_to_team')
-    def test_expired_google_check_does_not_reach_github(self, add):
-        self.pass_google_check()
-        state = self.begin_github()
+    def test_github_after_the_time_limit_is_refused(self, add):
+        state = self.open_link_and_begin_github()
         session = self.client.session
         session[SESSION_KEY]['member_at'] = time.time() - 2 * 60 * 60
         session.save()
-        response = self.client.get(reverse('wgjoin:github_callback'), {'state': state, 'code': 'c'})
+        response = self.finish_github(state)
         self.assertContains(response, 'やり直してください')
         add.assert_not_called()
+
+
+class GoogleClientTests(SimpleTestCase):
+
+    @override_settings(**ENABLED)
+    @mock.patch.object(google, '_access_token', return_value='staff-token')
+    def test_checks_students_then_teachers_by_address(self, _):
+        with mock.patch.object(google, 'call', side_effect=[(404, {}), (200, {})]) as call_mock:
+            self.assertTrue(google.is_club_member(MEMBER, '987654321098'))
+        urls = [c.args[1] for c in call_mock.call_args_list]
+        self.assertTrue(urls[0].endswith('/courses/987654321098/students/bu1111111111%40bukkyo-u.ac.jp'))
+        self.assertTrue(urls[1].endswith('/courses/987654321098/teachers/bu1111111111%40bukkyo-u.ac.jp'))
+
+        with mock.patch.object(google, 'call', side_effect=[(404, {}), (404, {})]):
+            self.assertFalse(google.is_club_member(MEMBER, '987654321098'))
+
+    @override_settings(**ENABLED)
+    @mock.patch.object(google, '_access_token', return_value='staff-token')
+    def test_no_permission_is_an_error_not_a_non_member(self, _):
+        """運営がクラスの先生でなくなったら、全員を「メンバーでない」にしないで止める。"""
+        with mock.patch.object(google, 'call', return_value=(403, {})):
+            with self.assertRaises(ServiceError):
+                google.is_club_member(MEMBER, '987654321098')
+
+    def test_asks_only_to_read_the_roster(self):
+        self.assertEqual(google.SCOPES, ['https://www.googleapis.com/auth/classroom.rosters.readonly'])
 
 
 def _rsa_key():

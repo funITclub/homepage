@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}{{ wg.name }} に参加 — fun IT club{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="coming wgjoin">
+        <div class="card">
+            <p class="coming-label">// {{ wg.code }} に参加</p>
+            {# メンバーかどうかは画面に出さない（他人のアドレスで探れないように）。結果はメールで伝える。 #}
+            <h1>確認のメールを送りました</h1>
+            <p>
+                入力した大学のメールアドレスに、確認のメールを送りました。
+                メールの案内に沿って進めてください（リンクの期限は {{ minutes }} 分です）。
+            </p>
+            <p class="wgjoin-note">
+                数分たっても届かないときは、迷惑メールのフォルダーを確かめてください。
+                それでも見つからなければ、時間をおいてもう一度「WG に参加」から始めてください。
+            </p>
+            <a class="btn btn-primary" href="{% url 'home:wg_list' %}">WG一覧へ戻る</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1,18 +1,18 @@
 # wgjoin/google.py
 #
-# 本人の大学の Google アカウントで Classroom を操作する。
+# クラブの Classroom のクラスの名簿で、あるアドレスの人がメンバーかを確かめる。
 #
-# 使う権限は、本人の同意で借りる「Classroom のクラスを見る」だけ（運営のアカウントの権限は
-# 使わない）。クラブのクラスを読めるか＝そのクラスの生徒か先生か、でメンバーかを確かめる。
-# WG の授業も Chat のリンクもクラブのクラスの中にあるので、サイトが登録するものはない。
+# 名簿を読むのは運営のアカウント（クラスの先生）の権限。運営が一度だけ
+# `manage.py wgjoin_google_authorize` で許可し、そのリフレッシュトークンを
+# GOOGLE_OAUTH_REFRESH_TOKEN に置く（本番は Key Vault）。頼む権限は
+# 「名簿を見る」（classroom.rosters.readonly）だけ。
 #
-# 受け取ったトークンは処理が済んだらすぐ取り消し、どこにも保存しない。
-# メールアドレスなどのプロフィールは要求しない（openid / email を頼まない）。
+# 名簿はアドレスで1人ずつ引くだけで、一覧は取らない。結果もアドレスも保存しない。
 
 import base64
 import hashlib
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 
@@ -20,16 +20,46 @@ from .http import ServiceError, call
 
 AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URL = 'https://oauth2.googleapis.com/token'
-REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 CLASSROOM_API = 'https://classroom.googleapis.com/v1'
 
 SCOPES = [
-    'https://www.googleapis.com/auth/classroom.courses.readonly',
+    'https://www.googleapis.com/auth/classroom.rosters.readonly',
 ]
 
 
+def _access_token():
+    """運営のリフレッシュトークンから、その場限りのアクセストークンをもらう。"""
+    status, body = call('POST', TOKEN_URL, form={
+        'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+        'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        'refresh_token': settings.GOOGLE_OAUTH_REFRESH_TOKEN,
+        'grant_type': 'refresh_token',
+    })
+    token = body.get('access_token')
+    if status != 200 or not token:
+        # invalid_grant なら、運営が許可を取り消したかパスワードを変えた。許可し直す
+        raise ServiceError(f'Google のトークンを受け取れませんでした（{status} {body.get("error", "")}）')
+    return token
+
+
+def is_club_member(email, club_course_id):
+    """クラブのクラスの生徒か先生に、このアドレスの人がいるか。"""
+    headers = {'Authorization': f'Bearer {_access_token()}'}
+    for role in ('students', 'teachers'):
+        status, _ = call('GET', f'{CLASSROOM_API}/courses/{club_course_id}/{role}/{quote(email)}',
+                         headers=headers)
+        if status == 200:
+            return True
+        if status != 404:
+            # 403 なら、許可したアカウントがクラスの先生でない
+            raise ServiceError(f'Classroom の名簿を読めませんでした（{status}）')
+    return False
+
+
+# ---- 運営が一度だけ行う許可（manage.py wgjoin_google_authorize） ----
+
 def new_pkce():
-    """(code_verifier, code_challenge)。認可コードを横取りされても使えないようにする。"""
+    """(code_verifier, code_challenge)。"""
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
     return verifier, challenge
@@ -44,15 +74,14 @@ def authorize_url(state, challenge, redirect_uri):
         'state': state,
         'code_challenge': challenge,
         'code_challenge_method': 'S256',
-        'access_type': 'online',
-        'prompt': 'select_account',
-        'hd': settings.WG_JOIN_GOOGLE_DOMAIN,
+        # リフレッシュトークンを受け取るため。許可し直すときも必ず出させる
+        'access_type': 'offline',
+        'prompt': 'consent',
     }
     return f'{AUTH_URL}?{urlencode(params)}'
 
 
-def exchange_code(code, verifier, redirect_uri):
-    """認可コードをアクセストークンに換える。本人が権限を一部しか許可しなければ ServiceError。"""
+def exchange_for_refresh_token(code, verifier, redirect_uri):
     status, body = call('POST', TOKEN_URL, form={
         'code': code,
         'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
@@ -61,30 +90,9 @@ def exchange_code(code, verifier, redirect_uri):
         'grant_type': 'authorization_code',
         'code_verifier': verifier,
     })
-    token = body.get('access_token')
+    token = body.get('refresh_token')
     if status != 200 or not token:
-        raise ServiceError(f'Google のトークンを受け取れませんでした（{status} {body.get("error", "")}）')
-    granted = set((body.get('scope') or '').split())
-    if not set(SCOPES) <= granted:
-        revoke(token)
-        raise ServiceError('Classroom の権限が許可されませんでした')
+        raise ServiceError(f'リフレッシュトークンを受け取れませんでした（{status} {body.get("error", "")}）')
+    if not set(SCOPES) <= set((body.get('scope') or '').split()):
+        raise ServiceError('名簿を見る権限が許可されませんでした')
     return token
-
-
-def is_club_member(token, club_course_id):
-    """クラブのクラスを読めるか（＝そのクラスの生徒か先生か）。"""
-    status, body = call('GET', f'{CLASSROOM_API}/courses/{club_course_id}',
-                        headers={'Authorization': f'Bearer {token}'})
-    if status == 200:
-        return body.get('courseState') == 'ACTIVE'
-    if status in (403, 404):
-        return False
-    raise ServiceError(f'Classroom でメンバーか確かめられませんでした（{status}）')
-
-
-def revoke(token):
-    """トークンを取り消す。失敗しても処理は止めない（1時間で失効する）。"""
-    try:
-        call('POST', REVOKE_URL, form={'token': token})
-    except ServiceError:
-        pass

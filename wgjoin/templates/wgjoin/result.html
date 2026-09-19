@@ -25,23 +25,17 @@
             </p>
             <a class="btn btn-lg" href="{{ classroom_url }}" target="_blank" rel="noopener noreferrer">Classroom を開く</a>
 
-            {% elif outcome == 'not_member' %}
-            <h1>メンバーとして確認できませんでした</h1>
-            <p>
-                WG に参加できるのは fun IT club のメンバーだけです。
-                ログインした大学の Google アカウントが、Classroom のクラブのクラスに登録されていませんでした。<br>
-                まだ登録していない方は、先に参加の申し込みをしてください。
-                申し込み済みの方は、別の Google アカウントでログインしていないか確かめてください。
-            </p>
-            <a class="btn btn-primary" href="{% url 'home:join' %}">参加の申し込みへ</a>
-
-            {% elif outcome == 'cancelled' or outcome == 'github_cancelled' %}
+            {% elif outcome == 'github_cancelled' %}
             <h1>手続きを中止しました</h1>
             <p>もう一度参加するときは、WG 一覧の「WG に参加」から始めてください。</p>
 
+            {% elif outcome == 'link_used' %}
+            <h1>このリンクではもう登録されています</h1>
+            <p>同じリンクで、先に GitHub の登録が済んでいます。別の GitHub アカウントを登録するときは、もう一度「WG に参加」から始めてください。</p>
+
             {% elif outcome == 'expired' %}
             <h1>時間が経ったため、手続きをやり直してください</h1>
-            <p>メンバーの確認から時間が経ちました。もう一度「WG に参加」から始めてください。</p>
+            <p>メールのリンクを開いてから時間が経ちました。もう一度「WG に参加」から始めてください。</p>
 
             {% else %}
             <h1>手続きの途中で失敗しました</h1>
@@ -51,9 +45,7 @@
             </p>
             {% endif %}
 
-            {% if outcome != 'not_member' %}
             <a class="btn btn-primary" href="{% url 'home:wg_list' %}">WG一覧へ戻る</a>
-            {% endif %}
         </div>
     </section>
 </div>

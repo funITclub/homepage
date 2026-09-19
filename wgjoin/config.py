@@ -29,6 +29,7 @@ def is_enabled():
         club_course_id(),
         settings.GOOGLE_OAUTH_CLIENT_ID,
         settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        settings.GOOGLE_OAUTH_REFRESH_TOKEN,
         settings.GITHUB_APP_ID,
         settings.GITHUB_APP_CLIENT_ID,
         settings.GITHUB_APP_CLIENT_SECRET,
