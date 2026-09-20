@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}WG 立ち上げガイド — fun IT club{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="section">
+        <div class="section-head">
+            <p class="section-label">// WG 立ち上げガイド</p>
+        </div>
+
+        <p class="guide-lead">
+            WG の立ち上げから、パソコンの準備、毎日の開発までをまとめた資料です。
+            自分に関係するものを開いてください（PowerPoint のファイル）。
+        </p>
+
+        {# 資料は static/guide/ に置く。差し替えるときはファイルを上書きする。 #}
+        <div class="guide-list">
+            <div class="card guide-item">
+                <p class="guide-no">00</p>
+                <div class="guide-body">
+                    <h2>概要</h2>
+                    <p>全体の流れ、運営と WG の分担、守ること、WG のライフサイクル。</p>
+                    <p class="guide-who">全員</p>
+                </div>
+                <a class="btn btn-primary" href="{% static 'guide/00_概要.pptx' %}">開く</a>
+            </div>
+
+            <div class="card guide-item">
+                <p class="guide-no">01</p>
+                <div class="guide-body">
+                    <h2>リポジトリの作り方と運用</h2>
+                    <p>WG のリポジトリとチームの用意、サイトへの掲載、メンバーの交代と終了。</p>
+                    <p class="guide-who">運営</p>
+                </div>
+                <a class="btn btn-primary" href="{% static 'guide/01_リポジトリの作り方と運用.pptx' %}">開く</a>
+            </div>
+
+            <div class="card guide-item">
+                <p class="guide-no">02</p>
+                <div class="guide-body">
+                    <h2>パソコンの準備</h2>
+                    <p>WG に参加してから、VS Code と Docker Desktop を入れ、サイトを起動するまでの 8 つの手順。</p>
+                    <p class="guide-who">メンバー全員・初回だけ</p>
+                </div>
+                <a class="btn btn-primary" href="{% static 'guide/02_パソコンの準備.pptx' %}">開く</a>
+            </div>
+
+            <div class="card guide-item">
+                <p class="guide-no">03</p>
+                <div class="guide-body">
+                    <h2>開発の進め方</h2>
+                    <p>毎日の始め方と終わり方、ブランチ → プルリクエスト → マージ、レビューのしかた。</p>
+                    <p class="guide-who">メンバー全員・毎日</p>
+                </div>
+                <a class="btn btn-primary" href="{% static 'guide/03_開発の進め方.pptx' %}">開く</a>
+            </div>
+        </div>
+
+        <p class="guide-note">
+            手順の本体は
+            <a href="https://github.com/funITclub/homepage/blob/main/docs/development.md" target="_blank" rel="noopener noreferrer">開発環境と手順</a>
+            にもあります（こちらは常に最新）。分からないことは
+            <a href="mailto:{{ public_contact }}">{{ public_contact }}</a> までどうぞ。
+        </p>
+    </section>
+</div>
+{% endblock %}

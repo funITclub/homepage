@@ -608,6 +608,68 @@ a:hover {
     margin: 0 auto;
 }
 
+/* ---------- WG 立ち上げガイド（/guide/） ---------- */
+
+.guide-lead {
+    margin: 0 0 24px;
+    color: var(--muted);
+    font-size: .9rem;
+}
+
+.guide-list {
+    display: grid;
+    gap: 14px;
+}
+
+.guide-item {
+    display: grid;
+    grid-template-columns: 56px 1fr 120px;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 22px;
+}
+
+.guide-no {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-ink);
+}
+
+.guide-body h2 {
+    margin: 0 0 4px;
+    font-size: 1rem;
+    color: var(--ink);
+}
+
+.guide-body p {
+    margin: 0;
+    font-size: .84rem;
+    line-height: 1.7;
+    color: var(--ink-2);
+}
+
+.guide-who {
+    margin-top: 4px !important;
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--accent-ink);
+}
+
+.guide-note {
+    margin: 24px 0 0;
+    font-size: .84rem;
+    color: var(--muted);
+}
+
+@media (max-width: 720px) {
+    .guide-item {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+}
+
 /* ---------- WG への参加（/wg/<id>/join/） ---------- */
 /* 作成中ページと同じ白いカードに、手順と注記を足す */
 

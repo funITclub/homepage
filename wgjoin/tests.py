@@ -133,6 +133,8 @@ class JoinFlowTests(TestCase):
         self.assertEqual(outbox.outbox[0].to, [MEMBER])
         self.assertIn('http://testserver/wg/join/verify/', self.link_in_mail())
         self.assertIn('https://github.com/funITclub/wg-countdown', outbox.outbox[0].body)
+        # 次にすること（パソコンの準備）の資料へ案内する
+        self.assertIn('http://testserver/guide/', outbox.outbox[0].body)
         # リンクにアドレスは入れない
         self.assertNotIn('bu1111111111', self.link_in_mail())
 
@@ -211,6 +213,8 @@ class JoinFlowTests(TestCase):
         self.assertContains(response, 'https://classroom.google.com/c/OTg3NjU0MzIxMDk4')
         # クローンする WG のリポジトリへ案内する（リポジトリはチームと同じ名前）
         self.assertContains(response, 'https://github.com/funITclub/wg-countdown')
+        # 次にすること（パソコンの準備）の資料へ案内する
+        self.assertContains(response, reverse('home:guide'))
         self.assertNotIn(SESSION_KEY, self.client.session)
         self.assertNotIn('octo-student', '\n'.join(logs.output))
 

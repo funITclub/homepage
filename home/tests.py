@@ -1,10 +1,12 @@
 import time
 from datetime import timedelta
+from pathlib import Path
 from unittest import mock
 
 from django import forms
 from django.conf import settings
 from django.core import mail
+from django.templatetags.static import static
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -519,3 +521,32 @@ class ExternalLinkTests(TestCase):
 
         self.assertIn('href="https://example.com/work" target="_blank" rel="noopener noreferrer"', html)
         self.assertNotIn('?from=works" target="_blank"', html)
+
+
+class GuideTests(TestCase):
+    """WG 立ち上げガイド（/guide/）。参加の完了画面とメールからの案内先。"""
+
+    def setUp(self):
+        self.url = reverse('home:guide')
+
+    def test_opens_without_login(self):
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+    def test_links_to_every_document(self):
+        response = self.client.get(self.url)
+        for name in ['00_概要', '01_リポジトリの作り方と運用',
+                     '02_パソコンの準備', '03_開発の進め方']:
+            with self.subTest(name=name):
+                self.assertContains(response, static(f'guide/{name}.pptx'))
+
+    def test_documents_are_in_place(self):
+        """テンプレートのリンク先が実際にあること（資料を移動したら気づけるように）。"""
+        for path in settings.STATICFILES_DIRS:
+            for name in ['00_概要', '01_リポジトリの作り方と運用',
+                         '02_パソコンの準備', '03_開発の進め方']:
+                with self.subTest(name=name):
+                    self.assertTrue((Path(path) / 'guide' / f'{name}.pptx').exists())
+
+    def test_not_in_the_nav(self):
+        """メンバー向けのページなので、初めて来た人に見せるナビには出さない。"""
+        self.assertNotContains(self.client.get(reverse('home:index')), self.url)

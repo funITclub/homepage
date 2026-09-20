@@ -26,7 +26,9 @@
             <a class="btn btn-lg" href="{{ classroom_url }}" target="_blank" rel="noopener noreferrer">Classroom を開く</a>
             <p class="wgjoin-note">
                 WG のリポジトリ：<a href="{{ repo_url }}" target="_blank" rel="noopener noreferrer">{{ repo_url }}</a><br>
-                パソコンの準備（WG 立ち上げガイドの資料 02）で、この URL を VS Code にクローンします。
+                次は<strong>パソコンの準備</strong>です。
+                <a href="{% url 'home:guide' %}">WG 立ち上げガイド</a>の「資料 02 パソコンの準備」に沿って、
+                VS Code と Docker Desktop を入れ、この URL をクローンします。
             </p>
 
             {% elif outcome == 'github_cancelled' %}

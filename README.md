@@ -29,10 +29,11 @@ edit/                  編集画面の枠（ログイン・メニュー・共通
   templates/edit/      base（共通レイアウト）/ login / index（メニュー）
 templates/base.html    公開サイトのヘッダー・ナビ・フッター（編集画面では使わない）
 static/css/funitclub.css   デザイン一式（公開サイト・編集画面とも）
+static/guide/          WG 立ち上げガイドの資料（pptx 4 本）。/guide/ から配る
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
-docs/                  補足資料（開発の手順・WG 立ち上げガイド・セキュリティ対応一覧など）。デプロイの zip からは除外する
+docs/                  補足資料（開発の手順・セキュリティ対応一覧など）。デプロイの zip からは除外する
 .devcontainer/         開発環境（VS Code の Dev Container）の定義。デプロイの zip からは除外する
 .vscode/               VS Code の共通設定（起動構成・タスク）。デプロイの zip からは除外する
 ```
@@ -49,6 +50,7 @@ docs/                  補足資料（開発の手順・WG 立ち上げガイド
 | `/join/apply/done/` | 申し込みの完了ページ（送信後の行き先） |
 | `/coming-soon/` | 作成中プレースホルダ |
 | `/wg/<id>/join/` | WG に参加（大学のアドレスの確認メール → GitHub のログインで進む。設定がそろったときだけ出る） |
+| `/guide/` | WG 立ち上げガイド（資料 00〜03 の置き場）。ナビには出さず、参加の完了画面と確認のメールから案内する |
 
 ここまでがログイン不要の公開ページ。以下はログイン必須。
 
@@ -242,6 +244,10 @@ WG 一覧の各カードの「WG に参加」から、**クラブのメンバー
             → WG の GitHub のチームに追加。まだ org にいない人には、そのアカウントあてに招待が届く
             → 結果の画面で、Classroom のクラスの「授業」にある WG の Chat のリンクへ案内する
 ```
+
+参加したところが、メンバーが**開発の手順に初めて触れる**ところになる。確認のメールと結果の
+画面の両方から `/guide/`（WG 立ち上げガイド）へ案内し、「次はパソコンの準備（資料 02）」と
+書いておく。資料は `static/guide/` に置いてあり、差し替えるときはファイルを上書きする。
 
 - **会員の情報はサイトに持たない**（会の方針）。名簿は Classroom のクラブのクラスで、WG の
   参加状態は GitHub のチームと Chat スペースのメンバーで分かる。

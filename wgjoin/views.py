@@ -79,7 +79,8 @@ def start(request, pk):
     try:
         if google.is_club_member(email, club_course_id()):
             url = request.build_absolute_uri(reverse('wgjoin:verify', args=[make_link_token(wg.pk)]))
-            mail.send_link(email, wg, url, repo_url(wg.github_team))
+            mail.send_link(email, wg, url, repo_url(wg.github_team),
+                           request.build_absolute_uri(reverse('home:guide')))
             logger.info('WG への参加: %s 確認のメールを送りました', wg.code)
         else:
             mail.send_not_member(email, wg, request.build_absolute_uri(reverse('home:join')))

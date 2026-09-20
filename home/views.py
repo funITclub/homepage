@@ -198,6 +198,18 @@ class JoinView(NavMixin, TemplateView):
 
 
 @method_decorator(login_not_required, name='dispatch')
+class GuideView(NavMixin, TemplateView):
+    """WG 立ち上げガイド（資料）の置き場。
+
+    「WG に参加」の完了画面と確認のメールから案内する。ナビには置かない
+    （メンバー向けで、初めて来た人に見せるページではないため）。
+    """
+
+    template_name = 'home/guide.html'
+    nav = ''
+
+
+@method_decorator(login_not_required, name='dispatch')
 class JoinApplyView(NavMixin, FormView):
     """参加を申し込む。案内（/join/）とは別ページにして、フォームだけを置く。
 

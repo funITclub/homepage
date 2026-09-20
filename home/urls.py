@@ -15,6 +15,9 @@ urlpatterns = [
     path('join/apply/', views.JoinApplyView.as_view(), name='join_apply'),
     path('join/apply/done/', views.JoinDoneView.as_view(), name='join_apply_done'),
 
+    # WG 立ち上げガイド（資料）。ナビには置かず、参加の完了画面とメールから案内する。
+    path('guide/', views.GuideView.as_view(), name='guide'),
+
     # サブアプリ未実装のためのプレースホルダ
     path('coming-soon/', views.ComingSoonView.as_view(), name='coming_soon'),
 ]
