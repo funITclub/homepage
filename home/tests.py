@@ -535,7 +535,8 @@ class GuideTests(TestCase):
     def test_links_to_every_document(self):
         response = self.client.get(self.url)
         for name in ['00_概要', '01_リポジトリの作り方と運用',
-                     '02_パソコンの準備', '03_開発の進め方']:
+                     '02_パソコンの準備', '03_開発の進め方',
+                     '04_アプリケーション構成']:
             with self.subTest(name=name):
                 self.assertContains(response, static(f'guide/{name}.pptx'))
 
@@ -543,7 +544,8 @@ class GuideTests(TestCase):
         """テンプレートのリンク先が実際にあること（資料を移動したら気づけるように）。"""
         for path in settings.STATICFILES_DIRS:
             for name in ['00_概要', '01_リポジトリの作り方と運用',
-                         '02_パソコンの準備', '03_開発の進め方']:
+                         '02_パソコンの準備', '03_開発の進め方',
+                         '04_アプリケーション構成']:
                 with self.subTest(name=name):
                     self.assertTrue((Path(path) / 'guide' / f'{name}.pptx').exists())
 

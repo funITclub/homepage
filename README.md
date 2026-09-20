@@ -15,9 +15,9 @@
 ```
 config/                設定（common / 本番 settings.py / 開発 settings_dev.py）
 .env.example           ローカルの秘密情報のひな形（.env にコピーして使う。.env は git に入らない）
-home/                  公開サイトの4ページ＋作成中ページ（モデルは持たず、表示だけ）
+home/                  公開サイトの6ページ＋作成中ページ（モデルは持たず、表示だけ）
   forms.py             参加フォーム（/join/apply/）。入力内容をメールで送るだけで DB には残さない
-  templates/home/      index / wg_list / work_list / join / join_apply / coming_soon
+  templates/home/      index / news_list / wg_list / work_list / join / join_apply / guide / coming_soon
 news/                  お知らせ（モデル＋編集画面＋admin 登録）
 catalog/               WG紹介・成果物紹介（モデル＋編集画面＋admin 登録）
 wgjoin/                WG への参加（/wg/<id>/join/）。Classroom でメンバーか確かめ、GitHub のチームに登録する
@@ -29,7 +29,7 @@ edit/                  編集画面の枠（ログイン・メニュー・共通
   templates/edit/      base（共通レイアウト）/ login / index（メニュー）
 templates/base.html    公開サイトのヘッダー・ナビ・フッター（編集画面では使わない）
 static/css/funitclub.css   デザイン一式（公開サイト・編集画面とも）
-static/guide/          WG 立ち上げガイドの資料（pptx 4 本）。/guide/ から配る
+static/guide/          WG 立ち上げガイドの資料（pptx 5 本）。/guide/ から配る
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
@@ -43,6 +43,7 @@ docs/                  補足資料（開発の手順・セキュリティ対応
 | URL | 内容 |
 |---|---|
 | `/` | TOP（ヒーロー・活動サマリ・お知らせ） |
+| `/news/` | お知らせ一覧 |
 | `/wg/` | WG一覧 |
 | `/works/` | 成果物 |
 | `/join/` | 参加する（活動の案内） |
@@ -50,7 +51,7 @@ docs/                  補足資料（開発の手順・セキュリティ対応
 | `/join/apply/done/` | 申し込みの完了ページ（送信後の行き先） |
 | `/coming-soon/` | 作成中プレースホルダ |
 | `/wg/<id>/join/` | WG に参加（大学のアドレスの確認メール → GitHub のログインで進む。設定がそろったときだけ出る） |
-| `/guide/` | WG 立ち上げガイド（資料 00〜03 の置き場）。ナビには出さず、参加の完了画面と確認のメールから案内する |
+| `/guide/` | WG 立ち上げガイド（資料 00〜04 の置き場）。ナビには出さず、参加の完了画面と確認のメールから案内する |
 
 ここまでがログイン不要の公開ページ。以下はログイン必須。
 
