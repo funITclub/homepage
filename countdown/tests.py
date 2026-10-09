@@ -208,8 +208,13 @@ class NotifyTests(TestCase):
         link = self.link_in_mail()
         # リンクにアドレスは入れない
         self.assertNotIn('taro@', link)
+        # 登録する前に、解除はメールからしかできないことを伝える
+        self.assertIn('メールのリンクからしか解除できません', mail.outbox[0].body)
+        self.assertContains(self.client.get(self.mail_url), 'メールのリンクからしか解除できません')
         # 開いただけでは登録しない（メールの検査で自動的に開かれることがある）
-        self.assertContains(self.client.get(link), '受け取る')
+        page = self.client.get(link)
+        self.assertContains(page, '受け取る')
+        self.assertContains(page, 'メールのリンクからしか解除できません')
         self.board.refresh_from_db()
         self.assertEqual(self.board.notify_email, '')
 
@@ -276,11 +281,55 @@ class NotifyTests(TestCase):
         self.assertNotIn(
             self.ADDRESS, self.client.get(reverse('countdown:board_list', args=['taro'])).content.decode())
 
-    def test_remove_clears_the_address(self):
+    def test_registered_address_cannot_be_changed_or_removed_on_screen(self):
+        """ID を知っている人が、止めたり自分のアドレスに差し替えたりできない。"""
         self.register()
+        mail.outbox.clear()
+
+        html = self.client.get(self.mail_url).content.decode()
+        self.assertNotIn('name="email"', html)
+
+        self.assertEqual(
+            self.client.post(self.mail_url, {'email': 'jiro@example.com'}).status_code, 409)
         self.client.post(self.mail_url, {'action': 'remove'})
+        self.assertEqual(mail.outbox, [])
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.notify_email, self.ADDRESS)
+
+    def test_confirm_link_issued_before_registration_cannot_replace(self):
+        self.client.post(self.mail_url, {'email': 'jiro@example.com'})
+        jiro_link = self.link_in_mail()
+        self.register()
+
+        self.assertEqual(self.client.post(jiro_link).status_code, 400)
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.notify_email, self.ADDRESS)
+
+    def test_stop_mail_goes_to_the_registered_address(self):
+        self.register()
+        mail.outbox.clear()
+
+        self.assertRedirects(self.client.post(self.mail_url, {'action': 'stop'}), self.mail_url)
+        self.assertEqual(mail.outbox[0].to, [self.ADDRESS])
+        # 送っただけでは解除されない
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.notify_email, self.ADDRESS)
+
+        self.client.post(self.link_in_mail())
         self.board.refresh_from_db()
         self.assertEqual(self.board.notify_email, '')
+        # 解除したあとは、別のアドレスを登録できる
+        self.assertEqual(
+            self.client.post(self.mail_url, {'email': 'jiro@example.com'}).status_code, 302)
+
+    def test_stop_mails_are_limited(self):
+        self.register()
+        with override_settings(COUNTDOWN_CONFIRM_SEND_LIMITS=((10, 3600), (1, 3600))):
+            self.assertEqual(self.client.post(self.mail_url, {'action': 'stop'}).status_code, 429)
+
+    def test_stop_without_address_sends_nothing(self):
+        self.client.post(self.mail_url, {'action': 'stop'})
+        self.assertEqual(mail.outbox, [])
 
     def test_shared_board_has_no_mail_settings(self):
         self.assertEqual(self.client.get('/countdown/events/mail/').status_code, 404)

@@ -10,7 +10,11 @@
 #          リンクにアドレスは入れない。
 # 送信   … 1日1通。印（CountEvent.notify）の付いた、当日を含むこれからの予定をまとめる。
 #          対象がない日は送らない。同じ日に2通送らないよう Board.notified_on に控える。
-# 解除   … 毎回のメールに解除のリンクを付ける。解除するとアドレスを消す。
+# 解除   … 登録されたアドレスに届くメールのリンクからだけできる。解除するとアドレスを消す。
+#          ID を知っている人が、画面から通知を止めたり自分のアドレスに差し替えたりできないよう、
+#          通知先がある間は画面からの変更・解除を受け付けない（変えたいときは解除して登録し直す）。
+#          解除のリンクは毎回の通知に付けるほか、画面から「解除用のメール」として
+#          登録されたアドレスへ送れる（通知が届かない日でも止められるように）。
 #
 # アドレスはログに出さない。
 
@@ -70,7 +74,8 @@ def read_confirm_token(token, consume=False):
         raise LinkInvalid from e
     email = decrypt(cache.get(_pending_key(data['n'])))
     board = Board.objects.filter(pk=data['b']).first()
-    if not email or board is None:
+    # 通知先がすでにあるなら、差し替えになるので受け付けない
+    if not email or board is None or board.notify_email:
         raise LinkInvalid
     if consume:
         cache.delete(_pending_key(data['n']))
@@ -114,7 +119,11 @@ def send_confirmation(board, email, url):
             f'次のリンクを開いて「受け取る」を押すと、登録されます（{minutes}分以内）。\n'
             f'{url}\n\n'
             '登録すると、印を付けたカウントダウンの残り日数が、当日まで毎日0時ごろに1通届きます。\n'
-            '届くメールのリンクから、いつでも止められます。\n\n'
+            '\n'
+            '■ 解除について\n'
+            '登録したあとは、このアドレスに届くメールのリンクからしか解除できません\n'
+            '（画面からは変更も解除もできません）。解除のリンクは毎回の通知に付いています。\n'
+            f'このアドレスのメールを受け取れなくなったときは、{public_contact_email()} までお知らせください。\n\n'
             '■ このメールに心当たりがない場合\n'
             '第三者があなたのメールアドレスを入力した可能性があります。\n'
             'このメールを破棄していただければ、登録されず、今後メールは届きません。\n\n'
@@ -122,6 +131,24 @@ def send_confirmation(board, email, url):
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[email],
+    ).send()
+
+
+def send_stop_link(board, url):
+    """登録されているアドレスあて。リンクを開いて「通知を止める」を押すと解除される。"""
+    EmailMessage(
+        subject=f'[{settings.SITE_NAME}] カウントダウンのメール通知の解除',
+        body=(
+            f'カウントアップ＆ダウンの ID「{board.code}」で、メール通知を解除する手続きがありました。\n\n'
+            '次のリンクを開いて「通知を止める」を押すと、通知が止まり、登録されているアドレスが消えます。\n'
+            f'{url}\n\n'
+            '■ このメールに心当たりがない場合\n'
+            'この ID を知っている人が手続きをした可能性があります。\n'
+            'このメールを破棄していただければ、通知はそのまま続きます。\n\n'
+            + _footer()
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[board.notify_email],
     ).send()
 
 

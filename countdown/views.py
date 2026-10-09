@@ -27,6 +27,7 @@ from django.utils.decorators import method_decorator
 from django.views import generic
 from django.views.decorators.csrf import csrf_exempt
 
+from edit.models import public_contact_email
 from home.netutils import client_ip
 
 from . import notify
@@ -166,7 +167,12 @@ class EventDeleteView(BoardMixin, generic.DeleteView):
 
 
 class MailSettingsView(BoardMixin, generic.FormView):
-    """その ID の通知先。登録・変更は確認のメールを経て、解除はその場で行う。"""
+    """その ID の通知先。
+
+    登録は確認のメールを経る。通知先がある間は、画面からは変更も解除もできない
+    （ID を知っている人が止めたり、自分のアドレスに差し替えたりできないように）。
+    解除は登録されたアドレスに届くメールのリンクからだけで、ここからはそのメールを送れる。
+    """
 
     template_name = 'countdown/mail_settings.html'
     form_class = NotifyEmailForm
@@ -175,30 +181,55 @@ class MailSettingsView(BoardMixin, generic.FormView):
     def get_success_url(self):
         return self.board.mail_url
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['contact'] = public_contact_email()
+        return context
+
+    def _error(self, message, status, form=None):
+        form = form or self.get_form_class()()
+        return self.render_to_response(
+            self.get_context_data(form=form, mail_error=message), status=status)
+
+    def _send(self, email, send, form=None):
+        """送りすぎと送信の失敗を確かめながら送る。だめなら、その画面を返す。"""
+        if not notify.allow_send(client_ip(self.request), email):
+            return self._error(
+                '短い時間に何度も送られています。しばらく時間をおいてから、もう一度お試しください。', 429, form)
+        try:
+            send()
+        except (smtplib.SMTPException, OSError, BadHeaderError) as e:
+            # 例外の文言には宛先のアドレスが入ることがあるので、種類だけ残す
+            logger.error('カウントダウンのメールを送れませんでした（%s）', type(e).__name__)
+            return self._error('メールを送れませんでした。時間をおいて、もう一度お試しください。', 502, form)
+        return None
+
     def post(self, request, *args, **kwargs):
-        if request.POST.get('action') == 'remove':
-            self.board.set_notify_email('')
-            messages.success(request, 'メール通知を止め、登録されていたアドレスを消しました。')
+        registered = self.board.notify_email
+        if request.POST.get('action') == 'stop':
+            if not registered:
+                return redirect(self.get_success_url())
+            url = request.build_absolute_uri(
+                reverse('countdown:notify_stop', args=[notify.make_stop_token(self.board)]))
+            failed = self._send(registered, lambda: notify.send_stop_link(self.board, url))
+            if failed:
+                return failed
+            messages.success(
+                request, '登録されているアドレスに、解除用のメールを送りました。メールのリンクから解除できます。')
             return redirect(self.get_success_url())
+        if registered:
+            return self._error(
+                '通知先はすでに登録されています。変えるときは、いちど解除してから登録し直してください。', 409)
         return super().post(request, *args, **kwargs)
 
     def form_valid(self, form):
         email = form.cleaned_data['email']
-        if not notify.allow_send(client_ip(self.request), email):
-            form.add_error(None, '短い時間に何度も送られています。しばらく時間をおいてから、もう一度お試しください。')
-            return self.render_to_response(self.get_context_data(form=form), status=429)
-
         url = self.request.build_absolute_uri(
             reverse('countdown:notify_confirm', args=[notify.make_confirm_token(self.board, email)])
         )
-        try:
-            notify.send_confirmation(self.board, email, url)
-        except (smtplib.SMTPException, OSError, BadHeaderError) as e:
-            # 例外の文言には宛先のアドレスが入ることがあるので、種類だけ残す
-            logger.error('カウントダウンの確認のメールを送れませんでした（%s）', type(e).__name__)
-            form.add_error(None, 'メールを送れませんでした。時間をおいて、もう一度お試しください。')
-            return self.render_to_response(self.get_context_data(form=form), status=502)
-
+        failed = self._send(email, lambda: notify.send_confirmation(self.board, email, url), form)
+        if failed:
+            return failed
         messages.success(
             self.request,
             '確認のメールを送りました。メールのリンクを開くと登録されます（{}分以内）。'.format(
@@ -235,7 +266,8 @@ class NotifyLinkView(generic.View):
         if request.method == 'POST':
             messages.success(request, self.apply(board, email))
             return redirect(board.mail_url)
-        return render(request, self.template_name, {'action': self.action, 'board': board})
+        return render(request, self.template_name, {
+            'action': self.action, 'board': board, 'contact': public_contact_email()})
 
 
 class NotifyConfirmView(NotifyLinkView):

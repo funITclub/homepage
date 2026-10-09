@@ -14,7 +14,8 @@
             {% if action == 'invalid' %}
             <p class="editor-confirm">このリンクは使えません。</p>
             <p class="cd-card-desc">
-                期限が切れているか、すでに使われています。
+                期限が切れているか、すでに使われています。通知先がすでに登録されている ID では、
+                いちど解除するまで別のアドレスを登録できません。
                 もう一度、一覧の「メール通知」から手続きしてください。
             </p>
             {% else %}
@@ -22,7 +23,11 @@
             <p class="editor-confirm">ID「{{ board.code }}」のカウントダウンを、このメールアドレスで受け取ります。</p>
             <p class="cd-card-desc">
                 印を付けたカウントダウンの残り日数が、当日まで毎日0時ごろに1通届きます。
-                届くメールのリンクから、いつでも止められます。
+            </p>
+            <p class="cd-mail-privacy">
+                <i class="fas fa-circle-exclamation me-1"></i>登録したあとは、<strong>このアドレスに届くメールのリンクからしか解除できません</strong>
+                （画面からは変更も解除もできません）。
+                このアドレスのメールを受け取れなくなったときは、{{ contact }} までお知らせください。
             </p>
             {% else %}
             <p class="editor-confirm">ID「{{ board.code }}」のメール通知を止めます。</p>

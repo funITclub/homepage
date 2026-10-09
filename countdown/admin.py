@@ -14,6 +14,15 @@ class BoardAdmin(admin.ModelAdmin):
     search_fields = ('code',)
     readonly_fields = ('created_at', 'notified_on')
 
+    actions = ['clear_notify_email']
+
+    @admin.action(description='選んだ ID の通知先を消す（通知を止める）')
+    def clear_notify_email(self, request, queryset):
+        """本人がメールを受け取れなくなり、自分では解除できないときのため。"""
+        for board in queryset:
+            board.set_notify_email('')
+        self.message_user(request, f'{queryset.count()} 件の通知先を消しました。')
+
     @admin.display(description='通知先', boolean=True)
     def has_notify_email(self, obj):
         return bool(obj.notify_email_enc)
