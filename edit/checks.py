@@ -1,15 +1,18 @@
 # edit/checks.py
 #
-# 定期点検。いまのところ SMTP のシークレット期限だけを見ている。
+# 定期点検。SMTP のシークレット期限を見るのと、FE 対策アプリの使われなくなった
+# 一時的な記録の掃除をする。
 #
 # シークレットが切れると参加フォームの送信が止まるが、「申し込みが来ない」状態と
 # 区別がつかず気づけない。切れる前に知らせる。
 
+import io
 import logging
 from datetime import date
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.management import call_command
 
 from .notify import notify_admins
 
@@ -85,6 +88,17 @@ def warn_if_secret_expiring(today=None):
     )
 
 
+def purge_fe_temp_learners():
+    """FE 対策アプリ（/fe/）を「履歴を残さず」に使った記録のうち、使われなくなったものを消す。
+
+    公開アプリなので、ボタンを押されるたびに記録が1件増える。放っておくと誰も参照しない
+    まま増え続けるので、ここで毎日消す。ID を登録した記録には触らない。
+    """
+    out = io.StringIO()
+    call_command('purge_temp_learners', stdout=out)
+    logger.info(out.getvalue().strip())
+
+
 def run_daily_checks():
     """1日1回だけ点検する。リクエストのたびに走らせないためのゲート。"""
     key = 'daily-checks-done'
@@ -100,4 +114,8 @@ def run_daily_checks():
         warn_if_secret_expiring()
     except Exception:
         logger.exception('定期点検に失敗しました')
+    try:
+        purge_fe_temp_learners()
+    except Exception:
+        logger.exception('FE 対策アプリの一時的な記録の掃除に失敗しました')
     return True

@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'edit',        # 編集画面（ログイン・メニュー・共通レイアウト）
     'countdown',   # サブアプリ「カウントアップ＆ダウン」（ログイン不要の公開ボード）
     'wgjoin',      # WG への参加（Classroom と GitHub への登録。会員の情報は持たない）
+    'fe',          # サブアプリ「FE 基本情報技術者試験 対策」（ログイン不要。成績はアプリ内の ID ごと）
 ]
 
 MIDDLEWARE = [
@@ -121,6 +122,16 @@ STATICFILES_DIRS = [
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# FE 対策アプリ（/fe/）の問題 JSON の上限。fe.forms がここを見る。
+# 技術解説を含めると 1MB を超える（小分類 96 本ぶんの解説と問題 200 問で 1.1MB の実測）。
+# これを受け取れる大きさにし、取り違えを疑う線として上限も置く。
+FE_MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+
+# ファイル本体は multipart で送られ、この値の対象外になる（Django の仕様）。
+# 効くのは取り込みの確認画面で、内容を hidden の欄に載せて送り直すとき。
+# 上の上限と食い違わないよう合わせておく。
+DATA_UPLOAD_MAX_MEMORY_SIZE = FE_MAX_UPLOAD_BYTES + 1024 * 1024
 
 # サイト共通の表示情報（テンプレートから参照）
 SITE_NAME = 'fun IT club'

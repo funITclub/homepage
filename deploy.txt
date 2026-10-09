@@ -25,8 +25,8 @@
 #
 # 結果は GitHub の Actions タブで見る。失敗したら下の「状態の確認」とログを見る。
 #
-# migrate と createcachetable は、アプリの起動時に startup.sh が実行する。
-# デプロイのたびにコンテナが作り直されるので、手で流す必要はない。
+# migrate と createcachetable、seed_fe（FE 対策アプリの分類）は、アプリの起動時に
+# startup.sh が実行する。デプロイのたびにコンテナが作り直されるので、手で流す必要はない。
 #   - migrate が失敗するとアプリは起動しない。デプロイも失敗扱いになり、
 #     GitHub Actions が赤くなる。原因はログ（az webapp log tail）の
 #     「startup.sh:」の行のあたりを見る。

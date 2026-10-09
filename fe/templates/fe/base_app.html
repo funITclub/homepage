@@ -1,0 +1,55 @@
+{% comment %}
+FE 対策アプリの共通レイアウト。
+公開サイト（templates/base.html）とは別立てで、公開ページへのリンクは持たない
+（成果物ページに載せた URL から辿ってくる想定。countdown と同じ）。
+
+hirahira_room からの移植で、画面は Bootstrap の素のクラスで組んである。
+funitclub.css は .card / .btn / .badge / .container を上書きするので、ここでは読まない
+（templates/_assets.html を include しない）。
+{% endcomment %}<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="基本情報技術者試験（FE）の対策アプリ。科目A・科目Bの1問1答と、苦手な分野の重点出題。登録なしで使えます。">
+    <title>{% block title %}FE 基本情報対策 | fun IT club{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23001E3C'/><text x='16' y='22' font-size='14' font-family='monospace' fill='%235BB8FF' text-anchor='middle'>FE</text></svg>">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://use.fontawesome.com/releases/v5.15.3/js/all.js" crossorigin="anonymous"></script>
+    {% block head %}{% endblock %}
+</head>
+<body class="d-flex flex-column min-vh-100">
+
+<nav class="navbar navbar-dark" style="background-color: #001E3C;">
+    <div class="container px-5">
+        <a class="navbar-brand fs-6" href="{% url 'fe:index' %}">FE 基本情報技術者試験 対策</a>
+    </div>
+</nav>
+
+{% block header %}{% endblock %}
+
+{% if messages %}
+<div class="container px-5 mt-3">
+    {% for message in messages %}
+    <div class="alert alert-{% if message.level_tag == 'error' %}danger{% else %}{{ message.level_tag|default:'info' }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<main class="flex-grow-1">
+    {% block contents %}{% endblock %}
+</main>
+
+<footer class="py-4" style="background-color: #001E3C;">
+    <div class="container px-5">
+        <p class="m-0 text-center text-white small">fun IT club — FE 基本情報技術者試験 対策　&copy; {% now "Y" %} fun IT club</p>
+    </div>
+</footer>
+
+{% include "_scripts.html" %}
+{% block extra_js %}{% endblock %}
+</body>
+</html>

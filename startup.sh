@@ -22,6 +22,10 @@ python manage.py migrate --noinput
 # 参加フォームの連続送信の検知に使うキャッシュ用テーブル。既にあれば何もしない。
 python manage.py createcachetable
 
+# FE 対策アプリ（/fe/）の分類と計算問題のテンプレート。何度流しても同じ結果になる。
+# 問題そのものは入らない（画面の「問題の管理」から JSON で取り込む）。
+python manage.py seed_fe
+
 echo "startup.sh: starting gunicorn"
 # 以前 Oryx が自動生成していた起動と同じ設定（sync ワーカー1つ・タイムアウト600秒・アクセスログあり）。
 exec python -m gunicorn --bind=0.0.0.0:"${PORT:-8000}" --timeout 600 \

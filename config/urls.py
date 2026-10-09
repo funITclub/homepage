@@ -20,4 +20,8 @@ urlpatterns = [
     # サブアプリ「カウントアップ＆ダウン」（ログイン不要）。公開サイトとは相互に
     # リンクせず、成果物紹介に登録した URL から辿る。
     path('countdown/', include('countdown.urls', namespace='countdown')),
+
+    # サブアプリ「FE 基本情報技術者試験 対策」（ログイン不要）。成績はアプリ内の ID ごとに持つ。
+    # 問題集の管理（/fe/manage/）だけは編集画面のログインが要る。
+    path('fe/', include('fe.urls', namespace='fe')),
 ]
