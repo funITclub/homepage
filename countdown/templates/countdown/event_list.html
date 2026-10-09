@@ -8,7 +8,7 @@
 
         <div class="section-head">
             <p class="section-label">// 一覧（本日 {{ today|date:"Y-m-d" }}）</p>
-            <a class="section-more" href="{% url 'countdown:event_create' %}"><i class="fas fa-plus me-1"></i>登録する</a>
+            <a class="section-more" href="{{ create_url }}"><i class="fas fa-plus me-1"></i>登録する</a>
         </div>
 
         {% if messages %}
@@ -19,12 +19,26 @@
         </ul>
         {% endif %}
 
+        <p class="cd-board-note">
+            {% if board %}
+            ID「<strong>{{ board.code }}</strong>」の一覧です。この ID を知っている人だけが開けます。
+            このページの URL をブックマークしておくと、次からすぐに開けます。
+            <br>
+            <a href="{{ board.mail_url }}"><i class="fas fa-envelope me-1"></i>メール通知</a>:
+            {% if board.notify_email %}{{ board.masked_email }} に、印（<i class="fas fa-bell"></i>）を付けたカウントダウンを毎日0時ごろ送ります。
+            {% else %}通知先は未登録です（任意）。{% endif %}
+            {% else %}
+            ID を使わない<strong>共有ボード</strong>です。誰でも登録・編集・削除できます。
+            自分だけの一覧にしたいときは <a href="{% url 'countdown:enter' %}">ID を使う</a>。
+            {% endif %}
+        </p>
+
         <p class="section-label cd-group-label">// これからの予定（カウントダウン）</p>
         <div class="cd-list">
             {% for event in upcoming_events %}
             <div class="card cd-item">
                 <div class="cd-body">
-                    <h2 class="cd-name">{{ event.name }}</h2>
+                    <h2 class="cd-name">{{ event.name }}{% if event.notify %} <i class="fas fa-bell cd-bell" title="メールで知らせる"></i>{% endif %}</h2>
                     <p class="cd-date">{{ event.date|date:"Y-m-d (D)" }}</p>
                     {% if event.memo %}<p class="cd-memo">{{ event.memo|linebreaksbr }}</p>{% endif %}
                 </div>
@@ -41,8 +55,8 @@
                     </p>
                     {% endif %}
                     <div class="cd-item-actions">
-                        <a href="{% url 'countdown:event_update' event.pk %}"><i class="fas fa-pen me-1"></i>編集</a>
-                        <a class="is-danger" href="{% url 'countdown:event_delete' event.pk %}"><i class="fas fa-trash me-1"></i>削除</a>
+                        <a href="{{ event.update_url }}"><i class="fas fa-pen me-1"></i>編集</a>
+                        <a class="is-danger" href="{{ event.delete_url }}"><i class="fas fa-trash me-1"></i>削除</a>
                     </div>
                 </div>
             </div>
@@ -67,8 +81,8 @@
                         {% if event.years_passed %}（{{ event.years_passed }}周年経過）{% endif %}
                     </p>
                     <div class="cd-item-actions">
-                        <a href="{% url 'countdown:event_update' event.pk %}"><i class="fas fa-pen me-1"></i>編集</a>
-                        <a class="is-danger" href="{% url 'countdown:event_delete' event.pk %}"><i class="fas fa-trash me-1"></i>削除</a>
+                        <a href="{{ event.update_url }}"><i class="fas fa-pen me-1"></i>編集</a>
+                        <a class="is-danger" href="{{ event.delete_url }}"><i class="fas fa-trash me-1"></i>削除</a>
                     </div>
                 </div>
             </div>

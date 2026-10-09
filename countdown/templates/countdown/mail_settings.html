@@ -1,0 +1,87 @@
+{% extends "countdown/base_app.html" %}
+
+{% block title %}メール通知 — カウントアップ＆ダウン{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="editor editor-narrow">
+
+        <div class="section-head">
+            <p class="section-label">// メール通知（ID: {{ board.code }}）</p>
+            <a class="section-more" href="{{ list_url }}"><i class="fas fa-arrow-left me-1"></i>一覧に戻る</a>
+        </div>
+
+        {% if messages %}
+        <ul class="editor-messages">
+            {% for message in messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <div class="card">
+            <p class="cd-card-desc">
+                「メールで知らせる」に印を付けたカウントダウンの残り日数を、当日まで毎日0時ごろに
+                1通にまとめて送ります。印の付いた予定がない日は送りません。
+                メールアドレスの登録は任意です。
+            </p>
+            <p class="cd-mail-privacy">
+                <i class="fas fa-lock me-1"></i>メールアドレスは<strong>暗号化して保存</strong>します。
+                管理画面にも表示されないので、管理者がアドレスを目にすることはありません。
+            </p>
+
+            {% if board.notify_email %}
+            <p class="cd-mail-status">
+                <i class="fas fa-bell me-1"></i>通知先: <strong>{{ board.masked_email }}</strong>
+            </p>
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-actions">
+                    <button class="btn btn-danger" type="submit" name="action" value="remove">通知を止めてアドレスを消す</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="cd-mail-status"><i class="fas fa-bell-slash me-1"></i>通知先は登録されていません。</p>
+            {% endif %}
+        </div>
+
+        <div class="card cd-mail-form">
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <ul class="form-errors">
+                    {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                <div class="form-row">
+                    <label for="{{ form.email.id_for_label }}">{% if board.notify_email %}通知先を変える{% else %}通知先を登録する{% endif %}</label>
+                    {{ form.email }}
+                    <p class="form-help">{{ form.email.help_text }}</p>
+                    {% if form.email.errors %}
+                    <ul class="form-errors">
+                        {% for error in form.email.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-lg" type="submit">確認のメールを送る</button>
+                </div>
+            </form>
+
+            <p class="form-help cd-enter-note">
+                アドレスは通知を送るためだけに使い、通知を止めると消します。
+                通知先は ID ごとに1つです。ID を知っている人は、通知先を変えたり止めたりできます
+                （画面にはアドレスの一部だけを出します）。
+            </p>
+        </div>
+
+    </section>
+</div>
+{% endblock %}

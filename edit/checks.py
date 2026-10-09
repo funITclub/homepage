@@ -1,7 +1,7 @@
 # edit/checks.py
 #
 # 定期点検。SMTP のシークレット期限を見るのと、FE 対策アプリの使われなくなった
-# 一時的な記録の掃除をする。
+# 一時的な記録の掃除、カウントダウンのメール通知の送り漏れの拾い直しをする。
 #
 # シークレットが切れると参加フォームの送信が止まるが、「申し込みが来ない」状態と
 # 区別がつかず気づけない。切れる前に知らせる。
@@ -99,6 +99,17 @@ def purge_fe_temp_learners():
     logger.info(out.getvalue().strip())
 
 
+def send_countdown_mails():
+    """カウントダウンのメール通知のうち、今日まだ送れていない分を送る。
+
+    通知は毎日0時に GitHub Actions が起こす（.github/workflows/countdown-notify.yml）。
+    そちらが動かなかった日の予備で、送信済みの ID には二重に送らない。
+    """
+    out = io.StringIO()
+    call_command('send_countdown_mails', stdout=out)
+    logger.info(out.getvalue().strip())
+
+
 def run_daily_checks():
     """1日1回だけ点検する。リクエストのたびに走らせないためのゲート。"""
     key = 'daily-checks-done'
@@ -118,4 +129,8 @@ def run_daily_checks():
         purge_fe_temp_learners()
     except Exception:
         logger.exception('FE 対策アプリの一時的な記録の掃除に失敗しました')
+    try:
+        send_countdown_mails()
+    except Exception:
+        logger.exception('カウントダウンのメール通知に失敗しました')
     return True

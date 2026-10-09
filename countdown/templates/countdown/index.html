@@ -12,10 +12,11 @@
             <p class="hero-lead">
                 出来事や予定を「名前」と「日付」で登録するだけ。過ぎた日は経過日数を数え上げ、
                 これからの日は残り日数を数え下げます。ログインは要りません。
+                ID を決めれば自分だけの一覧に、ID なしなら共有ボードに登録できます。
             </p>
             <div class="cd-actions">
-                <a class="btn btn-lg" href="{% url 'countdown:event_list' %}">一覧を見る</a>
-                <a class="btn btn-primary" href="{% url 'countdown:event_create' %}"><i class="fas fa-plus me-1"></i>登録する</a>
+                <a class="btn btn-lg" href="{% url 'countdown:enter' %}">ID で使う</a>
+                <a class="btn btn-primary" href="{% url 'countdown:event_list' %}">ID なしで使う（共有ボード）</a>
             </div>
         </div>
 
@@ -65,11 +66,32 @@
         <div class="section-head">
             <p class="section-label">// 使うときの注意</p>
         </div>
-        <div class="card">
-            <p class="cd-card-desc">
-                このページは<strong>誰でも登録・編集・削除できる共有ボード</strong>です。
-                他の人が登録した内容も操作できてしまうため、消えて困るものは登録しないでください。
-            </p>
+        <div class="grid-3">
+            <div class="card">
+                <h2 class="cd-card-title">ID で使う</h2>
+                <p class="cd-card-desc">
+                    登録したものは、その ID の一覧にだけ出ます。
+                    ID に合言葉はなく、<strong>ID を知っている人は誰でも開いて編集できます</strong>。
+                    人と同じ ID は使わないでください。
+                    メールアドレスを登録すると（任意）、印を付けたカウントダウンの残り日数が
+                    毎日0時ごろにメールで届きます。
+                    アドレスは暗号化して保存するので、管理者が目にすることはありません。
+                </p>
+            </div>
+            <div class="card">
+                <h2 class="cd-card-title">ID なしで使う</h2>
+                <p class="cd-card-desc">
+                    <strong>誰でも登録・編集・削除できる共有ボード</strong>に登録します。
+                    他の人が登録した内容も操作できてしまうため、消えて困るものは登録しないでください。
+                </p>
+            </div>
+            <div class="card">
+                <h2 class="cd-card-title">書かないもの</h2>
+                <p class="cd-card-desc">
+                    誰でも使える公開のアプリです。本名や学籍番号など、本人が分かるものは
+                    ID にも登録内容にも書かないでください。
+                </p>
+            </div>
         </div>
     </section>
 

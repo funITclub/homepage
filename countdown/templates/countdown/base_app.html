@@ -19,8 +19,14 @@
         <a class="brand" href="{% url 'countdown:index' %}">count up &amp; down</a>
         <nav class="site-nav">
             <a href="{% url 'countdown:index' %}" {% if nav == 'index' %}class="is-active"{% endif %}>このアプリについて</a>
-            <a href="{% url 'countdown:event_list' %}" {% if nav == 'list' %}class="is-active"{% endif %}>一覧</a>
-            <a href="{% url 'countdown:event_create' %}" {% if nav == 'create' %}class="is-active"{% endif %}>登録</a>
+            {% if list_url %}
+            <a href="{{ list_url }}" {% if nav == 'list' %}class="is-active"{% endif %}>一覧</a>
+            <a href="{{ create_url }}" {% if nav == 'create' %}class="is-active"{% endif %}>登録</a>
+            <a href="{% url 'countdown:enter' %}">{% if board %}ID: {{ board.code }}（切り替える）{% else %}ID を使う{% endif %}</a>
+            {% else %}
+            <a href="{% url 'countdown:enter' %}" {% if nav == 'enter' %}class="is-active"{% endif %}>ID で使う</a>
+            <a href="{% url 'countdown:event_list' %}">共有ボード</a>
+            {% endif %}
         </nav>
     </div>
 </header>

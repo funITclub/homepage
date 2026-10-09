@@ -1,0 +1,33 @@
+# カウントアップ＆ダウンのメール通知を、毎日0時（日本時間）に送らせる。
+#
+# App Service には常設のスケジューラが無く、DB は VNet の中にあってランナーからは
+# 届かないので、ここでは送信のきっかけを送るだけ。実際に送るのはサイト側
+# （/countdown/notify/run/ → countdown/notify.py の send_daily）。
+#
+# シークレット COUNTDOWN_NOTIFY_TOKEN に、App Service のアプリケーション設定
+# COUNTDOWN_NOTIFY_TOKEN と同じ値を入れておく（deploy.txt の「カウントダウンのメール通知」）。
+#
+# GitHub の定時実行は混み具合で数分〜十数分遅れることがある。同じ日に何度呼んでも
+# 同じ ID には1通しか送らないので、「Run workflow」で手で流し直してよい。
+# これが動かなかった日は、サイト側の1日1回の定期点検（edit/checks.py）が送る。
+name: Countdown notify
+
+on:
+  schedule:
+    # 15:00 UTC = 0:00 JST
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 今日の分の通知を送らせる
+        env:
+          COUNTDOWN_NOTIFY_TOKEN: ${{ secrets.COUNTDOWN_NOTIFY_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 300 --retry 3 --retry-delay 30 \
+            -X POST -H "Authorization: Bearer ${COUNTDOWN_NOTIFY_TOKEN}" \
+            https://funitclub.org/countdown/notify/run/

@@ -25,7 +25,7 @@ INSTALLED_APPS = [
     'news',        # お知らせ
     'catalog',     # WG紹介・成果物紹介
     'edit',        # 編集画面（ログイン・メニュー・共通レイアウト）
-    'countdown',   # サブアプリ「カウントアップ＆ダウン」（ログイン不要の公開ボード）
+    'countdown',   # サブアプリ「カウントアップ＆ダウン」（ログイン不要。ID ごとの一覧と共有ボード）
     'wgjoin',      # WG への参加（Classroom と GitHub への登録。会員の情報は持たない）
     'fe',          # サブアプリ「FE 基本情報技術者試験 対策」（ログイン不要。成績はアプリ内の ID ごと）
 ]
@@ -235,6 +235,17 @@ GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
 # 秘密鍵（PEM）。.env では1行に書けるよう、\n と書いた改行を戻す。
 GITHUB_APP_PRIVATE_KEY = os.getenv('GITHUB_APP_PRIVATE_KEY', '').replace('\\n', '\n')
+
+# ---- カウントアップ＆ダウンのメール通知（countdown/notify.py） ----
+# メールに書くリンクの頭。通知はリクエストの外から送るので、設定で持つ。
+SITE_URL = os.getenv('SITE_URL', 'http://localhost:8010')
+# 毎日0時の送信を起こす呼び出し（/countdown/notify/run/）の合言葉。
+# 空のときは入口を閉じる。GitHub の Actions のシークレットと同じ値を入れる。
+COUNTDOWN_NOTIFY_TOKEN = os.getenv('COUNTDOWN_NOTIFY_TOKEN', '')
+# 通知先の確認のメールのリンクの有効期限（秒）。
+COUNTDOWN_CONFIRM_MAX_AGE = 60 * 60
+# 確認のメールを送りすぎないための上限。((件数, 秒) 同じ IP, (件数, 秒) 同じアドレス)。
+COUNTDOWN_CONFIRM_SEND_LIMITS = ((10, 60 * 60), (3, 60 * 60))
 
 # 確認のメールのリンクの有効期限（秒）。
 WG_JOIN_LINK_MAX_AGE = 60 * 60

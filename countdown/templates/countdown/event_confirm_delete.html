@@ -8,7 +8,7 @@
 
         <div class="section-head">
             <p class="section-label">// 削除</p>
-            <a class="section-more" href="{% url 'countdown:event_list' %}"><i class="fas fa-arrow-left me-1"></i>一覧に戻る</a>
+            <a class="section-more" href="{{ list_url }}"><i class="fas fa-arrow-left me-1"></i>一覧に戻る</a>
         </div>
 
         <div class="card">
@@ -22,7 +22,7 @@
                 {% csrf_token %}
                 <div class="form-actions">
                     <button class="btn btn-lg btn-danger" type="submit">削除する</button>
-                    <a class="btn btn-ghost" href="{% url 'countdown:event_list' %}">キャンセル</a>
+                    <a class="btn btn-ghost" href="{{ list_url }}">キャンセル</a>
                 </div>
             </form>
         </div>

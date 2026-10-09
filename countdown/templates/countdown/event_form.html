@@ -8,7 +8,7 @@
 
         <div class="section-head">
             <p class="section-label">// {{ heading }}</p>
-            <a class="section-more" href="{% url 'countdown:event_list' %}"><i class="fas fa-arrow-left me-1"></i>一覧に戻る</a>
+            <a class="section-more" href="{{ list_url }}"><i class="fas fa-arrow-left me-1"></i>一覧に戻る</a>
         </div>
 
         <div class="card">
@@ -24,7 +24,7 @@
                 {% endif %}
 
                 {% for field in form %}
-                <div class="form-row">
+                <div class="form-row{% if field.field.widget.input_type == 'checkbox' %} form-row-check{% endif %}">
                     <label for="{{ field.id_for_label }}">{{ field.label }}</label>
                     {{ field }}
                     {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
@@ -40,7 +40,7 @@
 
                 <div class="form-actions">
                     <button class="btn btn-lg" type="submit">{{ submit_label }}</button>
-                    <a class="btn btn-ghost" href="{% url 'countdown:event_list' %}">キャンセル</a>
+                    <a class="btn btn-ghost" href="{{ list_url }}">キャンセル</a>
                 </div>
             </form>
         </div>

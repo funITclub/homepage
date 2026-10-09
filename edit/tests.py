@@ -217,6 +217,12 @@ class DailyCheckTests(TestCase):
 
         self.assertEqual(check.call_count, 1)
 
+    def test_sends_countdown_mails_left_unsent(self):
+        with mock.patch('edit.checks.warn_if_secret_expiring'), \
+                mock.patch('countdown.management.commands.send_countdown_mails.send_daily', return_value=0) as send:
+            run_daily_checks()
+        send.assert_called_once()
+
     def test_request_triggers_the_check(self):
         with mock.patch('edit.checks.warn_if_secret_expiring') as check:
             self.client.get(reverse('home:index'))

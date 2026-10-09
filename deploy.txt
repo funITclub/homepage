@@ -475,6 +475,43 @@ az webapp log tail --name funITclub
 
 
 ########################################
+# カウントダウンのメール通知（/countdown/）
+########################################
+
+# 印を付けたカウントダウンの残り日数を、ID に登録された通知先へ毎日0時（日本時間）に
+# 1通にまとめて送る（countdown/notify.py）。メールの送信は参加フォームと同じ ACS を使う。
+#
+# App Service には常設のスケジューラが無いので、GitHub Actions の定時実行
+# （.github/workflows/countdown-notify.yml）が毎日 /countdown/notify/run/ を呼んで
+# 送信を起こす。呼び出しは合言葉（COUNTDOWN_NOTIFY_TOKEN）を知っているものだけを受け付ける。
+#   - 合言葉が未設定の間は、入口は閉じている（404）。その間も、1日1回の定期点検
+#     （その日の最初のアクセスで動く）が送るので、通知そのものは届く。時刻が0時にならないだけ。
+#   - GitHub の定時実行は数分〜十数分遅れることがある。
+#   - 同じ日に何度呼んでも、同じ ID には1通しか送らない。
+#
+# ---- 設定（初回のみ） ----
+# 1. 合言葉を作る
+#      python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# 2. App Service のアプリケーション設定に入れる
+#      az webapp config appsettings set --name funITclub --settings COUNTDOWN_NOTIFY_TOKEN="<合言葉>"
+# 3. GitHub のリポジトリのシークレットに同じ値を入れる
+#      gh secret set COUNTDOWN_NOTIFY_TOKEN --repo funITclub/homepage
+#
+# ---- 確かめる・手で送る ----
+#   GitHub の Actions →「Countdown notify」→「Run workflow」。
+#   応答の {"sent": n} が、そのとき送った通数。
+#
+# ---- 通知先のアドレス ----
+#   ID ごとに1つ、本人が確認のメールのリンクを開いたものだけを DB に持つ（任意）。
+#   通知を止めると消える。個人情報をシステムに持たない方針の例外で、通知を送る以外には使わない。
+#   DB には暗号化して入れてある（countdown/crypto.py）。鍵は SECRET_KEY から作るので、
+#   DB の中身だけでは読めない。管理画面にもアドレスは出ない（登録の有無だけ）。
+#   ※ SECRET_KEY を替えるときは、前の値を SECRET_KEY_FALLBACKS に残すこと。
+#     残さずに替えると通知先が読めなくなり、全員が未登録の扱いになる（登録し直してもらう）。
+#   admin の「カウント ID」から ID を消せば、アドレスも一緒に消える。
+
+
+########################################
 # 一時的にデバッグする（本番）
 ########################################
 
