@@ -12,7 +12,8 @@ hirahira_room の fe アプリからの移植。あちらは全画面がログ�
 こちらは誰でも使える公開アプリなので、LoginRequiredMiddleware の対象から
 login_not_required で外している。例外は問題集の管理（/fe/manage/）で、
 ID には合言葉がなく、公開の場では管理用の ID を言い当てれば誰でも入れてしまう。
-そこだけは編集画面（/edit/）のログインも求める（AdminRequiredMixin）。
+そこだけは編集画面（/edit/）へのスタッフ権限のあるアカウントでのログインも求める
+（AdminRequiredMixin）。
 """
 
 import logging
@@ -119,10 +120,13 @@ class LearnerRequiredMixin:
 
 
 class AdminRequiredMixin(LearnerRequiredMixin):
-    """問題集を管理する画面。編集画面にログインしたうえで、管理用の ID で入る。
+    """問題集を管理する画面。管理用の ID で、スタッフ権限のあるアカウントでなければ 403。
 
     ログインしていなければ LoginRequiredMiddleware が /edit/login/ へ送る。
-    ログインしていても、管理用の ID でなければ 403。
+    ID には合言葉がないので、ID だけでは通さない。ログインしているだけでも通さず、
+    スタッフ権限（is_staff）を条件にする。いまアカウントは createsuperuser でしか
+    作れないので全員がスタッフだが、WG に編集用のアカウントを配るようになっても
+    問題集までは開かないようにしておく。
     """
 
     def dispatch(self, request, *args, **kwargs):
@@ -133,6 +137,10 @@ class AdminRequiredMixin(LearnerRequiredMixin):
     def check_learner(self, learner):
         if not learner.is_admin:
             raise PermissionDenied('問題集を管理できるのは管理用の ID だけです。')
+        if not self.request.user.is_staff:
+            raise PermissionDenied(
+                '問題集を管理できるのは、スタッフ権限のあるアカウントだけです。'
+            )
 
 
 def dashboard_url(learner):
@@ -784,7 +792,7 @@ class LearnAbandonView(LearnerRequiredMixin, generic.View):
 
 
 class LearnResultView(LearnerRequiredMixin, generic.DetailView):
-    """ラウンドの結果。まちがえた問題を読み返せるようにする。"""
+    """ラウンドの結果。解いた問題を、正解したものも含めて全問読み返せるようにする。"""
 
     template_name = 'fe/learn_result.html'
     context_object_name = 'round'
@@ -794,7 +802,9 @@ class LearnResultView(LearnerRequiredMixin, generic.DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        items = self.object.items.select_related('question', 'question__category')
+        items = self.object.items.select_related(
+            'question', 'question__category', 'question__template'
+        )
         context['items'] = items
         context['missed'] = [i for i in items if i.is_correct is False]
         return context

@@ -46,10 +46,13 @@ def make_learner(code, is_admin=False):
 def enter(client, learner):
     """その ID で入った状態にする。ログインは要らない。
 
-    管理用の ID だけは、問題集の管理に編集画面のログインも要るので、併せてログインする。
+    管理用の ID だけは、問題集の管理にスタッフ権限のあるアカウントでのログインも
+    要るので、併せてログインする。
     """
     if learner.is_admin:
-        account, _ = get_user_model().objects.get_or_create(username='editor')
+        account, _ = get_user_model().objects.get_or_create(
+            username='editor', defaults={'is_staff': True},
+        )
         client.force_login(account)
     session = client.session
     session[SESSION_LEARNER] = learner.pk
@@ -794,7 +797,8 @@ class LearnerIdTests(TestCase):
 
     def test_only_an_admin_id_can_manage_questions(self):
         build_questions()
-        self.client.force_login(get_user_model().objects.create_user(username='editor'))
+        self.client.force_login(
+            get_user_model().objects.create_user(username='editor', is_staff=True))
         enter(self.client, make_learner('plain'))
         for name in ('fe:manage_list', 'fe:manage_upload', 'fe:manage_export'):
             with self.subTest(page=name):
@@ -1411,6 +1415,90 @@ class LearningModeTests(TestCase):
         round_ = LearningRound.objects.get(learner=self.learner)
         self.assertEqual(round_.total, 3)
 
+    def test_origin_label_tells_ipa_questions_from_original_ones(self):
+        """出典の書き出しから、IPA の出題そのものか自作かを見分ける。"""
+        cases = [
+            ('令和6年度 科目A 問3', 'IPA公開問題'),
+            ('令和3年度 春期 午前 問2', 'IPA公開問題'),
+            ('サンプル問題 科目A 問12', 'IPAサンプル問題'),
+            ('シラバス Ver.8.0 中分類1 応用数学（3）数値解析', '自作'),
+            ('試験要綱 科目B', '自作'),
+            ('自作（令和6年度秋 午前 問5 を基に作成）', '自作'),
+            ('', ''),
+        ]
+        for source, label in cases:
+            self.assertEqual(Question(source=source).origin_label, label)
+
+    def test_source_text_does_not_repeat_the_label(self):
+        """ラベルと同じ言葉で始まる source は、その言葉を落として出す。"""
+        cases = [
+            ('サンプル問題 科目A 問12', '科目A 問12'),
+            ('令和6年度 科目A 問3', '令和6年度 科目A 問3'),
+            ('シラバス Ver.8.0 中分類1 応用数学（3）数値解析',
+             'シラバス Ver.8.0 中分類1 応用数学（3）数値解析'),
+        ]
+        for source, text in cases:
+            self.assertEqual(Question(source=source).source_text, text)
+
+        template = QuestionTemplate.objects.first()
+        generated = Question(
+            template=template, source='テンプレート「{}」による自動生成'.format(template.title),
+        )
+        self.assertEqual(generated.source_text, '計算問題：{}'.format(template.title))
+
+    def test_learning_quiz_shows_the_source_with_the_question(self):
+        """学習モードでは、出典と出題元の区別を選択肢の下に出す。解説の側には出さない。"""
+        self._prepare()
+        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        round_ = LearningRound.objects.get(learner=self.learner)
+        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+
+        item = round_.items.get(order=0)
+        question = item.question
+        question.source = 'シラバス 中分類1 テスト用の項目'
+        question.explanation = 'テスト用の解説'
+        question.save()
+
+        before = self.client.get(reverse('fe:learn_quiz', args=[round_.pk]))
+        self.assertContains(before, '</span>シラバス 中分類1 テスト用の項目', count=1)
+        body = before.content.decode()
+        last_choice = body.rindex(html.escape(question.choices[-1]))
+        self.assertLess(last_choice, body.index('テスト用の項目'))
+        self.assertContains(before, '自作')
+
+        after = self.client.post(
+            reverse('fe:learn_quiz', args=[round_.pk]),
+            {'choice': question.answer_index},
+        )
+        self.assertContains(after, '</span>シラバス 中分類1 テスト用の項目', count=1)
+        body = after.content.decode()
+        last_choice = body.rindex(html.escape(question.choices[-1]))
+        self.assertLess(last_choice, body.index('テスト用の項目'))
+        self.assertLess(body.index('テスト用の項目'), body.index('テスト用の解説'))
+
+    def test_quiz_shows_the_source_with_the_question(self):
+        """1問1答でも、出典は答える前から選択肢の下に出す。解説の側には出さない。"""
+        self._prepare()
+        # その場で作られる計算問題は出典が別なので、この確認では出さない
+        QuestionTemplate.objects.update(is_active=False)
+        Question.objects.update(source='シラバス 中分類1 テスト用の項目', explanation='テスト用の解説')
+
+        before = self.client.get(reverse('fe:quiz'))
+        question = before.context['question']
+        self.assertContains(before, '</span>シラバス 中分類1 テスト用の項目', count=1)
+        body = before.content.decode()
+        last_choice = body.rindex(html.escape(question.choices[-1]))
+        self.assertLess(last_choice, body.index('テスト用の項目'))
+
+        after = self.client.post(reverse('fe:quiz'), {
+            'question_id': question.id, 'choice': question.answer_index,
+        })
+        self.assertContains(after, '</span>シラバス 中分類1 テスト用の項目', count=1)
+        body = after.content.decode()
+        last_choice = body.rindex(html.escape(question.choices[-1]))
+        self.assertLess(last_choice, body.index('テスト用の項目'))
+        self.assertLess(body.index('テスト用の項目'), body.index('テスト用の解説'))
+
     def test_answering_records_progress(self):
         """学習モードで解いた分も、分野ごとの理解度に積む。"""
         self._prepare()
@@ -1454,6 +1542,35 @@ class LearningModeTests(TestCase):
         response = self.client.get(reverse('fe:learn_result', args=[round_.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['missed'], [])
+
+    def test_the_result_lists_every_question_with_its_source(self):
+        """結果には、正解した問題も含めて全問を出典つきで並べる。"""
+        self._prepare()
+        self.client.post(reverse('fe:learn_start'), {'minutes': 3})
+        round_ = LearningRound.objects.get(learner=self.learner)
+        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+
+        for order in range(round_.total):
+            item = round_.items.get(order=order)
+            question = item.question
+            question.source = 'シラバス 中分類1 テスト用の項目{}'.format(order)
+            question.save()
+            # 1問目だけまちがえ、残りは正解する
+            choice = question.answer_index
+            if order == 0:
+                choice = (choice + 1) % len(question.choices)
+            self.client.post(reverse('fe:learn_quiz', args=[round_.pk]), {'choice': choice})
+            self.client.post(reverse('fe:learn_next', args=[round_.pk]))
+
+        response = self.client.get(reverse('fe:learn_result', args=[round_.pk]))
+        self.assertEqual(len(response.context['items']), round_.total)
+        self.assertEqual(len(response.context['missed']), 1)
+        for order in range(round_.total):
+            self.assertContains(
+                response, '</span>シラバス 中分類1 テスト用の項目{}'.format(order)
+            )
+        self.assertContains(response, '不正解', count=1)
+        self.assertContains(response, 'あなたの解答', count=1)
 
     def test_the_menu_groups_notes_by_category(self):
         """学習対象は、中分類でまとめて小分類（解説）を並べる。"""
@@ -1956,3 +2073,40 @@ class ExamDefinitionTests(TestCase):
         self.assertContains(response, '問題を作るのに必要な資料')
         for material in EXAM['materials']:
             self.assertContains(response, material['name'])
+
+
+class ManageNeedsStaffTests(TestCase):
+    """問題の管理は、管理用の ID に加えて、スタッフ権限のあるアカウントが要る。"""
+
+    PAGES = ('fe:manage_list', 'fe:manage_upload', 'fe:manage_export')
+
+    @classmethod
+    def setUpTestData(cls):
+        seed_masters()
+        cls.admin_id = make_learner('gatekeeper', is_admin=True)
+
+    def _enter_as(self, username, is_staff):
+        account = get_user_model().objects.create_user(
+            username=username, password='pass12345', is_staff=is_staff,
+        )
+        self.client.force_login(account)
+        session = self.client.session
+        session[SESSION_LEARNER] = self.admin_id.pk
+        session.save()
+
+    def test_an_ordinary_account_cannot_manage_even_with_the_admin_id(self):
+        """誰でも作れるアカウントでは、管理用の ID を知っていても開けない。"""
+        self._enter_as('visitor', is_staff=False)
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 403)
+        self.assertEqual(
+            self.client.post(reverse('fe:manage_upload'), {}).status_code, 403
+        )
+
+    def test_a_staff_account_can_manage_with_the_admin_id(self):
+        self._enter_as('keeper', is_staff=True)
+        for name in ('fe:manage_list', 'fe:manage_upload'):
+            with self.subTest(page=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 200)
+

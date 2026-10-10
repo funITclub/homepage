@@ -213,6 +213,39 @@ class Question(models.Model):
         return self.template_id is not None
 
     @property
+    def origin_label(self):
+        """IPA の出題そのものか自作かを、出典の書き出しから見分けて返す。
+
+        source の前にラベルとして置く。何年の出題かは source に書いてあるので、
+        ここでは繰り返さない。
+        """
+        if self.is_generated:
+            return '自動生成'
+        source = self.source.strip()
+        if source.startswith(('令和', '平成')):
+            return 'IPA公開問題'
+        if source.startswith('サンプル問題'):
+            return 'IPAサンプル問題'
+        return '自作' if source else ''
+
+    @property
+    def source_text(self):
+        """ラベルの後ろに置く source。ラベルと同じ言葉は繰り返さない。
+
+        サンプル問題の source は「サンプル問題 科目A 問12」と書き出すので、
+        「IPAサンプル問題」のラベルを付けるときは頭の「サンプル問題」を落とす。
+        その場で作った計算問題は、source ではなくひな形の題名から
+        「計算問題：伝送時間と伝送効率」と出す。source の「テンプレート」は
+        アプリの中の言葉で、解いている人には何のことか伝わらない。
+        """
+        if self.is_generated:
+            return '計算問題：{}'.format(self.template.title)
+        source = self.source.strip()
+        if self.origin_label == 'IPAサンプル問題':
+            return source.removeprefix('サンプル問題').strip()
+        return source
+
+    @property
     def answer_label(self):
         return self.choice_label(self.answer_index)
 
