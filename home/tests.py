@@ -540,6 +540,15 @@ class GuideTests(TestCase):
             with self.subTest(name=name):
                 self.assertContains(response, static(f'guide/{name}.pptx'))
 
+    def test_documents_are_saved_under_their_own_names(self):
+        """本番では URL にハッシュが入るので、保存名を download で指定しておく。"""
+        response = self.client.get(self.url)
+        for name in ['00_概要', '01_リポジトリの作り方と運用',
+                     '02_パソコンの準備', '03_開発の進め方',
+                     '04_アプリケーション構成']:
+            with self.subTest(name=name):
+                self.assertContains(response, f'download="{name}.pptx"')
+
     def test_documents_are_in_place(self):
         """テンプレートのリンク先が実際にあること（資料を移動したら気づけるように）。"""
         for path in settings.STATICFILES_DIRS:
