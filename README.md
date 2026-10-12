@@ -515,6 +515,10 @@ PostgreSQL サーバーは hirahira_room と同じものを使うが、**デー�
 `migrate` してよい。接続情報はリポジトリに持たず、すべて環境変数（App Service のアプリケーション
 設定）から読む。既定値は持たないので、未設定なら接続しない。
 
+例外は1つだけ。運営が手で流す `manage.py fe_pull_learner` は、hirahira_room のデータベースを
+**読み取り専用で**開き、運営の ID の FE の成績を読む（`fe/README.md` の「hirahira_room から
+運営の成績を持ってくる」）。書き込みはしない。
+
 ローカル（`config/settings_dev.py`）は SQLite。`DB_HOST` を渡したときだけ PostgreSQL に切り替わる。
 ただし hirahira-db は公開アクセスが無効（VNet 内からのみ）なので、手元から直接は繋がらない。
 
