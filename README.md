@@ -602,6 +602,9 @@ WG のメンバーだけに見せたいときの案。
   - 置かれたものは `config/subapps.py` が自動で見つけて `INSTALLED_APPS`・URL・
     `GATE_BACK` に組み込む。**フォルダー名がそのまま URL**（`wg/protein` → `/protein/`）で、
     アプリの `urls.py` の `app_name` も同じ名前にする。
+  - WG が `requirements.txt` に足したものは本番の分に合流する。同じパッケージを
+    両方が指定していたら**本番（homepage）の版を使う**（`.github/merge-requirements.py`）。
+    1つのアプリとして動かすので、WG ごとに違う版は入れられない。
   - 読み取りは GitHub App（Contents: Read）の短命トークン。`WG_READ_APP_ID` と
     `WG_READ_APP_PRIVATE_KEY` を Actions のシークレットに置く。`wg-apps.yml` が空なら
     取り込みごと飛ばすので、App が無くてもデプロイできる。

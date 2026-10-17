@@ -115,9 +115,11 @@ jobs:
               git clone --depth 1 "https://x-access-token:$GH_TOKEN@github.com/$repo.git" "$src"
               echo "$(git -C "$src" rev-parse --short HEAD)" > "$src.sha"
               rm -rf "$src/.git"
-              # WG 側で requirements.txt を増やしていたら、本番の分に足す（リポジトリにつき1回）
+              # WG 側で requirements.txt を増やしていたら、本番の分に足す（リポジトリにつき1回）。
+              # 同じパッケージを両方が指定していたら homepage の版を使う。WG ごとに
+              # ばらばらの版を入れると、1つのアプリとして動かせなくなるため。
               if [ -f "$src/requirements.txt" ]; then
-                cat "$src/requirements.txt" >> requirements.txt
+                python .github/merge-requirements.py requirements.txt "$src/requirements.txt"
               fi
             fi
             test -d "$src/$app" || { echo "::error::$repo に $app/ が無い"; exit 1; }
@@ -126,7 +128,6 @@ jobs:
             echo "$repo@$(cat "$src.sha") → $as/$app" >> "$RUNNER_TEMP/taken-in.txt"
             echo "::endgroup::"
           done < "$RUNNER_TEMP/wg-apps.txt"
-          sort -u requirements.txt -o requirements.txt
           cat "$RUNNER_TEMP/taken-in.txt"
 
       # 取り込んだ状態でもう一度テストを流す。WG のアプリを足したせいで
