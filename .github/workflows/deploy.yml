@@ -58,6 +58,18 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+
+    # 取り込んだ WG のマイグレーションを、本番と同じ PostgreSQL で流してみるため
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: funitclub
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - name: Show what started this run
         run: echo '起動の理由 ${{ inputs.reason || github.event_name }}'
@@ -130,14 +142,35 @@ jobs:
           done < "$RUNNER_TEMP/wg-apps.txt"
           cat "$RUNNER_TEMP/taken-in.txt"
 
-      # 取り込んだ状態でもう一度テストを流す。WG のアプリを足したせいで
-      # サイトが起動しなくなる組み合わせを、ここで止める
-      - name: Test with the WG apps
+      # 取り込んだ状態で、サイトが成り立つかを確かめる。WG のアプリを足したせいで
+      # 起動しなくなる組み合わせを、ここで止める。
+      #
+      # WG のアプリ自身のテストはここでは流さない。WG のリポジトリでは単独のサイトとして
+      # 書かれていて、homepage の通行証（config/gate.py）やログイン必須を前提にしていない
+      # ため落ちる。中身の確認は WG のリポジトリの CI の仕事とし、ここでは
+      #   ・設定と URL が読める（check）
+      #   ・homepage 側が壊れていない（homepage のテスト）
+      #   ・マイグレーションが本番と同じ PostgreSQL で流れる（起動時に落ちない）
+      # の3つを見る。
+      - name: Check the site with the WG apps
         env:
           DJANGO_SETTINGS_MODULE: config.settings_dev
         run: |
           pip install -r requirements.txt
-          python manage.py test
+          python manage.py check
+          python manage.py test config home news catalog edit wgjoin works
+
+      - name: Check migrations with the WG apps
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings
+          SECRET_KEY: for-testing-only
+          DB_HOST: localhost
+          DB_NAME: funitclub
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: |
+          python manage.py migrate --noinput
+          python manage.py makemigrations --check --dry-run
 
       # .gitignore を除外リストとして使うので、チェックアウトした中身をそのまま固めればよい。
       # docs/ は運用資料、.devcontainer/ と .vscode/ は開発環境の設定なので落とす。

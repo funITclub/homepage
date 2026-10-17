@@ -177,7 +177,14 @@ class SubAppDiscoveryTests(TestCase):
             self.assertEqual(subapps.discover(Path(d)), [])
 
     def test_the_site_mounts_what_is_there(self):
-        """いま置かれているものが、実際に URL になっている。"""
+        """いま置かれているものが、実際に URL になっている。
+
+        中の URL の名前はアプリに任せるので、名前空間が登録されているかだけを見る。
+        """
+        from django.urls import get_resolver
+
+        mounted = get_resolver().namespace_dict
         for folder, name in subapps.discover(settings.BASE_DIR):
             with self.subTest(app=name):
-                self.assertEqual(reverse(f'{name}:index'), f'/{name}/')
+                self.assertIn(name, mounted)
+                self.assertEqual(mounted[name][0], f'{name}/')
