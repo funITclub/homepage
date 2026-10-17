@@ -24,8 +24,15 @@
 
 apps:
   # 機能性タンパク質設計サジェストAI研究 WG
-  #   protein … 検討中の資料（公開）     /protein/
-  #   tracker … チケット管理（公開）     /tracker/
   - repo: funITclub/wg-protein
-    take: [protein, tracker]
+    take:
+      - protein                                          # /protein/        検討中の資料
+      - {app: protein_tracker, url: protein/tracker}     # /protein/tracker/ チケット管理
+    as: wg
+
+  # 福祉 WG
+  - repo: funITclub/wg-welfare
+    take:
+      - welfare                                          # /welfare/        構想の資料
+      - {app: welfare_tracker, url: welfare/tracker}     # /welfare/tracker/ チケット管理
     as: wg
