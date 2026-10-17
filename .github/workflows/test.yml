@@ -1,0 +1,60 @@
+# テストと、本番と同じ PostgreSQL でのマイグレーション確認。
+#
+# 本番の DB は VNet の中にあり、GitHub のランナーからは届かない。マイグレーションの
+# 失敗は App Service の起動時（startup.sh の migrate）に出るため、そのままだと
+# 「デプロイしてみるまで分からない」ことになる。使い捨ての PostgreSQL を立てて
+# ここで流しておき、起動してから落ちる失敗を先に捕まえる。
+#
+# デプロイ（deploy.yml）は、このワークフローが通ってから走る。
+
+name: Test
+
+on:
+  pull_request:
+  # main への push では、deploy.yml から呼ばれて走る（二重に流さない）
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: funitclub
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings_dev
+        run: python manage.py test
+
+      # 本番と同じ settings（PostgreSQL・WhiteNoise）で、空の DB に最初から流す。
+      # 本番の起動時に走るのと同じ経路（startup.sh の migrate）を先に通す。
+      - name: Check migrations on PostgreSQL
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings
+          SECRET_KEY: for-testing-only
+          DB_HOST: localhost
+          DB_NAME: funitclub
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: |
+          python manage.py migrate --noinput
+          python manage.py createcachetable
+          python manage.py makemigrations --check --dry-run
+          python manage.py collectstatic --noinput

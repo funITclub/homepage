@@ -1,5 +1,8 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
+
+from . import subapps
 
 urlpatterns = [
     # 管理画面。テーブルの中身を一覧・検索するために使う（編集の主導線は /edit/）。
@@ -17,11 +20,12 @@ urlpatterns = [
     # お知らせ・WG紹介・成果物紹介の編集はすべてこの下にある。
     path('edit/', include('edit.urls', namespace='edit')),
 
-    # サブアプリ「カウントアップ＆ダウン」（ログイン不要）。公開サイトとは相互に
-    # リンクせず、成果物紹介に登録した URL から辿る。
-    path('countdown/', include('works.countdown.urls', namespace='countdown')),
+]
 
-    # サブアプリ「FE 基本情報技術者試験 対策」（ログイン不要）。成績はアプリ内の ID ごとに持つ。
-    # 問題集の管理（/fe/manage/）だけは編集画面のログインが要る。
-    path('fe/', include('works.fe.urls', namespace='fe')),
+# サブアプリ（works/ と wg/ の配下）は、置かれているものを自動で足す（config/subapps.py）。
+# フォルダー名がそのまま URL と名前空間になる（works/countdown → /countdown/）。
+# 公開サイトとは相互にリンクせず、一覧に登録した URL から辿る（config/gate.py）。
+urlpatterns += [
+    path(f'{name}/', include(f'{folder}.{name}.urls', namespace=name))
+    for folder, name in subapps.discover(settings.BASE_DIR)
 ]

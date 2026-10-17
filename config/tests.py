@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse
@@ -6,7 +9,7 @@ from django.urls import reverse
 
 from catalog.models import Wg, Work
 
-from . import gate
+from . import gate, subapps
 from .middleware import CanonicalHostMiddleware
 
 
@@ -129,3 +132,52 @@ class WgGateTests(TestCase):
     def test_the_wg_list_hands_out_a_pass(self):
         html = self.client.get(self.list_url).content.decode()
         self.assertIn(f'/protein/?{gate.PARAM}=', html.replace('&amp;', '&'))
+
+
+class SubAppDiscoveryTests(TestCase):
+    """サブアプリは、置かれているフォルダーから自動で組み込む（config/subapps.py）。"""
+
+    def make(self, tmp, folder, name, *, urls=True):
+        app = tmp / folder / name
+        app.mkdir(parents=True)
+        (app / '__init__.py').touch()
+        if urls:
+            (app / 'urls.py').touch()
+
+    def test_finds_apps_in_both_folders(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self.make(tmp, 'wg', 'protein')
+            self.make(tmp, 'works', 'countdown')
+
+            self.assertEqual(subapps.discover(tmp), [('wg', 'protein'), ('works', 'countdown')])
+            self.assertEqual(subapps.installed(tmp), ['wg.protein', 'works.countdown'])
+
+    def test_sends_each_back_to_its_own_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self.make(tmp, 'wg', 'protein')
+            self.make(tmp, 'works', 'countdown')
+
+            self.assertEqual(subapps.gate_back(tmp), {'/protein/': 'home:wg_list',
+                                                      '/countdown/': 'home:work_list'})
+
+    def test_half_finished_folders_are_skipped(self):
+        """取り込みが途中で壊れたものを読み込まない。"""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self.make(tmp, 'wg', 'broken', urls=False)
+            (tmp / 'wg' / '__pycache__').mkdir()
+
+            self.assertEqual(subapps.discover(tmp), [])
+
+    def test_nothing_to_find_is_fine(self):
+        """手元のリポジトリには wg/ のアプリが無い（デプロイのときだけ入る）。"""
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(subapps.discover(Path(d)), [])
+
+    def test_the_site_mounts_what_is_there(self):
+        """いま置かれているものが、実際に URL になっている。"""
+        for folder, name in subapps.discover(settings.BASE_DIR):
+            with self.subTest(app=name):
+                self.assertEqual(reverse(f'{name}:index'), f'/{name}/')

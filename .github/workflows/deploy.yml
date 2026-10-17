@@ -2,13 +2,20 @@
 # 手順は deploy.txt の「通常のデプロイ」と同じ（zip を作って az webapp deploy）。
 # pip install と collectstatic は App Service 側で走る（SCM_DO_BUILD_DURING_DEPLOYMENT=True）。
 #
+# WG のアプリは、このリポジトリには入れず、ここで取り込む（wg-apps.yml）。
+# WG のリポジトリは非公開のままで、合体するのは Azure に載せるときだけ。
+# zip デプロイは丸ごと置き換えなので、どこから起動されても「homepage ＋ 登録済みの
+# WG すべて」を組み立て直す（片方だけ入れると、もう片方が消える）。
+#
 # Azure へのログインは OIDC。マネージド ID funitclub-github-deploy に
 # このリポジトリの main を信頼させ、App Service funITclub だけに
 # Web サイト共同作成者を付けてある。SCM の基本認証はオフのままでよい。
 #
 # migrate と createcachetable は App Service の起動時に startup.sh が流す。
 # DB は VNet の中にあり、GitHub のランナーからは届かないため。
-# migrate が失敗するとアプリが起動せず、下の az webapp deploy が失敗して赤くなる。
+# 起動に失敗するとサイトが落ちるので、出す前に test.yml（使い捨ての PostgreSQL で
+# migrate を流す）を通し、出したあとも応答を確かめて、ダメなら直前の zip に戻す。
+
 name: Deploy
 
 on:
@@ -21,6 +28,9 @@ on:
       - 'deploy.txt'
       - '.devcontainer/**'
       - '.vscode/**'
+  # WG のリポジトリの main が更新されたとき、そちらの Actions から呼ばれる
+  repository_dispatch:
+    types: [wg-app-updated]
   workflow_dispatch:
 
 # デプロイが重なったら、先のものが終わるまで次を待たせる
@@ -31,19 +41,100 @@ concurrency:
 permissions:
   id-token: write
   contents: read
+  # 失敗したときに、直前に通った zip を取り出して戻すため
+  actions: read
 
 jobs:
+  # 出す前の確認。落ちたら本番は無傷のまま止まる
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # 取り込む WG のアプリ（wg-apps.yml）。1つも無ければ、この先の取り込みは飛ばす
+      - name: Read the take-in list
+        id: list
+        run: |
+          pip install --quiet pyyaml
+          python - <<'PY' > "$RUNNER_TEMP/wg-apps.txt"
+          import yaml
+          for a in (yaml.safe_load(open('wg-apps.yml')) or {}).get('apps') or []:
+              print(a['repo'], a['app'], a.get('as', 'wg'))
+          PY
+          cat "$RUNNER_TEMP/wg-apps.txt"
+          if [ -s "$RUNNER_TEMP/wg-apps.txt" ]; then
+            echo 'any=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'any=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      # WG のリポジトリを読むための短命トークン（GitHub App funitclub-wg-deploy）。
+      # 権限は Contents: Read だけ。App をどの WG に入れるかで、読める範囲が決まる。
+      - name: Get a token for the WG repositories
+        id: wg_token
+        if: steps.list.outputs.any == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.WG_READ_APP_ID }}
+          private-key: ${{ secrets.WG_READ_APP_PRIVATE_KEY }}
+          owner: funITclub
+
+      # wg-apps.yml に書いた WG のアプリを wg/<app>/ に置く。
+      # 持ち込むのはアプリのフォルダーだけで、WG 側の config/ や manage.py は入れない。
+      - name: Take in the WG apps
+        if: steps.list.outputs.any == 'true'
+        env:
+          GH_TOKEN: ${{ steps.wg_token.outputs.token }}
+        run: |
+          while read -r repo app as; do
+            [ -z "$repo" ] && continue
+            echo "::group::$repo → $as/$app"
+            git clone --depth 1 "https://x-access-token:$GH_TOKEN@github.com/$repo.git" "$RUNNER_TEMP/src/$app"
+            sha=$(git -C "$RUNNER_TEMP/src/$app" rev-parse --short HEAD)
+            rm -rf "$RUNNER_TEMP/src/$app/.git"
+            test -d "$RUNNER_TEMP/src/$app/$app" || { echo "$repo に $app/ が無い"; exit 1; }
+            mkdir -p "$as"
+            cp -R "$RUNNER_TEMP/src/$app/$app" "$as/$app"
+            # WG 側で requirements.txt を増やしていたら、本番の分に足す
+            if [ -f "$RUNNER_TEMP/src/$app/requirements.txt" ]; then
+              cat "$RUNNER_TEMP/src/$app/requirements.txt" >> requirements.txt
+            fi
+            echo "$repo@$sha → $as/$app" >> "$RUNNER_TEMP/taken-in.txt"
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/wg-apps.txt"
+          sort -u requirements.txt -o requirements.txt
+          cat "$RUNNER_TEMP/taken-in.txt"
+
+      # 取り込んだ状態でもう一度テストを流す。WG のアプリを足したせいで
+      # サイトが起動しなくなる組み合わせを、ここで止める
+      - name: Test with the WG apps
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings_dev
+        run: |
+          pip install -r requirements.txt
+          python manage.py test
+
       # .gitignore を除外リストとして使うので、チェックアウトした中身をそのまま固めればよい。
       # docs/ は運用資料、.devcontainer/ と .vscode/ は開発環境の設定なので落とす。
+      # 取り込んだ WG のアプリは git の管理外なので、別に足す。
       - name: Build zip
         run: |
           git ls-files -z | xargs -0 zip -q -X "$RUNNER_TEMP/funitclub-deploy.zip"
           zip -q -d "$RUNNER_TEMP/funitclub-deploy.zip" 'docs/*' '.github/*' '.devcontainer/*' '.vscode/*'
+          for d in wg works; do
+            find "$d" -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+          done
+          git ls-files -o --exclude-standard -z -- wg works \
+            | xargs -0 --no-run-if-empty zip -q -X "$RUNNER_TEMP/funitclub-deploy.zip"
           unzip -l "$RUNNER_TEMP/funitclub-deploy.zip"
 
       - uses: azure/login@v3
@@ -56,3 +147,35 @@ jobs:
         run: |
           az webapp deploy --name funITclub --resource-group hirahira \
             --src-path "$RUNNER_TEMP/funitclub-deploy.zip" --type zip
+
+      # 起動に失敗していないか確かめる（migrate が落ちるとここで分かる）
+      - name: Check the site is up
+        id: health
+        run: |
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://funitclub.org/ || true)
+            echo "($i) $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          exit 1
+
+      # 応答しなくなったら、直前に通った zip に戻す
+      - name: Roll back
+        if: failure() && steps.health.outcome == 'failure'
+        run: |
+          id=$(gh run list --workflow deploy.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -z "$id" ]; then echo "戻せる zip がありません"; exit 1; fi
+          gh run download "$id" --name funitclub-deploy --dir "$RUNNER_TEMP/rollback"
+          az webapp deploy --name funITclub --resource-group hirahira \
+            --src-path "$RUNNER_TEMP/rollback/funitclub-deploy.zip" --type zip
+          echo "::error::デプロイに失敗したので、直前の状態に戻しました"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # 次に失敗したとき戻せるよう、通った zip を残す
+      - uses: actions/upload-artifact@v4
+        with:
+          name: funitclub-deploy
+          path: ${{ runner.temp }}/funitclub-deploy.zip
+          retention-days: 30

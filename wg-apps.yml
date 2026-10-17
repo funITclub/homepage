@@ -1,0 +1,20 @@
+# デプロイのときに取り込む WG のアプリ（.github/workflows/deploy.yml）。
+#
+# WG のソースはこのリポジトリに入れない（WG のリポジトリは非公開のまま）。
+# ここに書いたものを、デプロイの直前だけ wg/<app>/ に置いて App Service に載せる。
+#
+#   repo   取り込む WG のリポジトリ（funITclub/ 配下）
+#   app    リポジトリの中の、アプリのフォルダー名
+#   as     置き場所。作っている途中は wg、公表したら works に変える（URL は変わらない）
+#
+# app の名前がそのまま URL になる（protein → /protein/）。
+# 公表に移すときは as を works に変えるだけでよい。送り返す先が成果物一覧に変わる。
+#
+# WG が終わったら、ここから消す。次のデプロイで本番から外れる
+# （DB のテーブルは残るので、消すときは別途）。
+
+apps: []
+# apps:
+#   - repo: funITclub/wg-protein
+#     app: protein
+#     as: wg

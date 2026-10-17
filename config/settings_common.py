@@ -3,6 +3,8 @@
 import os
 from pathlib import Path
 
+from . import subapps
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
@@ -25,10 +27,13 @@ INSTALLED_APPS = [
     'news',        # お知らせ
     'catalog',     # WG紹介・成果物紹介
     'edit',        # 編集画面（ログイン・メニュー・共通レイアウト）
-    'works.countdown',  # サブアプリ「カウントアップ＆ダウン」（ログイン不要。ID ごとの一覧と共有ボード）
     'wgjoin',      # WG への参加（Classroom と GitHub への登録。会員の情報は持たない）
-    'works.fe',         # サブアプリ「FE 基本情報技術者試験 対策」（ログイン不要。成績はアプリ内の ID ごと）
 ]
+
+# サブアプリは置かれているフォルダーから自動で足す（config/subapps.py）。
+#   works/ … 公表した成果物（countdown・fe）
+#   wg/    … WG が作っている途中のもの。デプロイのときだけ取り込まれる
+INSTALLED_APPS += subapps.installed(BASE_DIR)
 
 MIDDLEWARE = [
     # 遮断リストの IP を最初に弾く。静的ファイルも含めて何も返さないよう先頭に置く。
@@ -121,10 +126,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # 一覧のリンクに通行証を付け、URL を直に開いた人は一覧へ送り返す。
 # 左が通行証の要る URL（config/urls.py で割り当てたもの）、右が送り返す先。
 # 公表した成果物（works/ 配下）は成果物一覧へ、作っている途中（wg/ 配下）は WG一覧へ。
-GATE_BACK = {
-    '/countdown/': 'home:work_list',
-    '/fe/': 'home:work_list',
-}
+GATE_BACK = subapps.gate_back(BASE_DIR)
 # 通行証の要らない入口。それぞれ別の鍵（メールの署名付きリンク・呼び出しトークン・
 # 編集画面のログイン）で守られているところだけを並べる。ここは守りを緩めるための
 # 一覧ではないので、増やすときは「別の鍵があるか」を確かめること。

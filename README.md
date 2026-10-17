@@ -22,10 +22,11 @@ home/                  公開サイトの6ページ＋作成中ページ（モ�
 news/                  お知らせ（モデル＋編集画面＋admin 登録）
 catalog/               WG紹介・成果物紹介（モデル＋編集画面＋admin 登録）
 wgjoin/                WG への参加（/wg/<id>/join/）。Classroom でメンバーか確かめ、GitHub のチームに登録する
-works/                 公表した成果物のアプリ。フォルダー名は URL に出さない（config/urls.py で決める）
+wg-apps.yml            デプロイのときに取り込む WG のアプリの一覧（ソースはこのリポジトリに入れない）
+works/                 公表した成果物のアプリ。フォルダー名は URL に出さない（config/subapps.py が自動で組み込む）
   countdown/           サブアプリ「カウントアップ＆ダウン」（/countdown/）。ログイン不要
   fe/                  サブアプリ「FE 基本情報技術者試験 対策」（/fe/）。hirahira_room からの移植。ログイン不要
-wg/                    WG が作っている途中のアプリ。公表できる形になったら works/ へ移す（URL は変えない）
+wg/                    WG が作っている途中のアプリ。デプロイのときだけ取り込まれる（手元では空）
 edit/                  編集画面の枠（ログイン・メニュー・共通レイアウト）＋運営まわり
   models.py            管理者（連絡先）。通知の宛先と公開の問い合わせ先はここだけを見る
   notify.py            管理者への通知メールの共通部分
@@ -591,6 +592,28 @@ WG のメンバーだけに見せたいときの案。
   Azure 側で取り出せるようにする（イメージを取るための認証が要る）。
 - 各WGのサブアプリを追加したら、編集画面でそのWG・成果物に URL を入れる
   （テンプレートの修正は不要。空欄のあいだは `/coming-soon/` に流れる）。
+- **WG のアプリは、このリポジトリに入れない。** WG のリポジトリ（非公開）のまま置いておき、
+  デプロイのときだけ取り込んで App Service に載せる（`wg-apps.yml` と
+  `.github/workflows/deploy.yml`）。このリポジトリは公開なので、取り込みをやめれば
+  WG のソースが公開されることはない。
+  - 取り込む先は `wg/<名前>/`（公表したら `works/<名前>/`）。アプリのフォルダーだけを
+    持ち込み、WG 側の `config/` や `manage.py` は入れない。
+  - 置かれたものは `config/subapps.py` が自動で見つけて `INSTALLED_APPS`・URL・
+    `GATE_BACK` に組み込む。**フォルダー名がそのまま URL**（`wg/protein` → `/protein/`）で、
+    アプリの `urls.py` の `app_name` も同じ名前にする。
+  - 読み取りは GitHub App（Contents: Read）の短命トークン。`WG_READ_APP_ID` と
+    `WG_READ_APP_PRIVATE_KEY` を Actions のシークレットに置く。`wg-apps.yml` が空なら
+    取り込みごと飛ばすので、App が無くてもデプロイできる。
+  - zip デプロイは丸ごと置き換えなので、**どこから起動されても全部を組み立て直す**。
+    WG のリポジトリの main が更新されたら、そちらの Actions から
+    `repository_dispatch`（`wg-app-updated`）でこのデプロイを呼ぶ。
+- 壊れたまま本番に出さないよう、デプロイは2段で確かめる。App Service は B1 で
+  検証スロットが使えないため。
+  - **出す前**：`.github/workflows/test.yml` がテストと、使い捨ての PostgreSQL への
+    `migrate` を流す（起動時に落ちる失敗をここで捕まえる）。取り込んだ状態でも
+    もう一度テストを流す。
+  - **出した後**：`https://funitclub.org/` の応答を確かめ、返らなければ**直前に通った zip
+    に戻す**（成果物 `funitclub-deploy` として 30 日残している）。
 - サブアプリ（`works/`・`wg/` 配下）は、**ホームページの一覧から辿ったときだけ開く**
   （`config/gate.py`）。一覧のリンクに期限つきの通行証（署名、既定 10 分）を付け、
   アプリの入口で検証したらセッションに印を付けて通行証を落とした URL へ転送する。
