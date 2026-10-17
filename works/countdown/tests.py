@@ -14,6 +14,20 @@ from . import notify
 from .models import Board, CountEvent
 
 
+# このアプリ自身のテストでは、成果物への導線（works/gate.py）を外す。
+# 通行証はホームページの一覧から辿る仕掛けで、アプリの振る舞いとは別物のため
+# （導線そのものは works/tests.py で確かめる）。
+_gate_off = override_settings(WORKS_GATE_PREFIXES=[])
+
+
+def setUpModule():
+    _gate_off.enable()
+
+
+def tearDownModule():
+    _gate_off.disable()
+
+
 class CountEventTests(TestCase):
     """日数の数え方（hirahira_room から移植したロジック）。"""
 

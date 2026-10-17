@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Sum
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .exam import EXAM, build_prompt
@@ -34,6 +34,20 @@ from .stats import (WEAK_MIN_ATTEMPTS, category_options, category_stats,
 from django.core.signing import get_cookie_signer
 
 from .views import LEARNER_COOKIE, LEARNER_COOKIE_SALT, SESSION_LEARNER
+
+
+# このアプリ自身のテストでは、成果物への導線（works/gate.py）を外す。
+# 通行証はホームページの一覧から辿る仕掛けで、アプリの振る舞いとは別物のため
+# （導線そのものは works/tests.py で確かめる）。
+_gate_off = override_settings(WORKS_GATE_PREFIXES=[])
+
+
+def setUpModule():
+    _gate_off.enable()
+
+
+def tearDownModule():
+    _gate_off.disable()
 
 
 
