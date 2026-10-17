@@ -56,6 +56,36 @@ OS の掃除で消えた。いまある pptx が原本なので、**出来上が
 
 5. 直したらコミットして push する（`/guide/` から配られる。デプロイで新しい版になる）
 
+## 枚数を増やす・アイコンを差し替える
+
+似た作りのスライドを複製して、中身を入れ替える。
+
+```bash
+python3 docs/deck/duplicate_slide.py static/guide/01_リポジトリの作り方と運用.pptx 9 11
+```
+
+9 枚目を複製して 11 枚目に入れる。そのあと `dump_text.py` で図形の番号を調べ、
+`edit_text.py` で文字を入れ替える。
+
+アイコン（画像）は複製元のものが付いてくる。意味が合わないときは、同じ資料の
+別のスライドから画像を持ってきて、同じ位置・大きさで置き直す。
+
+```python
+from pptx import Presentation
+import io
+
+p = Presentation('static/guide/01_リポジトリの作り方と運用.pptx')
+blob = list(p.slides[7].shapes)[22].image.blob        # 8枚目の [22] の画像を使う
+slide = p.slides[10]
+old = list(slide.shapes)[4]                           # 11枚目の [4] を置き換える
+geom = (old.left, old.top, old.width, old.height)
+old._element.getparent().remove(old._element)
+slide.shapes.add_picture(io.BytesIO(blob), *geom)
+p.save('static/guide/01_リポジトリの作り方と運用.pptx')
+```
+
+色は**円の中で映える向き**で選ぶ（淡い円には濃い色のアイコン、濃い円には淡い色）。
+
 ## 必要なもの
 
 ```bash
