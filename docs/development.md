@@ -227,7 +227,7 @@ git config --global user.email "12345678+ユーザー名@users.noreply.github.co
 
 これで準備は終わり。
 
-## 8. 毎日の始め方・終わり方
+## 8. 作業の始め方・終わり方
 
 **始めるとき**
 
