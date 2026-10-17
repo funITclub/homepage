@@ -28,10 +28,16 @@ on:
       - 'deploy.txt'
       - '.devcontainer/**'
       - '.vscode/**'
-  # WG のリポジトリの main が更新されたとき、そちらの Actions から呼ばれる
-  repository_dispatch:
-    types: [wg-app-updated]
+  # WG のリポジトリの main が更新されたとき、そちらの Actions から呼ばれる。
+  # 呼ぶ側のトークンは「このワークフローを起動できる」だけの権限（Actions: Write）に
+  # 絞ってある。WG のリポジトリは学生のメンバーが触るので、homepage のコードを
+  # 書き換えられる権限（Contents: Write が要る repository_dispatch）は渡さない。
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 起動した理由（WG から呼ばれたときは リポジトリ@コミット）
+        required: false
+        default: 手動
 
 # デプロイが重なったら、先のものが終わるまで次を待たせる
 concurrency:
@@ -53,6 +59,9 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      - name: Show what started this run
+        run: echo '起動の理由 ${{ inputs.reason || github.event_name }}'
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6

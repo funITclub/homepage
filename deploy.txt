@@ -542,3 +542,76 @@ az webapp start --name funITclub
 # ※ 作り直しでなければ az webapp delete も不要（zip デプロイで上書きできる）。
 # ※ VNet 統合は外さないこと。hirahira-db への唯一の経路。
 #    外すと DB に繋がらず、サイトが落ちる。
+
+
+########################################
+# WG のアプリを載せる（/　<アプリ名>/）
+########################################
+
+# WG のアプリは WG のリポジトリ（非公開）で作り、homepage には入れない。
+# デプロイのときだけ取り込んで App Service に載せる（.github/workflows/deploy.yml）。
+# homepage は公開リポジトリなので、この形でないと WG のソースが公開されてしまう。
+#
+#   funITclub/wg-<名前>（非公開）         ソースの置き場。ここで開発する
+#        ↓ デプロイのときだけ取り込む
+#   App Service funITclub の wg/<名前>/   公開はここで動く。URL は /<名前>/
+#
+# 取り込む相手は wg-apps.yml に書く。置かれたアプリは config/subapps.py が自動で
+# 見つけて INSTALLED_APPS・URL・GATE_BACK に組み込む（フォルダー名がそのまま URL）。
+# 公表できる形になったら as を works に変えるだけでよい（URL は変わらない）。
+#
+# ---- 使う GitHub App（初回のみ） ----
+# 1つの App で足りる。権限は次の2つだけにする。
+#   WG のリポジトリ  Contents: Read    homepage がデプロイ時にソースを取り込む
+#   homepage         Actions:  Write   WG 側から homepage のデプロイを起動する
+#
+# ※ homepage に Contents: Write は付けない。WG のリポジトリは学生のメンバーが触れるので、
+#   そこに置いた資格情報で homepage のコードを書き換えられてはいけない。
+#   Actions: Write では「このワークフローを起動する」ことしかできない。
+#
+# 1. org の Settings → Developer settings → GitHub Apps → New GitHub App
+#      名前: funitclub-wg-deploy
+#      Homepage URL: https://funitclub.org
+#      Webhook: Active のチェックを外す
+#      Repository permissions: Contents = Read-only、Actions = Read and write
+#      Where can this GitHub App be installed?: Only on this account
+# 2. 作成後の画面で App ID を控え、Private keys → Generate a private key（.pem が落ちる）
+# 3. Install App → funITclub → Only select repositories で homepage と各 WG を選ぶ
+#    （WG を増やしたら、ここに足す）
+# 4. シークレットを入れる（.pem はそのまま貼る。改行も含める）
+#      gh secret set WG_READ_APP_ID --repo funITclub/homepage --body "<App ID>"
+#      gh secret set WG_READ_APP_PRIVATE_KEY --repo funITclub/homepage < <鍵のファイル>
+#      gh secret set HOMEPAGE_DEPLOY_APP_ID --repo funITclub/wg-<名前> --body "<App ID>"
+#      gh secret set HOMEPAGE_DEPLOY_PRIVATE_KEY --repo funITclub/wg-<名前> < <鍵のファイル>
+# 5. 入れ終わったら .pem をローカルから消す（鍵は作り直せる）
+#
+# ---- WG を1つ載せる ----
+# 1. WG のリポジトリに .github/workflows/deploy.yml を置く（wg-template に入っている。
+#    main への push で homepage のデプロイを起動する）
+# 2. homepage の wg-apps.yml に足す
+#      apps:
+#        - repo: funITclub/wg-protein
+#          app: protein          # リポジトリの中のアプリのフォルダー名。URL もこれになる
+#          as: wg                # 公表したら works に変える
+# 3. main に push する（homepage 側）。デプロイが走り、/protein/ が生える
+# 4. 編集画面（/edit/）の WG紹介で「Webアプリの URL」に https://funitclub.org/protein/ を入れる
+#    （これを入れるまで、一覧から辿る導線が無いので誰も開けない）
+#
+# ---- 気をつけること ----
+#   - アプリ側に apps.py を置かない（または name を書かない）。WG のリポジトリでは
+#     <名前>、本番では wg.<名前> と読み込まれる名前が変わるため。無ければ Django が
+#     自動で作り、呼び名（label）はどちらも <名前> になるのでマイグレーションが一致する。
+#   - 初回のデプロイで、WG アプリのテーブルが本番 DB にできる（起動時の migrate）。
+#     あとから消すのは手作業になるので、モデルの形を決めてから載せる。
+#   - zip デプロイは丸ごと置き換えなので、どこから起動されても homepage ＋ 登録済みの
+#     WG すべてを組み立て直す。片方だけ入れるともう片方が消える。
+#   - 出す前に test.yml（テスト＋使い捨て PostgreSQL への migrate）、出した後に
+#     応答の確認が走る。応答が返らなければ直前に通った zip に自動で戻す（成果物
+#     funitclub-deploy、30日保存）。B1 のプランでは検証スロットが使えないための代替。
+#   - WG が終わったら wg-apps.yml から消す。次のデプロイで本番から外れる（DB は残る）。
+#
+# ---- 確認 ----
+#   取り込まれたか（デプロイのログの「Take in the WG apps」に 〜@<コミット> が出る）
+#     gh run view --repo funITclub/homepage --log | grep "→ wg/"
+#   直打ちで開けないこと（一覧へ送り返される）
+#     curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://funitclub.org/<名前>/
