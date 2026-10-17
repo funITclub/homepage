@@ -14,8 +14,10 @@
 # WG が終わったら、ここから消す。次のデプロイで本番から外れる
 # （DB のテーブルは残るので、消すときは別途）。
 
-apps: []
-# apps:
-#   - repo: funITclub/wg-protein
-#     take: [protein, tracker]
-#     as: wg
+apps:
+  # 機能性タンパク質設計サジェストAI研究 WG
+  #   protein … 検討中の資料（公開）     /protein/
+  #   tracker … チケット管理（公開）     /tracker/
+  - repo: funITclub/wg-protein
+    take: [protein, tracker]
+    as: wg
