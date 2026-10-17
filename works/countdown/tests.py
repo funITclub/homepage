@@ -14,10 +14,10 @@ from . import notify
 from .models import Board, CountEvent
 
 
-# このアプリ自身のテストでは、成果物への導線（works/gate.py）を外す。
+# このアプリ自身のテストでは、一覧からの導線（config/gate.py）を外す。
 # 通行証はホームページの一覧から辿る仕掛けで、アプリの振る舞いとは別物のため
-# （導線そのものは works/tests.py で確かめる）。
-_gate_off = override_settings(WORKS_GATE_PREFIXES=[])
+# （導線そのものは config/tests.py で確かめる）。
+_gate_off = override_settings(GATE_BACK={})
 
 
 def setUpModule():

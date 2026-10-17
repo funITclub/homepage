@@ -1,7 +1,10 @@
-# works/gate.py
+# config/gate.py
 #
-# 成果物のアプリ（works/ 配下）は、ホームページの一覧から辿って使ってもらう。
-# URL を直に開いた人は成果物一覧へ送り返し、入口を funitclub に集める。
+# サブアプリ（works/ と wg/ の配下）は、ホームページの一覧から辿って使ってもらう。
+# URL を直に開いた人は、そのアプリが載っている一覧へ送り返し、入口を funitclub に集める。
+#
+#   works/ 配下（公表した成果物）  → 成果物一覧 /works/ へ
+#   wg/    配下（作っている途中）  → WG一覧 /wg/ へ
 #
 # しくみは通行証（署名付きの一時トークン）で、Referer は見ない。Referer は
 # ブラウザや拡張機能に消されることがあり、偽装も簡単なので判定に使えない。
@@ -10,7 +13,7 @@
 #   2. アプリの入口で検証し、通ったらセッションに印を付け、通行証を落とした
 #      URL へ 1 回だけ転送する（アドレス欄にトークンを残さない）
 #   3. 以後そのブラウザでは、リロードもアプリ内の移動も素通り
-#   4. 印も通行証も無ければ成果物一覧へリダイレクト（そこから入り直せる）
+#   4. 印も通行証も無ければ一覧へリダイレクト（そこから入り直せる）
 #
 # 守りではなく導線の仕掛けである。一度入った人がその後どう使うかは縛らない。
 
@@ -20,22 +23,18 @@ from django.core import signing
 from django.shortcuts import redirect
 from django.urls import reverse
 
-SALT = 'works.gate'
+SALT = 'app.gate'
 PARAM = 'from'
-SESSION_KEY = 'works_gate'
-
-
-def _prefixes(settings):
-    return tuple(settings.WORKS_GATE_PREFIXES)
+SESSION_KEY = 'app_gate'
 
 
 def _exempt(settings):
-    return tuple(settings.WORKS_GATE_EXEMPT)
+    return tuple(settings.GATE_EXEMPT)
 
 
 def prefix_for(path, settings):
     """path が通行証の要るアプリなら、その接頭辞を返す。"""
-    for prefix in _prefixes(settings):
+    for prefix in settings.GATE_BACK:
         if path.startswith(prefix):
             return prefix
     return None
@@ -53,14 +52,14 @@ def make_token(prefix):
 def read_token(token, prefix, settings):
     """通行証がこのアプリのもので、期限内ならTrue。"""
     try:
-        value = signing.loads(token, salt=SALT, max_age=settings.WORKS_GATE_MAX_AGE)
+        value = signing.loads(token, salt=SALT, max_age=settings.GATE_MAX_AGE)
     except signing.BadSignature:
         return False
     return value == prefix
 
 
 def link(url, settings):
-    """一覧に出すリンク。自サイトの成果物アプリなら通行証を付ける。
+    """一覧に出すリンク。自サイトのサブアプリなら通行証を付ける。
 
     外部の URL や、通行証の要らない URL はそのまま返す。
     """
@@ -73,8 +72,8 @@ def link(url, settings):
                        f'{parts.query}&{query}' if parts.query else query, parts.fragment))
 
 
-class WorksGateMiddleware:
-    """成果物のアプリを、ホームページ経由でだけ開けるようにする。"""
+class GateMiddleware:
+    """サブアプリを、ホームページの一覧経由でだけ開けるようにする。"""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -103,4 +102,4 @@ class WorksGateMiddleware:
             rest = query.urlencode()
             return redirect(f'{path}?{rest}' if rest else path)
 
-        return redirect(reverse('home:work_list'))
+        return redirect(reverse(settings.GATE_BACK[prefix]))
