@@ -11,6 +11,14 @@
 # 1つのリポジトリに複数のアプリがあるときは take に並べる。並べなかったものは
 # 本番に載らないので、載せるアプリから載せないアプリへリンクしないこと。
 #
+# URL を入れ子にしたいときは、文字列のかわりに {app, url} と書く。
+#       take:
+#         - welfare                            → /welfare/
+#         - {app: welfare_tracker, url: welfare/tracker}   → /welfare/tracker/
+# 上の段（/welfare/）の通行証で、下の段（/welfare/tracker/）も開ける。
+# フォルダー名は Django のアプリ名になるので、ほかの WG と重ならない名前にすること
+# （wg-protein にも tracker があるなら、welfare 側は welfare_tracker のようにする）。
+#
 # WG が終わったら、ここから消す。次のデプロイで本番から外れる
 # （DB のテーブルは残るので、消すときは別途）。
 

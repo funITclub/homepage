@@ -150,8 +150,23 @@ class SubAppDiscoveryTests(TestCase):
             self.make(tmp, 'wg', 'protein')
             self.make(tmp, 'works', 'countdown')
 
-            self.assertEqual(subapps.discover(tmp), [('wg', 'protein'), ('works', 'countdown')])
+            self.assertEqual(subapps.discover(tmp),
+                             [('wg', 'protein', 'protein'), ('works', 'countdown', 'countdown')])
             self.assertEqual(subapps.installed(tmp), ['wg.protein', 'works.countdown'])
+
+    def test_url_can_be_nested(self):
+        """1 つの WG が複数のアプリを持つとき、URL を下にぶら下げられる。"""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self.make(tmp, 'wg', 'welfare')
+            self.make(tmp, 'wg', 'welfare_tracker')
+            (tmp / 'wg' / 'welfare_tracker' / subapps.URL_FILE).write_text('welfare/tracker\n')
+
+            self.assertEqual(subapps.discover(tmp),
+                             [('wg', 'welfare', 'welfare'),
+                              ('wg', 'welfare_tracker', 'welfare/tracker')])
+            self.assertEqual(subapps.gate_back(tmp),
+                             {'/welfare/': 'home:wg_list', '/welfare/tracker/': 'home:wg_list'})
 
     def test_sends_each_back_to_its_own_list(self):
         with tempfile.TemporaryDirectory() as d:
@@ -161,6 +176,21 @@ class SubAppDiscoveryTests(TestCase):
 
             self.assertEqual(subapps.gate_back(tmp), {'/protein/': 'home:wg_list',
                                                       '/countdown/': 'home:work_list'})
+
+    @override_settings(GATE_BACK={'/welfare/': 'home:wg_list',
+                                  '/welfare/tracker/': 'home:wg_list'})
+    def test_one_pass_covers_the_apps_of_the_same_wg(self):
+        """同じ WG のアプリは、上の段の通行証で行き来できる。"""
+        self.client.get(f'/welfare/?{gate.PARAM}={gate.make_token("/welfare/")}')
+        self.assertEqual(self.client.session[gate.SESSION_KEY], ['/welfare/'])
+
+        # 通行証は通る（この URL のアプリは手元に無いので 404 になるだけ）
+        self.assertEqual(self.client.get('/welfare/tracker/').status_code, 404)
+
+        # 通行証が無ければ、下の段も一覧へ送り返す
+        self.client.cookies.clear()
+        self.assertRedirects(self.client.get('/welfare/tracker/'), reverse('home:wg_list'),
+                             fetch_redirect_response=False)
 
     def test_half_finished_folders_are_skipped(self):
         """取り込みが途中で壊れたものを読み込まない。"""
@@ -184,7 +214,7 @@ class SubAppDiscoveryTests(TestCase):
         from django.urls import get_resolver
 
         mounted = get_resolver().namespace_dict
-        for folder, name in subapps.discover(settings.BASE_DIR):
+        for folder, name, url in subapps.discover(settings.BASE_DIR):
             with self.subTest(app=name):
                 self.assertIn(name, mounted)
-                self.assertEqual(mounted[name][0], f'{name}/')
+                self.assertEqual(mounted[name][0], f'{url}/')

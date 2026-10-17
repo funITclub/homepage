@@ -26,6 +26,6 @@ urlpatterns = [
 # フォルダー名がそのまま URL と名前空間になる（works/countdown → /countdown/）。
 # 公開サイトとは相互にリンクせず、一覧に登録した URL から辿る（config/gate.py）。
 urlpatterns += [
-    path(f'{name}/', include(f'{folder}.{name}.urls', namespace=name))
-    for folder, name in subapps.discover(settings.BASE_DIR)
+    path(f'{url}/', include(f'{folder}.{name}.urls', namespace=name))
+    for folder, name, url in subapps.discover(settings.BASE_DIR)
 ]

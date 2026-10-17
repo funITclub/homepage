@@ -90,8 +90,11 @@ jobs:
           import yaml
           for a in (yaml.safe_load(open('wg-apps.yml')) or {}).get('apps') or []:
               take = a.get('take') or [a['app']]          # 1つだけのときは app でもよい
-              for app in take:
-                  print(a['repo'], app, a.get('as', 'wg'))
+              for item in take:
+                  # 文字列なら「フォルダー名＝URL」。URL を変えたいときは {app: …, url: …}
+                  app = item if isinstance(item, str) else item['app']
+                  url = app if isinstance(item, str) else item.get('url', app)
+                  print(a['repo'], app, a.get('as', 'wg'), url)
           PY
           cat "$RUNNER_TEMP/wg-apps.txt"
           if [ -s "$RUNNER_TEMP/wg-apps.txt" ]; then
@@ -118,7 +121,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.wg_token.outputs.token }}
         run: |
-          while read -r repo app as; do
+          while read -r repo app as url; do
             [ -z "$repo" ] && continue
             echo "::group::$repo → $as/$app"
             # 同じリポジトリから複数のアプリを取るときは、1回だけクローンする
@@ -137,7 +140,11 @@ jobs:
             test -d "$src/$app" || { echo "::error::$repo に $app/ が無い"; exit 1; }
             mkdir -p "$as"
             cp -R "$src/$app" "$as/$app"
-            echo "$repo@$(cat "$src.sha") → $as/$app" >> "$RUNNER_TEMP/taken-in.txt"
+            # URL をフォルダー名と変える（入れ子にする）ときは、目印を置く（config/subapps.py）
+            if [ "$url" != "$app" ]; then
+              echo "$url" > "$as/$app/.url"
+            fi
+            echo "$repo@$(cat "$src.sha") → $as/$app（/$url/）" >> "$RUNNER_TEMP/taken-in.txt"
             echo "::endgroup::"
           done < "$RUNNER_TEMP/wg-apps.txt"
           cat "$RUNNER_TEMP/taken-in.txt"

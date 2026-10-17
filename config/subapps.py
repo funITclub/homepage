@@ -11,6 +11,11 @@
 #
 # フォルダー名がそのまま URL になり（wg/protein → /protein/）、URL の名前空間にも
 # 使う。アプリの urls.py の app_name も同じ名前にしておくこと。
+#
+# 1 つの WG が複数のアプリを持つときは、URL を入れ子にできる。取り込みのときに
+# アプリの中へ .url という 1 行のファイルを置くと、その中身を URL として使う
+# （wg/welfare_tracker/.url に welfare/tracker → /welfare/tracker/）。
+# フォルダー名は Django のアプリ名になるので、ほかの WG と重ならない名前にする。
 
 from pathlib import Path
 
@@ -20,9 +25,21 @@ FOLDERS = {
     'works': 'home:work_list',
 }
 
+URL_FILE = '.url'
+
+
+def _url_of(path):
+    """URL に使う道。.url があればその中身、無ければフォルダー名。"""
+    marker = path / URL_FILE
+    if marker.exists():
+        url = marker.read_text(encoding='utf8').strip().strip('/')
+        if url:
+            return url
+    return path.name
+
 
 def discover(base_dir):
-    """[(フォルダー, アプリ名), …] を、置かれている順（名前順）で返す。
+    """[(フォルダー, アプリ名, URL), …] を、置かれている順（名前順）で返す。
 
     __init__.py と urls.py の両方があるものだけを取る。取り込みが途中で
     壊れたときに、半端なものを読み込まないため。
@@ -36,15 +53,19 @@ def discover(base_dir):
             if not path.is_dir() or path.name.startswith(('_', '.')):
                 continue
             if (path / '__init__.py').exists() and (path / 'urls.py').exists():
-                found.append((folder, path.name))
+                found.append((folder, path.name, _url_of(path)))
     return found
 
 
 def installed(base_dir):
     """INSTALLED_APPS に足すもの。"""
-    return [f'{folder}.{name}' for folder, name in discover(base_dir)]
+    return [f'{folder}.{name}' for folder, name, _url in discover(base_dir)]
 
 
 def gate_back(base_dir):
-    """config/gate.py の対応表（URL → 送り返す先）。"""
-    return {f'/{name}/': FOLDERS[folder] for folder, name in discover(base_dir)}
+    """config/gate.py の対応表（URL → 送り返す先）。
+
+    入れ子のときは、上の段（/welfare/）で一度通れば下（/welfare/tracker/）も
+    開ける。同じ WG のアプリのあいだを行き来できるようにするため。
+    """
+    return {f'/{url}/': FOLDERS[folder] for folder, _name, url in discover(base_dir)}

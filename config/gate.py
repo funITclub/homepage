@@ -33,11 +33,13 @@ def _exempt(settings):
 
 
 def prefix_for(path, settings):
-    """path が通行証の要るアプリなら、その接頭辞を返す。"""
-    for prefix in settings.GATE_BACK:
-        if path.startswith(prefix):
-            return prefix
-    return None
+    """path が通行証の要るアプリなら、その接頭辞を返す。
+
+    入れ子のとき（/welfare/ と /welfare/tracker/）は短いほうを返す。同じ WG の
+    アプリは 1 枚の通行証で行き来できる。
+    """
+    matched = [p for p in settings.GATE_BACK if path.startswith(p)]
+    return min(matched, key=len) if matched else None
 
 
 def is_exempt(path, settings):

@@ -603,6 +603,12 @@ WG のメンバーだけに見せたいときの案。
   - 置かれたものは `config/subapps.py` が自動で見つけて `INSTALLED_APPS`・URL・
     `GATE_BACK` に組み込む。**フォルダー名がそのまま URL**（`wg/protein` → `/protein/`）で、
     アプリの `urls.py` の `app_name` も同じ名前にする。
+  - URL を入れ子にしたいときは `wg-apps.yml` の `take` に `{app, url}` と書く
+    （`{app: welfare_tracker, url: welfare/tracker}` → `/welfare/tracker/`）。取り込みの
+    ときにアプリの中へ `.url` が置かれ、`subapps` がそれを読む。通行証は上の段で
+    1 枚取れば下の段も通る（同じ WG のアプリを行き来できる）。
+  - **フォルダー名は Django のアプリ名になるので、WG をまたいで重ねない。** 同じ名前の
+    アプリが 2 つあると、テンプレートと URL の名前空間がぶつかる。
   - WG が `requirements.txt` に足したものは本番の分に合流する。同じパッケージを
     両方が指定していたら**本番（homepage）の版を使う**（`.github/merge-requirements.py`）。
     1つのアプリとして動かすので、WG ごとに違う版は入れられない。
