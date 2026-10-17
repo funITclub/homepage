@@ -591,8 +591,10 @@ az webapp start --name funITclub
 # 2. homepage の wg-apps.yml に足す
 #      apps:
 #        - repo: funITclub/wg-protein
-#          app: protein          # リポジトリの中のアプリのフォルダー名。URL もこれになる
+#          take: [protein]       # 取り込むアプリのフォルダー名。URL もこれになる
 #          as: wg                # 公表したら works に変える
+#    1つのリポジトリに複数のアプリがあるときは take に並べる（take: [protein, tracker]）。
+#    並べなかったものは本番に載らないので、載せるアプリから載せないアプリへリンクしないこと。
 # 3. main に push する（homepage 側）。デプロイが走り、/protein/ が生える
 # 4. 編集画面（/edit/）の WG紹介で「Webアプリの URL」に https://funitclub.org/protein/ を入れる
 #    （これを入れるまで、一覧から辿る導線が無いので誰も開けない）

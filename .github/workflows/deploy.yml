@@ -77,7 +77,9 @@ jobs:
           python - <<'PY' > "$RUNNER_TEMP/wg-apps.txt"
           import yaml
           for a in (yaml.safe_load(open('wg-apps.yml')) or {}).get('apps') or []:
-              print(a['repo'], a['app'], a.get('as', 'wg'))
+              take = a.get('take') or [a['app']]          # 1つだけのときは app でもよい
+              for app in take:
+                  print(a['repo'], app, a.get('as', 'wg'))
           PY
           cat "$RUNNER_TEMP/wg-apps.txt"
           if [ -s "$RUNNER_TEMP/wg-apps.txt" ]; then
@@ -107,17 +109,21 @@ jobs:
           while read -r repo app as; do
             [ -z "$repo" ] && continue
             echo "::group::$repo → $as/$app"
-            git clone --depth 1 "https://x-access-token:$GH_TOKEN@github.com/$repo.git" "$RUNNER_TEMP/src/$app"
-            sha=$(git -C "$RUNNER_TEMP/src/$app" rev-parse --short HEAD)
-            rm -rf "$RUNNER_TEMP/src/$app/.git"
-            test -d "$RUNNER_TEMP/src/$app/$app" || { echo "$repo に $app/ が無い"; exit 1; }
-            mkdir -p "$as"
-            cp -R "$RUNNER_TEMP/src/$app/$app" "$as/$app"
-            # WG 側で requirements.txt を増やしていたら、本番の分に足す
-            if [ -f "$RUNNER_TEMP/src/$app/requirements.txt" ]; then
-              cat "$RUNNER_TEMP/src/$app/requirements.txt" >> requirements.txt
+            # 同じリポジトリから複数のアプリを取るときは、1回だけクローンする
+            src="$RUNNER_TEMP/src/$(echo "$repo" | tr / _)"
+            if [ ! -d "$src" ]; then
+              git clone --depth 1 "https://x-access-token:$GH_TOKEN@github.com/$repo.git" "$src"
+              echo "$(git -C "$src" rev-parse --short HEAD)" > "$src.sha"
+              rm -rf "$src/.git"
+              # WG 側で requirements.txt を増やしていたら、本番の分に足す（リポジトリにつき1回）
+              if [ -f "$src/requirements.txt" ]; then
+                cat "$src/requirements.txt" >> requirements.txt
+              fi
             fi
-            echo "$repo@$sha → $as/$app" >> "$RUNNER_TEMP/taken-in.txt"
+            test -d "$src/$app" || { echo "::error::$repo に $app/ が無い"; exit 1; }
+            mkdir -p "$as"
+            cp -R "$src/$app" "$as/$app"
+            echo "$repo@$(cat "$src.sha") → $as/$app" >> "$RUNNER_TEMP/taken-in.txt"
             echo "::endgroup::"
           done < "$RUNNER_TEMP/wg-apps.txt"
           sort -u requirements.txt -o requirements.txt

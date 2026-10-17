@@ -597,7 +597,8 @@ WG のメンバーだけに見せたいときの案。
   `.github/workflows/deploy.yml`）。このリポジトリは公開なので、取り込みをやめれば
   WG のソースが公開されることはない。
   - 取り込む先は `wg/<名前>/`（公表したら `works/<名前>/`）。アプリのフォルダーだけを
-    持ち込み、WG 側の `config/` や `manage.py` は入れない。
+    持ち込み、WG 側の `config/` や `manage.py` は入れない。1つのリポジトリに複数の
+    アプリがあるときは `take: [a, b]` と並べる（並べなかったものは本番に載らない）。
   - 置かれたものは `config/subapps.py` が自動で見つけて `INSTALLED_APPS`・URL・
     `GATE_BACK` に組み込む。**フォルダー名がそのまま URL**（`wg/protein` → `/protein/`）で、
     アプリの `urls.py` の `app_name` も同じ名前にする。
