@@ -9,7 +9,7 @@
 
 from django.core.management.base import BaseCommand
 
-from countdown.notify import send_daily
+from works.countdown.notify import send_daily
 
 
 class Command(BaseCommand):

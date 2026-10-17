@@ -18,7 +18,7 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from fe.transfer import TransferError, apply, check_code, open_source, read_source
+from works.fe.transfer import TransferError, apply, check_code, open_source, read_source
 
 
 class Command(BaseCommand):

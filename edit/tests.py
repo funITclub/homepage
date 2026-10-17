@@ -219,7 +219,7 @@ class DailyCheckTests(TestCase):
 
     def test_sends_countdown_mails_left_unsent(self):
         with mock.patch('edit.checks.warn_if_secret_expiring'), \
-                mock.patch('countdown.management.commands.send_countdown_mails.send_daily', return_value=0) as send:
+                mock.patch('works.countdown.management.commands.send_countdown_mails.send_daily', return_value=0) as send:
             run_daily_checks()
         send.assert_called_once()
 

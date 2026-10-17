@@ -8,10 +8,10 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from fe.data.categories import CATEGORIES, SUBJECT_B_CATEGORIES
-from fe.exam import EXAM
-from fe.generators import sync_templates
-from fe.models import Category
+from works.fe.data.categories import CATEGORIES, SUBJECT_B_CATEGORIES
+from works.fe.exam import EXAM
+from works.fe.generators import sync_templates
+from works.fe.models import Category
 
 
 class Command(BaseCommand):

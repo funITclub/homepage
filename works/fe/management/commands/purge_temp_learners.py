@@ -13,7 +13,7 @@ ID を登録した記録には触らない。
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from fe.models import Learner
+from works.fe.models import Learner
 
 
 class Command(BaseCommand):
