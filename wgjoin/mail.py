@@ -40,7 +40,8 @@ def send_link(email, wg, url, repo, guide_url):
             'WG のリポジトリ（パソコンの準備で VS Code にクローンするもの）:\n'
             f'{repo}\n\n'
             '■ 次にすること\n'
-            'パソコンの準備（VS Code と Docker Desktop）をします。手順は資料 02 にあります。\n'
+            '1. パソコンの準備（資料 02）… VS Code と Docker Desktop を入れる。初回だけ\n'
+            '2. 開発の進め方（資料 03）… 作業するときの流れ\n'
             f'{guide_url}\n\n'
             + _footer(contact)
         ),
