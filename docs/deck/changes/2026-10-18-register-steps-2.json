@@ -1,0 +1,26 @@
+{
+  "static/guide/01_リポジトリの作り方と運用.pptx": {
+    "11": [
+      [
+        8,
+        "funitclub-wg-deploy →「Install App」→「Only select repositories」に wg-<名前> を足す",
+        "「Install App」→「Only select repositories」に wg-<名前> を足す"
+      ],
+      [
+        12,
+        "WG の Settings →「Secrets」→ HOMEPAGE_DEPLOY_APP_ID に App ID（数字）を入れる",
+        "WG の Secrets に HOMEPAGE_DEPLOY_APP_ID（App ID の数字）"
+      ],
+      [
+        16,
+        "App の「Credentials」→「Key pairs」→「New key」で作った .pem の中身を HOMEPAGE_DEPLOY_PRIVATE_KEY に。入れたら手元の .pem は消す",
+        "「Credentials」→「New key」で作った .pem を HOMEPAGE_DEPLOY_PRIVATE_KEY に"
+      ],
+      [
+        34,
+        "登録するまでは取り込まれない。WG が main にマージしても、サイトには出ない（homepage が作り直されるだけ）。",
+        "登録するまでは取り込まれない（WG がマージしても、サイトには出ない）。鍵は作ったときだけ表示されるので、登録したら手元の .pem は消す。"
+      ]
+    ]
+  }
+}

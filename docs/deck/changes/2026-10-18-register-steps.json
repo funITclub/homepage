@@ -1,0 +1,76 @@
+{
+  "static/guide/01_リポジトリの作り方と運用.pptx": {
+    "11": [
+      [
+        4,
+        "一度だけ（WG ごと）",
+        "GitHub でやること（一度だけ）"
+      ],
+      [
+        7,
+        "GitHub App をこのリポジトリにも入れる",
+        "アプリを入れる"
+      ],
+      [
+        8,
+        "App の「Install App」→「Only select repositories」に足す",
+        "funitclub-wg-deploy →「Install App」→「Only select repositories」に wg-<名前> を足す"
+      ],
+      [
+        11,
+        "シークレットを 2 つ入れる",
+        "アプリの登録"
+      ],
+      [
+        12,
+        "鍵を作り、HOMEPAGE_DEPLOY_APP_ID と _PRIVATE_KEY を入れる",
+        "WG の Settings →「Secrets」→ HOMEPAGE_DEPLOY_APP_ID に App ID（数字）を入れる"
+      ],
+      [
+        15,
+        "wg-apps.yml に 1 行足す",
+        "pem の登録"
+      ],
+      [
+        16,
+        "homepage に repo・take・as を書いて push。/<名前>/ が生える",
+        "App の「Credentials」→「Key pairs」→「New key」で作った .pem の中身を HOMEPAGE_DEPLOY_PRIVATE_KEY に。入れたら手元の .pem は消す"
+      ],
+      [
+        19,
+        "アプリができたら",
+        "homepage でやること"
+      ],
+      [
+        22,
+        "Webアプリの URL を入れる",
+        "wg-apps.yml に 1 行足す"
+      ],
+      [
+        23,
+        "/edit/ の WG紹介に。入れるまで誰も辿り着けない",
+        "repo・take・as を書いて push。これで /<名前>/ が生える"
+      ],
+      [
+        26,
+        "状態を「活動中」にする",
+        "Webアプリの URL を入れる"
+      ],
+      [
+        27,
+        "「準備中」のままだと、作りかけに見える",
+        "アプリができたら /edit/ の WG紹介に入れ、状態を「活動中」に。入れるまで誰も辿り着けない"
+      ],
+      [
+        30,
+        "公表するときは works へ",
+        "公表するときは works へ"
+      ],
+      [
+        31,
+        "wg-apps.yml の as を works に変える（URL はそのまま）",
+        "wg-apps.yml の as を works に変える（URL はそのまま）"
+      ]
+    ]
+  }
+}
