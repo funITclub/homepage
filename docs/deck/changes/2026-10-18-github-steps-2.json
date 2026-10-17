@@ -1,0 +1,66 @@
+{
+  "static/guide/01_リポジトリの作り方と運用.pptx": {
+    "11": [
+      [
+        7,
+        "Settings →「Developer settings」",
+        "Developer settings を開く"
+      ],
+      [
+        8,
+        "github.com/funITclub を開き、上のタブ「Settings」→ 左メニューのいちばん下",
+        "github.com/funITclub → 上のタブ「Settings」→ 左メニューのいちばん下"
+      ],
+      [
+        11,
+        "「GitHub Apps」→ 「Edit」",
+        "App の設定に入る"
+      ],
+      [
+        12,
+        "一覧の funitclub-wg-deploy の右にある「Edit」を押す",
+        "「GitHub Apps」→ 一覧の funitclub-wg-deploy の右の「Edit」"
+      ],
+      [
+        15,
+        "「Install App」→ 歯車 →「Select repositories」",
+        "リポジトリを足す"
+      ],
+      [
+        16,
+        "左メニュー「Install App」→ funITclub の行の歯車 → wg-<名前> を選び「Save」",
+        "左の「Install App」→ funITclub の歯車 → wg-<名前> を選び「Save」"
+      ],
+      [
+        22,
+        "「Credentials」→「Key pairs」→「New key」",
+        "pem を作る"
+      ],
+      [
+        23,
+        "同じ App の左メニュー。押すと .pem が落ちる（落とせるのはこの時だけ）",
+        "同じ App の左「Credentials」→「Key pairs」→「New key」。この時だけ落とせる"
+      ],
+      [
+        26,
+        "WG の Settings →「Secrets and variables」→「Actions」",
+        "WG の Secrets を開く"
+      ],
+      [
+        27,
+        "github.com/funITclub/wg-<名前> を開き、上のタブ「Settings」→ 左メニュー",
+        "WG のリポジトリ →「Settings」→ 左の「Secrets and variables」→「Actions」"
+      ],
+      [
+        30,
+        "「New repository secret」で 2 つ入れる",
+        "2 つ入れる"
+      ],
+      [
+        31,
+        "HOMEPAGE_DEPLOY_APP_ID に App ID、HOMEPAGE_DEPLOY_PRIVATE_KEY に .pem の中身",
+        "「New repository secret」→ HOMEPAGE_DEPLOY_APP_ID に App ID、HOMEPAGE_DEPLOY_PRIVATE_KEY に .pem の中身"
+      ]
+    ]
+  }
+}

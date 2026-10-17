@@ -1,0 +1,16 @@
+{
+  "static/guide/01_リポジトリの作り方と運用.pptx": {
+    "11": [
+      [
+        31,
+        "「New repository secret」で HOMEPAGE_DEPLOY_APP_ID と HOMEPAGE_DEPLOY_PRIVATE_KEY",
+        "「New repository secret」を 2 回押して、下の名前で登録する"
+      ],
+      [
+        33,
+        "APP_ID には App の「General」に出ている数字、PRIVATE_KEY には .pem の中身。登録したら手元の .pem は消す（鍵は作り直せる）。",
+        "名前は HOMEPAGE_DEPLOY_APP_ID（App の「General」に出ている数字）と HOMEPAGE_DEPLOY_PRIVATE_KEY（.pem の中身）。登録したら手元の .pem は消す。"
+      ]
+    ]
+  }
+}
