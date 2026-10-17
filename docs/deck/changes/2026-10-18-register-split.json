@@ -1,0 +1,178 @@
+{
+  "static/guide/01_リポジトリの作り方と運用.pptx": {
+    "11": [
+      [
+        0,
+        "// 01  ·  公開  ·  登録",
+        "// 01  ·  公開  ·  登録 ①"
+      ],
+      [
+        1,
+        "アプリを載せるときの登録",
+        "GitHub でやること（WG ごと一度だけ）"
+      ],
+      [
+        4,
+        "GitHub でやること（一度だけ）",
+        "アプリをこのリポジトリに入れる"
+      ],
+      [
+        7,
+        "アプリを入れる",
+        "org の設定を開く"
+      ],
+      [
+        8,
+        "「Install App」→「Only select repositories」に wg-<名前> を足す",
+        "github.com/funITclub →「Settings」→ 左の下「Developer settings」"
+      ],
+      [
+        11,
+        "アプリの登録",
+        "App の設定に入る"
+      ],
+      [
+        12,
+        "WG の Secrets に HOMEPAGE_DEPLOY_APP_ID（App ID の数字）",
+        "「GitHub Apps」→ funitclub-wg-deploy の「Edit」"
+      ],
+      [
+        15,
+        "pem の登録",
+        "リポジトリを足す"
+      ],
+      [
+        16,
+        "「Credentials」→「New key」で作った .pem を HOMEPAGE_DEPLOY_PRIVATE_KEY に",
+        "左の「Install App」→ funITclub の歯車 →「Select repositories」→ 保存"
+      ],
+      [
+        19,
+        "homepage でやること",
+        "鍵とシークレットを登録する"
+      ],
+      [
+        22,
+        "wg-apps.yml に 1 行足す",
+        "pem を作る"
+      ],
+      [
+        23,
+        "repo・take・as を書いて push。これで /<名前>/ が生える",
+        "App の左「Credentials」→「Key pairs」→「New key」。この時だけ落とせる"
+      ],
+      [
+        26,
+        "Webアプリの URL を入れる",
+        "アプリの登録"
+      ],
+      [
+        27,
+        "アプリができたら /edit/ の WG紹介に入れ、状態を「活動中」に。入れるまで誰も辿り着けない",
+        "WG の「Settings」→「Secrets and variables」→「Actions」→ HOMEPAGE_DEPLOY_APP_ID"
+      ],
+      [
+        30,
+        "公表するときは works へ",
+        "pem の登録"
+      ],
+      [
+        31,
+        "wg-apps.yml の as を works に変える（URL はそのまま）",
+        "同じ画面で HOMEPAGE_DEPLOY_PRIVATE_KEY に .pem の中身。入れたら消す"
+      ],
+      [
+        34,
+        "登録するまでは取り込まれない（WG がマージしても、サイトには出ない）。鍵は作ったときだけ表示されるので、登録したら手元の .pem は消す。",
+        "App ID は App の「General」に出ている数字。鍵は作ったときだけ表示されるので、登録したら手元の .pem は消す。"
+      ]
+    ],
+    "12": [
+      [
+        0,
+        "// 01  ·  公開  ·  登録",
+        "// 01  ·  公開  ·  登録 ②"
+      ],
+      [
+        1,
+        "アプリを載せるときの登録",
+        "homepage でやること・確かめ方"
+      ],
+      [
+        4,
+        "GitHub でやること（一度だけ）",
+        "homepage でやること"
+      ],
+      [
+        7,
+        "アプリを入れる",
+        "wg-apps.yml に 1 行足す"
+      ],
+      [
+        8,
+        "「Install App」→「Only select repositories」に wg-<名前> を足す",
+        "repo・take・as を書いて push。これで /<名前>/ が生える"
+      ],
+      [
+        11,
+        "アプリの登録",
+        "Webアプリの URL を入れる"
+      ],
+      [
+        12,
+        "WG の Secrets に HOMEPAGE_DEPLOY_APP_ID（App ID の数字）",
+        "アプリができたら /edit/ の WG紹介に。状態も「活動中」にする"
+      ],
+      [
+        15,
+        "pem の登録",
+        "公表するときは works へ"
+      ],
+      [
+        16,
+        "「Credentials」→「New key」で作った .pem を HOMEPAGE_DEPLOY_PRIVATE_KEY に",
+        "wg-apps.yml の as を works に変える（URL はそのまま）"
+      ],
+      [
+        19,
+        "homepage でやること",
+        "できたか確かめる"
+      ],
+      [
+        22,
+        "wg-apps.yml に 1 行足す",
+        "WG の Actions"
+      ],
+      [
+        23,
+        "repo・take・as を書いて push。これで /<名前>/ が生える",
+        "マージの 10 秒後に緑。homepage のデプロイを呼べたということ"
+      ],
+      [
+        26,
+        "Webアプリの URL を入れる",
+        "homepage の Actions"
+      ],
+      [
+        27,
+        "アプリができたら /edit/ の WG紹介に入れ、状態を「活動中」に。入れるまで誰も辿り着けない",
+        "5〜9 分で緑。ここが赤いときは公開されていない"
+      ],
+      [
+        30,
+        "公表するときは works へ",
+        "WG 一覧から開く"
+      ],
+      [
+        31,
+        "wg-apps.yml の as を works に変える（URL はそのまま）",
+        "直打ちでは開かない。カードのボタンから辿る"
+      ],
+      [
+        34,
+        "登録するまでは取り込まれない（WG がマージしても、サイトには出ない）。鍵は作ったときだけ表示されるので、登録したら手元の .pem は消す。",
+        "wg-apps.yml に登録するまでは取り込まれない。WG がマージしても、サイトには出ない（homepage が作り直されるだけ）。"
+      ]
+    ]
+  }
+}
