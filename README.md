@@ -40,6 +40,7 @@ deploy.txt             Azure へのデプロイ・本番環境の作成手順（
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
 docs/                  補足資料（開発の手順・セキュリティ対応一覧など）。デプロイの zip からは除外する
+  deck/                WG 立ち上げガイド（static/guide/*.pptx）を直すための道具と決まりごと
 .devcontainer/         開発環境（VS Code の Dev Container）の定義。デプロイの zip からは除外する
 .vscode/               VS Code の共通設定（起動構成・タスク）。デプロイの zip からは除外する
 ```
