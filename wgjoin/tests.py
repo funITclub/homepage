@@ -427,9 +427,15 @@ class GoogleClientTests(SimpleTestCase):
     def test_someone_already_in_the_space_is_fine_but_no_permission_is_an_error(self, _):
         with mock.patch.object(google, 'call', return_value=(409, {})):
             google.add_to_chat_space('spaces/AAAAbc123', MEMBER)
-        with mock.patch.object(google, 'call', return_value=(403, {})):
-            with self.assertRaises(ServiceError):
+        denied = {'error': {'code': 403, 'status': 'PERMISSION_DENIED',
+                            'message': f'{MEMBER} cannot be added',
+                            'details': [{'reason': 'ACCESS_TOKEN_SCOPE_INSUFFICIENT'}]}}
+        with mock.patch.object(google, 'call', return_value=(403, denied)):
+            with self.assertRaises(ServiceError) as ctx:
                 google.add_to_chat_space('spaces/AAAAbc123', MEMBER)
+        # 切り分けに使う理由は載せ、アドレスの入りうる本文は載せない
+        self.assertIn('PERMISSION_DENIED ACCESS_TOKEN_SCOPE_INSUFFICIENT', str(ctx.exception))
+        self.assertNotIn('bu1111111111', str(ctx.exception))
 
 
 def _rsa_key():

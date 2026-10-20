@@ -82,14 +82,27 @@ def invite_to_club(email, club_course_id):
 
 def add_to_chat_space(space, email):
     """WG の Chat スペース（spaces/<ID>）に追加する。もういる人はそのまま。"""
-    status, _ = call('POST', f'{CHAT_API}/{space}/members',
-                     headers={'Authorization': f'Bearer {_access_token()}'},
-                     json_body={'member': {'name': f'users/{email}', 'type': 'HUMAN'}})
+    status, body = call('POST', f'{CHAT_API}/{space}/members',
+                        headers={'Authorization': f'Bearer {_access_token()}'},
+                        json_body={'member': {'name': f'users/{email}', 'type': 'HUMAN'}})
     if status in (200, 409):  # 409 はもうスペースにいる
         return
     # 403 なら、許可に chat.memberships がない（許可し直す）か、運営がスペースのメンバーでない・
-    # メンバーを追加できる役割でない。404 なら、スペースの登録が違う
-    raise ServiceError(f'Chat スペースに追加できませんでした（{status}）')
+    # メンバーを追加できる役割でない、大学の管理者が Chat API を止めている、など。404 なら、
+    # スペースの登録が違う。どれかを切り分けられるよう、Google が返した理由を通知に載せる
+    raise ServiceError(f'Chat スペースに追加できませんでした（{status} {_google_reason(body)}）')
+
+
+def _google_reason(body):
+    """Google の API のエラーの理由（PERMISSION_DENIED など）。本文（message）は載せない。
+
+    message には相手のアドレスが入ることがあるので、決まった値の status と reason だけを使う。
+    """
+    error = body.get('error') if isinstance(body, dict) else None
+    if not isinstance(error, dict):
+        return ''
+    reasons = [d.get('reason') for d in error.get('details') or [] if isinstance(d, dict) and d.get('reason')]
+    return ' '.join(str(x) for x in [error.get('status'), *reasons] if x)
 
 
 # ---- 運営が一度だけ行う許可（manage.py wgjoin_google_authorize） ----
