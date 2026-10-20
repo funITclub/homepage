@@ -68,6 +68,15 @@ class Wg(models.Model):
         help_text='「WG に参加」で登録する WG のチームの名前（例: wg-countdown）。'
                   'wg- で始まるものだけ。空欄なら「WG に参加」を出さない。',
     )
+    # 入れておくと、「WG に参加」の手続きでこのスペースに本人を追加する（運営のアカウントの権限）。
+    # 空欄なら、これまでどおりクラブのクラスの授業にあるリンクから本人が入る。
+    chat_space = models.CharField(
+        'Chat スペース',
+        max_length=100,
+        blank=True,
+        help_text='「WG に参加」で追加する WG の Chat スペース。スペースの URL を貼ると、'
+                  'spaces/… の形に直して保存します。空欄なら追加しない（授業のリンクから本人が入る）。',
+    )
     sort_order = models.IntegerField(
         '表示順',
         default=0,

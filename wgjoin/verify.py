@@ -2,17 +2,21 @@
 #
 # 確認のメールのリンクと、送りすぎの歯止め。どちらもアドレスを保存しない。
 #
-# リンク … 「どの WG の手続きか」と使い捨ての番号だけを署名して入れる（アドレスは入れない）。
+# リンク … 「どの WG の手続きか」と使い捨ての番号を署名して入れる。WG に Chat スペースが
+#          登録されているときだけ、スペースに追加するためにアドレスを**暗号化して**入れる
+#          （リンクやアクセスログから読めないように。DB にもセッションにも置かない）。
 #          リンクが届いた＝そのアドレスの持ち主、なので、開いた人をメンバーとして扱う。
 #          期限は WG_JOIN_LINK_MAX_AGE。使い終わった番号はキャッシュに覚えて二度使わせない。
 # 歯止め … 同じ IP・同じアドレスからの送信を数える。アドレスはそのまま持たず、
 #          SECRET_KEY で鍵を掛けたハッシュにして数える。
 
+import base64
 import hashlib
 import hmac
 import secrets
 import time
 
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from django.conf import settings
 from django.core import signing
 from django.core.cache import cache
@@ -24,19 +28,38 @@ class LinkInvalid(Exception):
     """リンクが壊れている・期限切れ・使用済み。"""
 
 
-def make_link_token(wg_pk):
-    return signing.dumps({'wg': wg_pk, 'n': secrets.token_urlsafe(12)}, salt=SALT)
+def _fernet():
+    # 鍵は SECRET_KEY から作る（countdown/crypto.py と同じ作り。用途ごとに salt を変える）
+    keys = [settings.SECRET_KEY, *settings.SECRET_KEY_FALLBACKS]
+    return MultiFernet([
+        Fernet(base64.urlsafe_b64encode(hashlib.sha256(b'wgjoin.link-address' + key.encode()).digest()))
+        for key in keys
+    ])
+
+
+def make_link_token(wg_pk, email=None):
+    """確認のリンクの token。email を渡したときだけ、暗号化して入れる。"""
+    data = {'wg': wg_pk, 'n': secrets.token_urlsafe(12)}
+    if email:
+        data['e'] = _fernet().encrypt(email.encode()).decode()
+    return signing.dumps(data, salt=SALT)
 
 
 def read_link_token(token):
-    """(wg の pk, 使い捨ての番号)。使えないリンクなら LinkInvalid。"""
+    """(wg の pk, 使い捨ての番号, アドレスか None)。使えないリンクなら LinkInvalid。"""
     try:
         data = signing.loads(token, salt=SALT, max_age=settings.WG_JOIN_LINK_MAX_AGE)
     except signing.BadSignature as e:  # SignatureExpired も含む
         raise LinkInvalid from e
     if is_used(data['n']):
         raise LinkInvalid
-    return data['wg'], data['n']
+    email = None
+    if data.get('e'):
+        try:
+            email = _fernet().decrypt(data['e'].encode()).decode()
+        except (InvalidToken, ValueError) as e:
+            raise LinkInvalid from e
+    return data['wg'], data['n'], email
 
 
 def _used_key(nonce):

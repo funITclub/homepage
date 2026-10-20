@@ -8,9 +8,17 @@
         <div class="card">
             <p class="coming-label">// {{ wg.code }} に参加</p>
             <h1>メンバーであることを確認しました</h1>
+            {% if wg.chat_space %}
+            <p>続けて、WG の Chat スペースに追加し、GitHub の WG のチームに登録します。</p>
+            {% else %}
             <p>続けて、GitHub の WG のチームに登録します。</p>
+            {% endif %}
 
-            <a class="btn btn-lg" href="{% url 'wgjoin:github_start' wg.pk %}">GitHub でログインして登録する</a>
+            {# 開いただけでは何もしない。メールのリンクを先に開いて確かめる仕組みが、本人の代わりに参加させないように #}
+            <form method="post" action="{% url 'wgjoin:verify' token %}">
+                {% csrf_token %}
+                <button class="btn btn-lg" type="submit">GitHub でログインして登録する</button>
+            </form>
 
             <p class="wgjoin-note">
                 GitHub アカウントがなければ、次の画面の「Create an account」から作れます。

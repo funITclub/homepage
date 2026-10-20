@@ -73,6 +73,7 @@ class AdministratorTests(TestCase):
             self.assertEqual(public_contact_email(), settings.PUBLIC_CONTACT_EMAIL)
 
 
+@override_settings(CLUB_CLASSROOM_COURSE='')  # 手元の .env の設定で本物のクラスに招待しない
 class JoinMailRecipientTests(TestCase):
     """参加フォームの宛先も管理者テーブルから取る。"""
 
@@ -80,9 +81,7 @@ class JoinMailRecipientTests(TestCase):
         Administrator.objects.create(email='second@example.com', sort_order=1)
 
         self.client.post(reverse('home:join_apply'), {
-            'name': '佛教 太郎',
             'email': 'bu0000000000@bukkyo-u.ac.jp',
-            'wg': '',
         })
 
         notification, auto_reply = mail.outbox

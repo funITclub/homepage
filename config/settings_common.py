@@ -233,15 +233,16 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # WG への参加（wgjoin）。WG 一覧の「WG に参加」で大学のアドレスを入れてもらい、運営の権限で
 # Classroom のクラブのクラスの名簿を引いてメンバーか確かめる。メンバーなら確認のメールの
-# リンクから、GitHub の WG のチームに登録する。WG の Chat には、クラスの授業にあるリンクから
-# 本人が入る（サイトは何もしない）。
+# リンクから、WG の Chat スペースに追加し（WG紹介に Chat スペースがある WG だけ。運営の権限）、
+# GitHub の WG のチームに登録する。Chat スペースのない WG では、クラスの授業にあるリンクから本人が入る。
 # 会員の情報はサイトに持たない（名簿は Classroom）。値はすべて環境変数から読み、
 # どれかが欠けていれば「WG に参加」を出さない（wgjoin.config.is_enabled）。
 #
 #   CLUB_CLASSROOM_COURSE      … クラブの Classroom のクラス（URL か ID）。ここにいる人をメンバーとみなす
 #   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET
 #                              … Google Cloud の OAuth クライアント（デスクトップ アプリ）
-#   GOOGLE_OAUTH_REFRESH_TOKEN … クラスの先生（運営）が名簿の読み取りを許可したもの
+#   GOOGLE_OAUTH_REFRESH_TOKEN … クラスの先生（運営）が名簿の管理と Chat のメンバーの管理を許可したもの
+#                                （参加の申し込みでのクラブのクラスへの招待にも使う。home/views.py）
 #                                （manage.py wgjoin_google_authorize で受け取る）
 #   GITHUB_APP_ID / GITHUB_APP_CLIENT_ID / GITHUB_APP_CLIENT_SECRET / GITHUB_APP_PRIVATE_KEY
 #                              … funITclub の GitHub App（org の Members を読み書きできるもの）

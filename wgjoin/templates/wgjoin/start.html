@@ -17,13 +17,15 @@
                 </li>
                 <li>
                     <strong>メールのリンクを開き、GitHub でログイン</strong>
-                    <span>WG のチームに登録します。GitHub アカウントがなければ、その画面で作れます
+                    <span>{% if wg.chat_space %}WG の Chat スペースに追加し、{% endif %}WG のチームに登録します。GitHub アカウントがなければ、その画面で作れます
                     （大学のメールアドレスで登録してください）。</span>
                 </li>
+                {% if not wg.chat_space %}
                 <li>
                     <strong>WG の Chat に入る</strong>
                     <span>クラブのクラスの「授業」にある {{ wg.name }} から、Chat スペースのリンクを開いて参加します。</span>
                 </li>
+                {% endif %}
             </ol>
 
             <form class="wgjoin-form" method="post" action="{% url 'wgjoin:start' wg.pk %}" novalidate>
@@ -50,7 +52,7 @@
 
             <p class="wgjoin-note">
                 このサイトは、あなたのメールアドレスや GitHub のユーザー名を保存しません。
-                アドレスは、Classroom の名簿で確かめて確認のメールを送るためだけに使います。<br>
+                アドレスは、Classroom の名簿で確かめて確認のメールを送り{% if wg.chat_space %}、Chat スペースに追加する{% endif %}ためだけに使います。<br>
                 まだクラブに登録していない方は、先に<a href="{% url 'home:join' %}">参加の申し込み</a>をしてください。
             </p>
         </div>

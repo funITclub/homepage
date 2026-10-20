@@ -17,22 +17,28 @@ from config.middleware import BlockedIpMiddleware
 from edit.models import Administrator
 from news.models import News
 
+from wgjoin import google
+
 from .models import BlockedIp
 
+# 手元の .env に Google の設定が入っていても、テストでは本物のクラスに招待しない
+NO_INVITE = dict(CLUB_CLASSROOM_COURSE='')
+INVITE = dict(
+    CLUB_CLASSROOM_COURSE='987654321098', GOOGLE_OAUTH_CLIENT_ID='google-client',
+    GOOGLE_OAUTH_CLIENT_SECRET='google-secret', GOOGLE_OAUTH_REFRESH_TOKEN='staff-refresh')
 
+
+@override_settings(**NO_INVITE)
 class JoinFormTests(TestCase):
     """参加フォーム（/join/）。佛教大学のアドレスからだけ受け付ける。"""
 
     def setUp(self):
         self.url = reverse('home:join_apply')
         self.done_url = reverse('home:join_apply_done')
-        self.wg = Wg.objects.create(code='WG-01', name='データ分析', description='説明')
 
     def post(self, **overrides):
         data = {
-            'name': '佛教 太郎',
             'email': 'bu0000000000@bukkyo-u.ac.jp',
-            'wg': self.wg.pk,
         }
         data.update(overrides)
         return self.client.post(self.url, data)
@@ -114,8 +120,7 @@ class JoinFormTests(TestCase):
         # 事務局あて。返信するとそのまま申込者に届く。
         self.assertEqual(notification.to, [settings.JOIN_NOTIFY_EMAIL])
         self.assertEqual(notification.reply_to, ['bu0000000000@bukkyo-u.ac.jp'])
-        self.assertIn('佛教 太郎', notification.body)
-        self.assertIn('WG-01 データ分析', notification.body)
+        self.assertIn('bu0000000000@bukkyo-u.ac.jp', notification.body)
 
         # 申込者あての控え。第三者にも届きうるので、心当たりがない場合の案内を必ず入れる。
         self.assertEqual(auto_reply.to, ['bu0000000000@bukkyo-u.ac.jp'])
@@ -159,7 +164,7 @@ class JoinFormTests(TestCase):
         """
         form = self.client.get(self.url).context['form']
 
-        self.assertEqual(list(form.fields), ['name', 'email', 'wg'])
+        self.assertEqual(list(form.fields), ['email'])
         for name, field in form.fields.items():
             with self.subTest(field=name):
                 self.assertNotIsInstance(field.widget, forms.Textarea)
@@ -167,9 +172,8 @@ class JoinFormTests(TestCase):
     def test_extra_post_data_is_ignored(self):
         """フォームに無い項目を POST されても、メール本文には入らない。"""
         self.client.post(self.url, {
-            'name': '佛教 太郎',
             'email': 'bu0000000000@bukkyo-u.ac.jp',
-            'wg': '',
+            'name': 'https://example.com/phishing',
             'message': 'https://example.com/phishing',
         })
 
@@ -196,19 +200,6 @@ class JoinFormTests(TestCase):
         self.post(email='bu0000000000@Bukkyo-U.ac.jp')
         self.assertEqual(len(mail.outbox), 2)
 
-    def test_wg_is_optional(self):
-        self.post(wg='')
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertIn('未定', mail.outbox[0].body)
-
-    def test_newline_in_name_does_not_500(self):
-        """氏名に改行を入れてもヘッダは汚染されず、500 にもならない。"""
-        response = self.post(name='X\nBcc: attacker@example.com')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(mail.outbox), 0)
-        self.assertContains(response, 'メールの送信に失敗しました')
-
     def test_email_is_not_written_to_log(self):
         """申込者のメールアドレスをログに残さない。"""
         with self.assertLogs('home.views', level='INFO') as logs:
@@ -216,25 +207,70 @@ class JoinFormTests(TestCase):
 
         self.assertNotIn('bu0000000000@bukkyo-u.ac.jp', '\n'.join(logs.output))
 
-    def test_url_in_name_is_rejected(self):
-        """氏名に URL は入れさせない（自動返信で第三者に読まれるため）。"""
-        for name in ['https://bit.ly/abc', 'www.example.com', '至急 http://x.jp', 'ftp://x']:
-            with self.subTest(name=name):
-                response = self.post(name=name)
-                self.assertFormError(response.context['form'], 'name',
-                                     'お名前に URL は入力できません。')
-                self.assertEqual(len(mail.outbox), 0)
 
-    def test_draft_wg_is_not_selectable(self):
-        draft = Wg.objects.create(code='WG-99', name='下書きWG', description='説明',
-                                  is_published=False)
-        response = self.post(wg=draft.pk)
+@override_settings(**INVITE)
+class ClassroomInviteTests(TestCase):
+    """申し込みの時点で、運営の権限でクラブの Classroom のクラスに招待する。"""
 
-        self.assertEqual(response.status_code, 200)
+    EMAIL = 'bu0000000000@bukkyo-u.ac.jp'
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('home:join_apply')
+
+    def post(self, **invite):
+        with mock.patch.object(google, 'invite_to_club', **invite) as invite_mock:
+            response = self.client.post(self.url, {'email': self.EMAIL})
+        self.assertRedirects(response, reverse('home:join_apply_done'))
+        return invite_mock
+
+    def test_invites_to_the_club_class(self):
+        with self.assertLogs('home', level='INFO') as logs:
+            invite = self.post(return_value=google.INVITED)
+        invite.assert_called_once_with(self.EMAIL, '987654321098')
+        # 招待できたらサイトからは何も送らない。事務局にも知らせない（会の運営に介入しない）。
+        # 申請者には Google の招待メール（クラスの「参加」ボタン付き）だけが届く
         self.assertEqual(len(mail.outbox), 0)
-        self.assertNotContains(response, '下書きWG')
+        self.assertNotIn('bu0000000000', '\n'.join(logs.output))
+
+    def test_someone_already_in_the_class_is_told_so(self):
+        self.post(return_value=google.MEMBER)
+        [auto_reply] = mail.outbox
+        self.assertIn('すでに', auto_reply.body)
+        self.assertIn('https://classroom.google.com/c/OTg3NjU0MzIxMDk4', auto_reply.body)
+        self.assertIn('WG に参加', auto_reply.body)
+
+    def test_failure_still_accepts_and_falls_back_to_the_staff(self):
+        from wgjoin.http import ServiceError
+        with self.assertLogs('home', level='ERROR') as logs:
+            self.post(side_effect=ServiceError('403'))
+        # 手作業が要るので、このときだけ事務局に知らせる
+        notification, auto_reply = mail.outbox
+        self.assertEqual(notification.to, [settings.JOIN_NOTIFY_EMAIL])
+        self.assertIn('手作業で招待してください', notification.body)
+        self.assertIn('7日以内', auto_reply.body)
+        self.assertIn('招待できませんでした', '\n'.join(logs.output))
+        self.assertNotIn('bu0000000000', '\n'.join(logs.output))
+
+    def test_pages_say_the_address_is_used_for_the_invitation(self):
+        self.assertContains(self.client.get(self.url), 'クラスへの招待を送るために使います')
+        done = self.client.get(reverse('home:join_apply_done'))
+        self.assertContains(done, 'クラブのクラスへの招待</strong>が届きます')
+        self.assertContains(done, '7日以内')
+        self.assertContains(done, '迷惑メール')
+        # 画面にはクラスのリンクを出さない
+        self.assertNotContains(done, 'classroom.google.com')
+        self.assertNotContains(done, '控えのメールをお送りしました')
+
+    def test_no_invitation_without_the_settings(self):
+        with self.settings(**NO_INVITE):
+            invite = self.post()
+            invite.assert_not_called()
+            self.assertIn('自動の招待は使っていません', mail.outbox[0].body)
+            self.assertNotContains(self.client.get(self.url), 'クラスへの招待を送るために使います')
 
 
+@override_settings(**NO_INVITE)
 @override_settings(JOIN_BURST_RULES=[(3, 600)])
 class BurstDetectionTests(TestCase):
     """連続送信の検知と遮断。"""
@@ -245,9 +281,7 @@ class BurstDetectionTests(TestCase):
 
     def post(self, **extra):
         return self.client.post(self.url, {
-            'name': '佛教 太郎',
             'email': 'bu0000000000@bukkyo-u.ac.jp',
-            'wg': '',
         }, **extra)
 
     def test_blocks_after_exceeding_the_limit(self):

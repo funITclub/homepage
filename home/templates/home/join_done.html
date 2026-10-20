@@ -14,6 +14,47 @@
 <div class="container">
     <section class="done">
 
+        {% if classroom_invite %}
+        {# 申し込みごとの結果（招待できたか・もうメンバーか）は出さない。クラスのリンクも出さない #}
+        <div class="card">
+            <p class="done-label">// 受付完了</p>
+            <h1>参加の申し込みを受け付けました</h1>
+            <p class="done-lead">
+                ご入力の大学のメールアドレスに、Google Classroom から
+                <strong>クラブのクラスへの招待</strong>が届きます。
+                このページでの操作は不要です。
+            </p>
+
+            <ol class="done-steps">
+                <li>
+                    <span class="done-step-title">招待のメールを確認する</span>
+                    Google Classroom から届く、fun IT club のクラスへの招待です。
+                    数分たっても見当たらない場合は、迷惑メールフォルダもご確認ください。
+                </li>
+                <li>
+                    <span class="done-step-title">「参加」を押す</span>
+                    大学のアカウントで招待の「参加」を押すと、クラスに入ります。活動の拠点は Classroom です。
+                    参加すると、WG 一覧の「WG に参加」から WG に入れます。
+                </li>
+            </ol>
+            <p class="done-lead">
+                すでにクラスに登録済みの場合や、招待をお送りできなかった場合は、招待の代わりに
+                <span class="done-mono">no-reply@funitclub.org</span> からメールでお知らせします
+                （招待をお送りできなかった場合は、担当者から <strong>7日以内</strong> にご案内します）。
+            </p>
+        </div>
+
+        <div class="notice">
+            <p class="notice-title">招待もメールも届かないとき</p>
+            <p>
+                迷惑メールフォルダにも見当たらない場合は、送信時にメールアドレスを打ち間違えている
+                可能性があります。お手数ですが
+                <a href="mailto:{{ public_contact }}">{{ public_contact }}</a> までご連絡ください。
+                短い間に申し込みを繰り返すと、迷惑行為の防止のためアクセスが制限されることが
+                あります。再送ではなく、メールでお問い合わせください。
+            </p>
+        </div>
+        {% else %}
         <div class="card">
             <p class="done-label">// 受付完了</p>
             <h1>参加の申し込みを受け付けました</h1>
@@ -54,6 +95,8 @@
                 あります。再送ではなく、メールでお問い合わせください。
             </p>
         </div>
+
+        {% endif %}
 
         <div class="done-actions">
             <a class="btn btn-lg" href="{% url 'home:index' %}">TOPへ戻る</a>

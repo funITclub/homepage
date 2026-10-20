@@ -23,7 +23,10 @@ from django.views.generic import FormView, TemplateView
 
 from catalog.models import Wg, Work
 from news.models import News
+from wgjoin import google
+from wgjoin.config import can_invite_to_club, club_course_id
 from wgjoin.config import is_enabled as wgjoin_enabled
+from wgjoin.http import ServiceError
 
 from .forms import JoinForm
 from .models import BlockedIp
@@ -215,6 +218,13 @@ class JoinApplyView(NavMixin, FormView):
 
     申し込みは DB に残さず、事務局（edit.Administrator）へのメールと申込者への
     自動返信で完結する（hirahira_room のお問い合わせと同じ作り）。
+
+    設定がそろっていれば（wgjoin.config.can_invite_to_club）、運営の権限でクラブの
+    Classroom のクラスに招待する。運営の承認は挟まない。他人のアドレスを入れられても
+    届くのは招待だけで、本人が「参加」を押さなければクラスには入らない。
+    招待できたときはサイトからはメールを送らない（Google の招待メールだけが届く）。
+    もうクラスにいるときは本人にだけ知らせる。招待できなかったときは事務局に知らせ
+    （ERROR）、これまでどおり手作業で案内する。
     """
 
     template_name = 'home/join_apply.html'
@@ -223,14 +233,31 @@ class JoinApplyView(NavMixin, FormView):
     #: 送信後はこのページに戻さず、完了ページへ送る（JoinDoneView の説明を参照）
     success_url = reverse_lazy('home:join_apply_done')
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # 「お預かりする情報について」に、アドレスを招待にも使うことを書くため
+        context['classroom_invite'] = can_invite_to_club()
+        return context
+
     def form_valid(self, form):
         detect_and_block_burst_submissions(self.request)
 
+        classroom = None  # 招待しない（設定がそろっていない）。手作業で案内する
+        if can_invite_to_club():
+            try:
+                classroom = google.invite_to_club(form.cleaned_data['email'], club_course_id())
+                logger.info('参加申し込み: クラブのクラスへの招待 %s', classroom)
+            except ServiceError:
+                classroom = 'failed'
+                logger.error('参加申し込み: クラブのクラスに招待できませんでした', exc_info=True)
+
         try:
-            form.send_email()
+            # 招待できたときは何も送らない。Google の招待メール（クラスの「参加」ボタン付き）だけが届く
+            if classroom != google.INVITED:
+                form.send_email(classroom=classroom)
         except (smtplib.SMTPException, OSError, BadHeaderError):
             # SMTP の設定漏れや送信障害で 500 にせず、フォームに戻して知らせる。
-            # BadHeaderError は氏名などに改行を入れられたときに出る（Django が
+            # BadHeaderError はヘッダに改行を入れられたときに出る（Django が
             # ヘッダインジェクションを阻止した結果）。これも 500 にしない。
             logger.exception('参加フォームのメール送信に失敗しました')
             form.add_error(None, 'メールの送信に失敗しました。'
@@ -241,7 +268,7 @@ class JoinApplyView(NavMixin, FormView):
         # ここでメッセージは出さない。
         #
         # 申込者のメールアドレスはログに残さない（ログの閲覧権限を持つ全員に
-        # 個人情報が見えてしまうため）。内容はメールで事務局に届いている。
+        # 個人情報が見えてしまうため）。
         logger.info('参加申し込みを受け付けました')
         return super().form_valid(form)
 
@@ -262,6 +289,12 @@ class JoinDoneView(NavMixin, TemplateView):
 
     template_name = 'home/join_done.html'
     nav = 'join'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # 申し込みごとの結果（招待できたか・もうメンバーか）は画面に出さない。メールで本人にだけ伝える
+        context['classroom_invite'] = can_invite_to_club()
+        return context
 
 
 @method_decorator(login_not_required, name='dispatch')

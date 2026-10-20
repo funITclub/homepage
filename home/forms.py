@@ -13,23 +13,31 @@
 #   載せられてしまい、フィッシングの配送路になる（差出人は SPF/DKIM/DMARC が
 #   通った funitclub.org なので、受信側の認証チェックはすべて成功する）。
 #   聞きたいことは、届いた自動返信に返信してもらえば事務局に届く。
+#
+# 入力はメールアドレスだけ。お名前と興味のある WG の欄は 2026-10-20 になくした
+# （クラスへの招待には要らず、個人情報はなるべく受け取らない）。名前は、クラスに
+# 参加すれば Classroom の名簿に大学のアカウントの名前で出る。
 
 from django import forms
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
 
-from catalog.models import Wg
 from edit.models import notification_emails, public_contact_email
+from wgjoin import google
+from wgjoin.config import club_classroom_url
+
+#: 事務局への通知に書く、クラブのクラスへの招待の結果（views.JoinApplyView）。
+#: 招待できた・もうクラスにいるときは事務局に知らせない（会の運営に介入しない）ので、
+#: 手作業が要る2つだけ。
+CLASSROOM_NOTES = {
+    'failed': '招待を送れませんでした。手作業で招待してください',
+    None: '自動の招待は使っていません。手作業で招待してください',
+}
 
 
 class JoinForm(forms.Form):
-    """参加の申し込み。事務局への通知と、申込者への自動返信を送る。"""
+    """参加の申し込み。申込者への自動返信を送る（クラスに招待できなかったときは事務局にも）。"""
 
-    name = forms.CharField(
-        label='お名前',
-        max_length=30,
-        widget=forms.TextInput(attrs={'placeholder': '例: 佛教 太郎'}),
-    )
     email = forms.EmailField(
         label='大学のメールアドレス',
         help_text='大学から発行された @{} のアドレスのみ受け付けます。'.format(
@@ -39,30 +47,6 @@ class JoinForm(forms.Form):
                 settings.JOIN_ALLOWED_EMAIL_DOMAIN)},
         ),
     )
-    wg = forms.ModelChoiceField(
-        label='興味のあるWG',
-        queryset=Wg.objects.none(),  # 実際の候補は __init__ で入れる
-        required=False,
-        empty_label='まだ決めていない・相談したい',
-        help_text='あとから変えられます。迷ったら空欄のままで構いません。',
-    )
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # 公開中のWGだけを候補にする。毎回引き直したいので __init__ で入れる。
-        self.fields['wg'].queryset = Wg.objects.published()
-
-    def clean_name(self):
-        """氏名に URL を書かせない。
-
-        自動返信は入力されたアドレス宛に届くので、氏名欄も第三者に読まれる文章に
-        なる（冒頭の「○○ 様」と本文の「お名前」）。短縮URLなら30文字に収まるため、
-        ここを塞いでおかないとリンクを第三者に届けられる。
-        """
-        name = self.cleaned_data['name']
-        lowered = name.lower()
-        if any(token in lowered for token in ('http', 'www.', '://')):
-            raise forms.ValidationError('お名前に URL は入力できません。')
-        return name
 
     def clean_email(self):
         """佛教大学のドメインだけを通す。"""
@@ -74,18 +58,14 @@ class JoinForm(forms.Form):
                     settings.JOIN_ALLOWED_EMAIL_DOMAIN))
         return email
 
-    def send_email(self):
-        """事務局への通知と、申込者への自動返信を1本の接続でまとめて送る。"""
-        name = self.cleaned_data['name']
-        email = self.cleaned_data['email']
-        wg = self.cleaned_data['wg']
+    def send_email(self, classroom=None):
+        """申込者への自動返信を送る。手作業が要るときは事務局への通知も1本の接続でまとめて送る。
 
-        wg_label = f'{wg.code} {wg.name}' if wg else '未定'
-        summary = '\n'.join([
-            f'お名前　　　　: {name}',
-            f'メールアドレス: {email}',
-            f'興味のあるWG　: {wg_label}',
-        ])
+        classroom はクラブのクラスへの招待の結果（google.MEMBER / 'failed' / None＝招待していない）。
+        招待できたとき（google.INVITED）は呼ばない。MEMBER は事務局に知らせない。
+        """
+        email = self.cleaned_data['email']
+        summary = f'メールアドレス: {email}'
 
         # 差出人は「fun IT club <no-reply@funitclub.org>」で統一する（settings の既定値）。
         # 宛先と問い合わせ先は管理者テーブル（edit.Administrator）から取る。
@@ -93,20 +73,10 @@ class JoinForm(forms.Form):
         notify_to = notification_emails()
         contact = public_contact_email()
 
-        # 事務局あて。そのまま返信すれば申込者に届くよう Reply-To を申込者にする。
-        notification = EmailMessage(
-            subject=f'[{settings.SITE_NAME}] 参加申し込み: {name}',
-            body=(
-                '公開サイトの参加フォームから申し込みがありました。\n\n'
-                f'{summary}\n\n'
-                '--\n'
-                'このメールは公開サイト（/join/）から自動送信しています。\n'
-                'このまま返信すると申込者に届きます。\n'
-            ),
-            from_email=from_email,
-            to=notify_to,
-            reply_to=[email],
-        )
+        messages = []
+        if classroom in CLASSROOM_NOTES:
+            # 事務局あて。そのまま返信すれば申込者に届くよう Reply-To を申込者にする。
+            messages.append(self._notification(email, summary, classroom, from_email, notify_to))
 
         # 申込者あての控え。問い合わせ先は事務局アドレス。
         # 申し込みフォームは入力されたアドレスの持ち主を確認していないので、
@@ -115,14 +85,8 @@ class JoinForm(forms.Form):
         auto_reply = EmailMessage(
             subject=f'[{settings.SITE_NAME}] 参加申し込みを受け付けました',
             body=(
-                f'{name} 様\n\n'
                 f'{settings.SITE_NAME} への参加申し込みをありがとうございます。\n'
-                '以下の内容で受け付けました。担当者から7日以内に折り返しご連絡します。\n'
-                'それまでにお手続きいただくことはありません。\n\n'
-                f'{summary}\n\n'
-                '■ 7日を過ぎても連絡がない場合\n'
-                '行き違いの可能性がありますので、\n'
-                f'{contact} までお知らせください。\n\n'
+                + _next_step(classroom, summary, contact) +
                 '■ このメールに心当たりがない場合\n'
                 '第三者があなたのメールアドレスを入力した可能性があります。\n'
                 'このメールを破棄していただければ、手続きは進みません。\n'
@@ -136,5 +100,44 @@ class JoinForm(forms.Form):
             reply_to=[contact],
         )
 
+        messages.append(auto_reply)
         connection = get_connection()
-        connection.send_messages([notification, auto_reply])
+        connection.send_messages(messages)
+
+    @staticmethod
+    def _notification(email, summary, classroom, from_email, notify_to):
+        return EmailMessage(
+            subject=f'[{settings.SITE_NAME}] 参加申し込み（手作業での招待が必要）',
+            body=(
+                '公開サイトの参加フォームから申し込みがありました。\n\n'
+                f'{summary}\n'
+                f'Classroom　　 : {CLASSROOM_NOTES[classroom]}\n\n'
+                '--\n'
+                'このメールは公開サイト（/join/）から自動送信しています。\n'
+                'このまま返信すると申込者に届きます。\n'
+            ),
+            from_email=from_email,
+            to=notify_to,
+            reply_to=[email],
+        )
+
+
+def _next_step(classroom, summary, contact):
+    """控えのメールの、受け付けた内容と次にすること。"""
+    # 招待できたとき（google.INVITED）は送らない（views.JoinApplyView）
+    if classroom == google.MEMBER:
+        return (
+            '以下の内容で受け付けました。\n\n'
+            f'{summary}\n\n'
+            f'このアドレスは、すでに {settings.SITE_NAME} の Google Classroom のクラスに登録されています。\n'
+            f'{club_classroom_url()}\n'
+            'サイトの WG 一覧の「WG に参加」から WG に入れます。\n\n'
+        )
+    return (
+        '以下の内容で受け付けました。担当者から7日以内に折り返しご連絡します。\n'
+        'それまでにお手続きいただくことはありません。\n\n'
+        f'{summary}\n\n'
+        '■ 7日を過ぎても連絡がない場合\n'
+        '行き違いの可能性がありますので、\n'
+        f'{contact} までお知らせください。\n\n'
+    )

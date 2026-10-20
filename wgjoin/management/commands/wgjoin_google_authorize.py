@@ -1,5 +1,6 @@
-# 運営が一度だけ流す。クラブの Classroom のクラスの先生のアカウントで「名簿を見る」を許可し、
-# サイトが使うリフレッシュトークンを受け取る。
+# 運営が一度だけ流す。クラブの Classroom のクラスの先生のアカウントで「名簿を管理する」と
+# 「Chat のメンバーを管理する」を許可し、サイトが使うリフレッシュトークンを受け取る。
+# 権限を変えたとき（2026-10 にクラスへの招待と Chat を足した）も流し直して、トークンを入れ替える。
 #
 #   python manage.py wgjoin_google_authorize
 #       … トークンを画面に出す（本番の Key Vault に入れるとき）
@@ -38,7 +39,8 @@ def save_to_env(values, env_file=None):
 
 
 class Command(BaseCommand):
-    help = 'クラブのクラスの先生のアカウントで Classroom の名簿の読み取りを許可し、リフレッシュトークンを受け取る'
+    help = ('クラブのクラスの先生のアカウントで Classroom の名簿の管理と Chat のメンバーの管理を許可し、'
+            'リフレッシュトークンを受け取る')
 
     def add_arguments(self, parser):
         parser.add_argument('--port', type=int, default=8765,

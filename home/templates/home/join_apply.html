@@ -49,8 +49,14 @@
         <div class="notice">
             <p class="notice-title">お預かりする情報について</p>
             <p>
+                {% if classroom_invite %}
+                入力内容はデータベースに保存しません。メールアドレスは、クラブの Google Classroom の
+                クラスへの招待を送るために使います（大学の Google Workspace の中で、クラブの運営の
+                アカウントから招待します）。招待をお送りできなかったときだけ、事務局へメールでお知らせします。
+                {% else %}
                 入力内容はデータベースに保存せず、事務局へのメールとしてのみお送りします。
                 控えのメールが自動で届きます。
+                {% endif %}
             </p>
 
             <p class="notice-title">アクセス制限について</p>

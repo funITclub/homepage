@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from django.conf import settings
 from django.core import mail as outbox
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -17,8 +18,8 @@ from catalog.models import Wg
 from . import github, google
 from .http import ServiceError, call
 from .config import club_classroom_url
-from .links import decode_course_id, is_wg_team
-from .verify import make_link_token
+from .links import decode_chat_space, decode_course_id, is_wg_team
+from .verify import make_link_token, read_link_token
 from .views import SESSION_KEY
 
 ENABLED = dict(
@@ -45,6 +46,16 @@ class LinkTests(SimpleTestCase):
     def test_club_class_url_opens_the_class(self):
         self.assertEqual(club_classroom_url(), 'https://classroom.google.com/c/OTg3NjU0MzIxMDk4')
 
+    def test_reads_chat_space_from_url_or_name(self):
+        for value in ['https://mail.google.com/chat/u/0/#chat/space/AAAAbc-123_x',
+                      'https://chat.google.com/room/AAAAbc-123_x?cls=7',
+                      'spaces/AAAAbc-123_x', 'AAAAbc-123_x']:
+            with self.subTest(value=value):
+                self.assertEqual(decode_chat_space(value), 'spaces/AAAAbc-123_x')
+        for value in ['', 'https://mail.google.com/chat/u/0/#chat/home', 'spaces/../x']:
+            with self.subTest(value=value):
+                self.assertIsNone(decode_chat_space(value))
+
     def test_only_wg_teams_are_allowed(self):
         self.assertTrue(is_wg_team('wg-countdown'))
         for team in ['owners', 'wg-', 'WG-Countdown', 'wg-../owners', '']:
@@ -68,6 +79,13 @@ class WgFormTests(TestCase):
         form = WgForm(self.data(github_team='owners'))
         self.assertFalse(form.is_valid())
         self.assertIn('github_team', form.errors)
+
+    def test_chat_space_url_is_saved_as_its_name(self):
+        form = WgForm(self.data(chat_space='https://mail.google.com/chat/u/0/#chat/space/AAAAbc123'))
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['chat_space'], 'spaces/AAAAbc123')
+        self.assertTrue(WgForm(self.data(chat_space='')).is_valid())
+        self.assertIn('chat_space', WgForm(self.data(chat_space='https://mail.google.com/chat/u/0/')).errors)
 
 
 class WgListButtonTests(TestCase):
@@ -170,12 +188,19 @@ class JoinFlowTests(TestCase):
         check.assert_not_called()
         self.assertEqual(len(outbox.outbox), 2)
 
-    def test_link_opens_the_github_step(self):
+    def test_link_opens_a_confirmation_and_the_button_goes_to_github(self):
         self.submit()
+        # 開いただけでは何もしない（メールのリンクを先に開いて確かめる仕組みのため）
         response = self.client.get(self.link_in_mail())
-        self.assertRedirects(response, reverse('wgjoin:github_step', args=[self.wg.pk]))
-        self.assertContains(self.client.get(response['Location']), 'GitHub でログインして登録する')
-        self.assertEqual(set(self.client.session[SESSION_KEY]), {'wg', 'member_at', 'nonce'})
+        self.assertContains(response, 'GitHub でログインして登録する')
+        self.assertNotIn(SESSION_KEY, self.client.session)
+
+        response = self.client.post(self.link_in_mail())
+        self.assertRedirects(response, reverse('wgjoin:github_start', args=[self.wg.pk]),
+                             fetch_redirect_response=False)
+        self.assertEqual(set(self.client.session[SESSION_KEY]), {'wg', 'member_at', 'nonce', 'chat'})
+        # Chat スペースのない WG では、Chat には何もしない
+        self.assertIsNone(self.client.session[SESSION_KEY]['chat'])
 
     def test_broken_or_expired_link_is_refused(self):
         self.assertEqual(self.client.get(reverse('wgjoin:verify', args=['broken'])).status_code, 400)
@@ -183,16 +208,16 @@ class JoinFlowTests(TestCase):
         with override_settings(WG_JOIN_LINK_MAX_AGE=-1):
             self.assertEqual(self.client.get(reverse('wgjoin:verify', args=[token])).status_code, 400)
 
-    def test_github_step_needs_the_link(self):
-        self.assertRedirects(self.client.get(reverse('wgjoin:github_step', args=[self.wg.pk])), self.start_url)
+    def test_github_needs_the_link(self):
+        self.assertRedirects(self.client.get(reverse('wgjoin:github_start', args=[self.wg.pk])), self.start_url)
         other = Wg.objects.create(code='WG-05', name='別', description='説明', status=Wg.ACTIVE,
                                   github_team='wg-other')
-        self.client.get(reverse('wgjoin:verify', args=[make_link_token(self.wg.pk)]))
+        self.client.post(reverse('wgjoin:verify', args=[make_link_token(self.wg.pk)]))
         self.assertRedirects(self.client.get(reverse('wgjoin:github_start', args=[other.pk])),
                              reverse('wgjoin:start', args=[other.pk]))
 
     def open_link_and_begin_github(self, token=None):
-        self.client.get(reverse('wgjoin:verify', args=[token or make_link_token(self.wg.pk)]))
+        self.client.post(reverse('wgjoin:verify', args=[token or make_link_token(self.wg.pk)]))
         response = self.client.get(reverse('wgjoin:github_start', args=[self.wg.pk]))
         return parse_qs(urlparse(response['Location']).query)['state'][0]
 
@@ -245,6 +270,100 @@ class JoinFlowTests(TestCase):
         add.assert_not_called()
 
 
+GITHUB_OK = [
+    mock.patch.object(github, 'exchange_code', return_value='gh-token'),
+    mock.patch.object(github, 'login_name', return_value='octo-student'),
+    mock.patch.object(github, 'revoke_user_token'),
+    mock.patch.object(github, 'add_to_team', return_value=github.ACTIVE),
+]
+
+
+@override_settings(**ENABLED)
+class ChatSpaceJoinTests(TestCase):
+    """WG紹介に Chat スペースがある WG では、ボタンを押したときに本人をスペースに追加する。"""
+
+    def setUp(self):
+        cache.clear()
+        self.wg = Wg.objects.create(code='WG-04', name='カウントダウン', description='説明', status=Wg.ACTIVE,
+                                    github_team='wg-countdown', chat_space='spaces/AAAAbc123')
+        for patcher in GITHUB_OK:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def mail_link(self):
+        with mock.patch.object(google, 'is_club_member', return_value=True):
+            self.client.post(reverse('wgjoin:start', args=[self.wg.pk]), {'email': MEMBER})
+        body = outbox.outbox[-1].body
+        return next(line for line in body.splitlines() if '/wg/join/verify/' in line)
+
+    def press_and_finish(self, link, add):
+        with mock.patch.object(google, 'add_to_chat_space', **add) as add_mock:
+            self.client.post(link)
+        state = parse_qs(urlparse(
+            self.client.get(reverse('wgjoin:github_start', args=[self.wg.pk]))['Location']).query)['state'][0]
+        return self.client.get(reverse('wgjoin:github_callback'), {'state': state, 'code': 'c'}), add_mock
+
+    def test_start_page_and_mail_say_chat_is_added(self):
+        response = self.client.get(reverse('wgjoin:start', args=[self.wg.pk]))
+        self.assertContains(response, 'WG の Chat スペースに追加し')
+        self.assertNotContains(response, 'Chat スペースのリンクを開いて参加します')
+        self.mail_link()
+        self.assertIn('WG の Chat スペースへの追加と', outbox.outbox[-1].body)
+        self.assertNotIn('「授業」にある', outbox.outbox[-1].body)
+
+    def test_address_is_in_the_link_only_encrypted(self):
+        link = self.mail_link()
+        self.assertNotIn('bu1111111111', link)
+        token = link.rstrip('/').rsplit('/', 1)[-1]
+        self.assertEqual(read_link_token(token)[2], MEMBER)
+
+    def test_opening_the_link_does_not_add_to_chat(self):
+        link = self.mail_link()
+        with mock.patch.object(google, 'add_to_chat_space') as add:
+            self.client.get(link)
+        add.assert_not_called()
+
+    def test_pressing_the_button_adds_to_the_chat_space(self):
+        with self.assertLogs('wgjoin', level='INFO') as logs:
+            response, add = self.press_and_finish(self.mail_link(), {})
+        add.assert_called_once_with('spaces/AAAAbc123', MEMBER)
+        self.assertContains(response, 'Chat スペースにも追加しました')
+        self.assertContains(response, 'https://mail.google.com/chat/#chat/space/AAAAbc123')
+        self.assertNotContains(response, 'Classroom を開く')
+        self.assertNotIn('bu1111111111', '\n'.join(logs.output))
+
+    def test_chat_failure_still_registers_github_and_tells_the_staff(self):
+        """本人にはスペースのリンクから入るよう案内し、運営には失敗したときだけ知らせる。"""
+        link = self.mail_link()
+        with self.assertLogs('wgjoin', level='ERROR') as logs:
+            response, _ = self.press_and_finish(link, {'side_effect': ServiceError('403')})
+        github.add_to_team.assert_called_once_with('wg-countdown', 'octo-student')
+        self.assertContains(response, 'カウントダウン に参加しました')
+        self.assertContains(response, 'こちらで自動で追加できませんでした')
+        # スペースは Workspace 内の誰でも参加できるので、スペースのリンクから入ってもらう
+        self.assertContains(response, 'https://mail.google.com/chat/#chat/space/AAAAbc123')
+        self.assertNotContains(response, 'Classroom を開く')
+        staff = outbox.outbox[-1]
+        self.assertEqual(staff.to, [settings.JOIN_NOTIFY_EMAIL])
+        self.assertIn(MEMBER, staff.body)
+        self.assertIn('spaces/AAAAbc123', staff.body)
+        self.assertIn('Chat スペースに追加できませんでした', '\n'.join(logs.output))
+        self.assertNotIn('bu1111111111', '\n'.join(logs.output))
+
+    def test_success_does_not_tell_the_staff(self):
+        link = self.mail_link()
+        sent = len(outbox.outbox)
+        self.press_and_finish(link, {})
+        self.assertEqual(len(outbox.outbox), sent)
+
+    def test_link_from_before_the_space_was_registered_skips_chat(self):
+        """スペースを登録する前に届いたリンク（アドレスが入っていない）は、授業のリンクへ案内する。"""
+        link = reverse('wgjoin:verify', args=[make_link_token(self.wg.pk)])
+        response, add = self.press_and_finish(link, {})
+        add.assert_not_called()
+        self.assertContains(response, 'Classroom を開く')
+
+
 class GoogleClientTests(SimpleTestCase):
 
     @override_settings(**ENABLED)
@@ -267,8 +386,49 @@ class GoogleClientTests(SimpleTestCase):
             with self.assertRaises(ServiceError):
                 google.is_club_member(MEMBER, '987654321098')
 
-    def test_asks_only_to_read_the_roster(self):
-        self.assertEqual(google.SCOPES, ['https://www.googleapis.com/auth/classroom.rosters.readonly'])
+    @mock.patch.object(google, '_access_token', return_value='staff-token')
+    def test_invites_to_the_club_class_unless_already_there(self, _):
+        with mock.patch.object(google, 'is_club_member', return_value=True), \
+                mock.patch.object(google, 'call') as call_mock:
+            self.assertEqual(google.invite_to_club(MEMBER, '987654321098'), google.MEMBER)
+        call_mock.assert_not_called()
+
+        with mock.patch.object(google, 'is_club_member', return_value=False), \
+                mock.patch.object(google, 'call', return_value=(200, {})) as call_mock:
+            self.assertEqual(google.invite_to_club(MEMBER, '987654321098'), google.INVITED)
+        self.assertEqual(call_mock.call_args.args, ('POST', 'https://classroom.googleapis.com/v1/invitations'))
+        self.assertEqual(call_mock.call_args.kwargs['json_body'],
+                         {'userId': MEMBER, 'courseId': '987654321098', 'role': 'STUDENT'})
+
+    @mock.patch.object(google, '_access_token', return_value='staff-token')
+    @mock.patch.object(google, 'is_club_member', return_value=False)
+    def test_existing_invitation_is_fine_but_no_permission_is_an_error(self, *_):
+        with mock.patch.object(google, 'call', return_value=(409, {})):
+            self.assertEqual(google.invite_to_club(MEMBER, '987654321098'), google.INVITED)
+        with mock.patch.object(google, 'call', return_value=(403, {})):
+            with self.assertRaises(ServiceError):
+                google.invite_to_club(MEMBER, '987654321098')
+
+    def test_asks_to_manage_the_roster_and_chat_members_only(self):
+        self.assertEqual(google.SCOPES, ['https://www.googleapis.com/auth/classroom.rosters',
+                                         'https://www.googleapis.com/auth/chat.memberships'])
+
+    @mock.patch.object(google, '_access_token', return_value='staff-token')
+    def test_adds_a_person_to_the_chat_space_by_address(self, _):
+        with mock.patch.object(google, 'call', return_value=(200, {})) as call_mock:
+            google.add_to_chat_space('spaces/AAAAbc123', MEMBER)
+        method, url = call_mock.call_args.args
+        self.assertEqual((method, url), ('POST', 'https://chat.googleapis.com/v1/spaces/AAAAbc123/members'))
+        self.assertEqual(call_mock.call_args.kwargs['json_body'],
+                         {'member': {'name': f'users/{MEMBER}', 'type': 'HUMAN'}})
+
+    @mock.patch.object(google, '_access_token', return_value='staff-token')
+    def test_someone_already_in_the_space_is_fine_but_no_permission_is_an_error(self, _):
+        with mock.patch.object(google, 'call', return_value=(409, {})):
+            google.add_to_chat_space('spaces/AAAAbc123', MEMBER)
+        with mock.patch.object(google, 'call', return_value=(403, {})):
+            with self.assertRaises(ServiceError):
+                google.add_to_chat_space('spaces/AAAAbc123', MEMBER)
 
 
 def _rsa_key():

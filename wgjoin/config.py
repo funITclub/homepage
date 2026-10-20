@@ -25,6 +25,23 @@ def repo_url(team):
     return f'https://github.com/{settings.GITHUB_ORG}/{team}'
 
 
+def chat_space_url(space):
+    """WG の Chat スペースを開く URL。スペースが登録されていなければ空。"""
+    if not space:
+        return ''
+    return 'https://mail.google.com/chat/#chat/space/' + space.removeprefix('spaces/')
+
+
+def can_invite_to_club():
+    """参加の申し込みで、クラブのクラスに招待できるだけの設定がそろっているか。"""
+    return all([
+        club_course_id(),
+        settings.GOOGLE_OAUTH_CLIENT_ID,
+        settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        settings.GOOGLE_OAUTH_REFRESH_TOKEN,
+    ])
+
+
 def is_enabled():
     """「WG に参加」を受け付けられるだけの設定がそろっているか。
 

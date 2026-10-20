@@ -19,11 +19,23 @@
             {% else %}
             <p>GitHub の WG のチームに登録しました。WG のリポジトリ（非公開）を見たり書き込んだりできます。</p>
             {% endif %}
+            {% if chat == 'added' %}
+            <p>WG の Chat スペースにも追加しました。大学のアカウントで Google Chat を開くと、{{ wg.name }} のスペースがあります。</p>
+            <a class="btn btn-lg" href="{{ chat_url }}" target="_blank" rel="noopener noreferrer">Chat を開く</a>
+            {% elif chat == 'failed' %}
+            {# スペースは大学の Workspace 内の誰でも参加できるので、本人がリンクから入れる。運営にも知らせてある #}
+            <p>
+                WG の Chat スペースには、こちらで自動で追加できませんでした。
+                大学のアカウントで下の「Chat を開く」からスペースを開き、「参加」を押してください。
+            </p>
+            <a class="btn btn-lg" href="{{ chat_url }}" target="_blank" rel="noopener noreferrer">Chat を開く</a>
+            {% else %}
             <p>
                 最後に、WG の Chat に入ってください。クラブのクラスの「授業」にある
                 {{ wg.name }} に、Chat スペースのリンクがあります。
             </p>
             <a class="btn btn-lg" href="{{ classroom_url }}" target="_blank" rel="noopener noreferrer">Classroom を開く</a>
+            {% endif %}
             <p class="wgjoin-note">
                 WG のリポジトリ：<a href="{{ repo_url }}" target="_blank" rel="noopener noreferrer">{{ repo_url }}</a><br>
                 次は<strong>パソコンの準備</strong>です。

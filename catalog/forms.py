@@ -2,7 +2,7 @@
 
 from django import forms
 
-from wgjoin.links import is_wg_team
+from wgjoin.links import decode_chat_space, is_wg_team
 
 from .models import Wg, Work
 
@@ -14,7 +14,7 @@ class WgForm(forms.ModelForm):
         fields = [
             'code', 'name', 'description', 'status',
             'app_url', 'link_label', 'link_url',
-            'github_team',
+            'github_team', 'chat_space',
             'sort_order', 'is_published',
         ]
         widgets = {
@@ -23,6 +23,7 @@ class WgForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'rows': 3}),
             'link_label': forms.TextInput(attrs={'placeholder': '例: GitHub'}),
             'github_team': forms.TextInput(attrs={'placeholder': '例: wg-countdown'}),
+            'chat_space': forms.TextInput(attrs={'placeholder': '例: https://mail.google.com/chat/u/0/#chat/space/AAAA…'}),
         }
 
     def clean_github_team(self):
@@ -31,6 +32,16 @@ class WgForm(forms.ModelForm):
             raise forms.ValidationError(
                 'wg- で始まる、英小文字・数字・ハイフンの名前にしてください（例: wg-countdown）。')
         return team
+
+    def clean_chat_space(self):
+        value = self.cleaned_data['chat_space'].strip()
+        if not value:
+            return ''
+        space = decode_chat_space(value)
+        if not space:
+            raise forms.ValidationError(
+                'Chat スペースの URL を読めませんでした。スペースを開いたときのアドレスバーの URL を貼ってください。')
+        return space
 
 
 class WorkForm(forms.ModelForm):

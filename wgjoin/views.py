@@ -7,15 +7,21 @@
 #   2. 確認のメール（sent）      … メンバーならリンク付きのメール、そうでなければ「確認できません
 #                                 でした」のメールを送る。画面はどちらも同じ（他人のアドレスで
 #                                 メンバーかどうかを探れないように）
-#   3. リンク（verify）          … メールのリンクを開いた＝そのアドレスの持ち主。GitHub へ進める
+#   3. リンク（verify）          … メールのリンクを開いた＝そのアドレスの持ち主。確かめの画面を出し、
+#                                 本人がボタンを押したら（POST）WG の Chat スペースに追加して
+#                                 GitHub へ進める。開いただけでは何もしない（メールのリンクを
+#                                 先に開いて確かめる仕組みが、本人の代わりに参加させないように）
 #   4. GitHub（github_*）        … 本人の GitHub アカウント（なければその場で作る）を WG のチームに
 #                                 追加する。まだ org にいなければ、そのアカウントに招待が届く
 #
-# WG の Chat には、クラブのクラスの「授業」にあるリンクから本人が入る（サイトは何もしない）。
+# Chat スペースは WG の開設の申し込みを受けて運営が作る（大学の Workspace 内の誰でも参加できる設定）。
+# 追加に失敗したときは本人にスペースのリンクから入ってもらい、運営にも知らせる。GitHub の手続きは続ける。
+# Chat スペースが登録されていない WG では、クラブのクラスの「授業」にあるリンクから本人が入る。
 #
-# 会員の情報はサイトに持たない方針なので、アドレスは名簿を引いてメールを送るのに使うだけで、
-# 保存もログ出力もしない。session に置くのは「どの WG の手続きか」とリンクの番号、OAuth の
-# state だけ。GitHub のユーザー名とトークンもその場で使って捨てる。
+# 会員の情報はサイトに持たない方針なので、アドレスは名簿を引いてメールを送り、Chat に追加する
+# のに使うだけで、保存もログ出力もしない（確認のリンクには暗号化して入れる）。session に置くのは
+# 「どの WG の手続きか」とリンクの番号、Chat に追加できたか、OAuth の state だけ。GitHub の
+# ユーザー名とトークンもその場で使って捨てる。
 
 import logging
 import secrets
@@ -33,7 +39,7 @@ from catalog.models import Wg
 from home.netutils import client_ip
 
 from . import github, google, mail
-from .config import club_classroom_url, club_course_id, is_enabled, repo_url
+from .config import chat_space_url, club_classroom_url, club_course_id, is_enabled, repo_url
 from .forms import JoinEmailForm
 from .http import ServiceError
 from .verify import LinkInvalid, allow_send, is_used, make_link_token, mark_used, read_link_token
@@ -54,7 +60,7 @@ def _wg_or_404(pk):
 
 def _page(request, template, wg, status=200, **extra):
     context = {'nav': 'wg', 'wg': wg, 'classroom_url': club_classroom_url(),
-               'repo_url': repo_url(wg.github_team), **extra}
+               'repo_url': repo_url(wg.github_team), 'chat_url': chat_space_url(wg.chat_space), **extra}
     return render(request, template, context, status=status)
 
 
@@ -78,7 +84,9 @@ def start(request, pk):
 
     try:
         if google.is_club_member(email, club_course_id()):
-            url = request.build_absolute_uri(reverse('wgjoin:verify', args=[make_link_token(wg.pk)]))
+            # Chat に追加するときだけ、リンクにアドレスを（暗号化して）入れる
+            token = make_link_token(wg.pk, email if wg.chat_space else None)
+            url = request.build_absolute_uri(reverse('wgjoin:verify', args=[token]))
             mail.send_link(email, wg, url, repo_url(wg.github_team),
                            request.build_absolute_uri(reverse('home:guide')))
             logger.info('WG への参加: %s 確認のメールを送りました', wg.code)
@@ -106,8 +114,9 @@ def sent(request, pk):
 
 @login_not_required
 def verify(request, token):
+    """GET は確かめの画面だけ。POST で Chat スペースに追加し、GitHub へ進める。"""
     try:
-        wg_pk, nonce = read_link_token(token)
+        wg_pk, nonce, email = read_link_token(token)
     except LinkInvalid:
         wg_pk = None
     if not is_enabled():
@@ -116,8 +125,28 @@ def verify(request, token):
     if wg is None or not wg.accepts_join:
         return render(request, 'wgjoin/link_invalid.html', {'nav': 'wg'}, status=400)
 
-    request.session[SESSION_KEY] = {'wg': wg.pk, 'member_at': time.time(), 'nonce': nonce}
-    return redirect('wgjoin:github_step', pk=wg.pk)
+    if request.method != 'POST':
+        return _page(request, 'wgjoin/confirm.html', wg, token=token)
+
+    chat = None  # Chat スペースのない WG（授業のリンクから本人が入る）
+    if wg.chat_space and email:
+        try:
+            google.add_to_chat_space(wg.chat_space, email)
+            chat = 'added'
+            logger.info('WG への参加: %s の Chat スペースに追加しました', wg.code)
+        except ServiceError:
+            # 運営の許可に Chat の権限がない・運営がスペースのメンバーでない、など。管理者に通知される
+            # （ERROR）。本人には最後の画面でスペースのリンクから入るよう案内し、運営にも知らせる
+            # （アドレスはこのメールにだけ載せる）。GitHub の手続きは続ける
+            chat = 'failed'
+            logger.error('WG への参加: %s の Chat スペースに追加できませんでした', wg.code, exc_info=True)
+            try:
+                mail.send_chat_failed(email, wg)
+            except (smtplib.SMTPException, OSError, BadHeaderError) as e:
+                logger.error('WG への参加: %s 運営への通知を送れませんでした（%s）', wg.code, type(e).__name__)
+
+    request.session[SESSION_KEY] = {'wg': wg.pk, 'member_at': time.time(), 'nonce': nonce, 'chat': chat}
+    return redirect('wgjoin:github_start', pk=wg.pk)
 
 
 def _member_flow(request, wg):
@@ -129,14 +158,6 @@ def _member_flow(request, wg):
     if time.time() - checked_at > settings.WG_JOIN_STEP_TIMEOUT:
         return None
     return flow
-
-
-@login_not_required
-def github_step(request, pk):
-    wg = _wg_or_404(pk)
-    if _member_flow(request, wg) is None:
-        return redirect('wgjoin:start', pk=wg.pk)
-    return _page(request, 'wgjoin/github.html', wg)
 
 
 @login_not_required
@@ -182,4 +203,4 @@ def github_callback(request):
     # このリンクではもう登録させない（転送されたリンクで別の人が入れないように）
     mark_used(flow['nonce'])
     logger.info('WG への参加: %s の GitHub のチームに登録しました（%s）', wg.code, state)
-    return _result(request, wg, 'done', invited=(state == github.PENDING))
+    return _result(request, wg, 'done', invited=(state == github.PENDING), chat=flow.get('chat'))
