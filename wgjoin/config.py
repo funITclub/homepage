@@ -1,6 +1,7 @@
 # wgjoin/config.py
 
 import base64
+from urllib.parse import urlencode
 
 from django.conf import settings
 
@@ -25,11 +26,16 @@ def repo_url(team):
     return f'https://github.com/{settings.GITHUB_ORG}/{team}'
 
 
-def chat_space_url(space):
-    """WG の Chat スペースを開く URL。スペースが登録されていなければ空。"""
+def chat_space_url(space, email=None):
+    """WG の Chat スペースを開く URL。スペースが登録されていなければ空。
+
+    email を渡すと authuser を付け、ブラウザにほかの Google アカウントがあっても、
+    そのアカウントで開く。
+    """
     if not space:
         return ''
-    return 'https://mail.google.com/chat/#chat/space/' + space.removeprefix('spaces/')
+    query = '?' + urlencode({'authuser': email}) if email else ''
+    return f'https://mail.google.com/chat/{query}#chat/space/' + space.removeprefix('spaces/')
 
 
 def can_invite_to_club():

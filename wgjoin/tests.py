@@ -20,7 +20,7 @@ from .http import ServiceError, call
 from .config import club_classroom_url
 from .links import decode_chat_space, decode_course_id, is_wg_team
 from .verify import make_link_token, read_link_token
-from .views import SESSION_KEY
+from .views import ADDRESS_COOKIE, SESSION_KEY
 
 ENABLED = dict(
     CLUB_CLASSROOM_COURSE='https://classroom.google.com/c/OTg3NjU0MzIxMDk4',  # 987654321098
@@ -329,7 +329,8 @@ class ChatSpaceJoinTests(TestCase):
             response, add = self.press_and_finish(self.mail_link(), {})
         add.assert_called_once_with('spaces/AAAAbc123', MEMBER)
         self.assertContains(response, 'Chat スペースにも追加しました')
-        self.assertContains(response, 'https://mail.google.com/chat/#chat/space/AAAAbc123')
+        # 申請したアカウントで開く（ブラウザにほかの Google アカウントがあっても）
+        self.assertContains(response, 'https://mail.google.com/chat/?authuser=bu1111111111%40bukkyo-u.ac.jp#chat/space/AAAAbc123')
         self.assertNotContains(response, 'Classroom を開く')
         self.assertNotIn('bu1111111111', '\n'.join(logs.output))
 
@@ -342,7 +343,7 @@ class ChatSpaceJoinTests(TestCase):
         self.assertContains(response, 'カウントダウン に参加しました')
         self.assertContains(response, 'こちらで自動で追加できませんでした')
         # スペースは Workspace 内の誰でも参加できるので、スペースのリンクから入ってもらう
-        self.assertContains(response, 'https://mail.google.com/chat/#chat/space/AAAAbc123')
+        self.assertContains(response, 'https://mail.google.com/chat/?authuser=bu1111111111%40bukkyo-u.ac.jp#chat/space/AAAAbc123')
         self.assertNotContains(response, 'Classroom を開く')
         staff = outbox.outbox[-1]
         self.assertEqual(staff.to, [settings.JOIN_NOTIFY_EMAIL])
@@ -350,6 +351,34 @@ class ChatSpaceJoinTests(TestCase):
         self.assertIn('spaces/AAAAbc123', staff.body)
         self.assertIn('Chat スペースに追加できませんでした', '\n'.join(logs.output))
         self.assertNotIn('bu1111111111', '\n'.join(logs.output))
+
+    def test_address_is_kept_only_encrypted_in_the_browser_and_removed_at_the_end(self):
+        link = self.mail_link()
+        with mock.patch.object(google, 'add_to_chat_space'):
+            self.client.post(link)
+        cookie = self.client.cookies[ADDRESS_COOKIE]
+        self.assertTrue(cookie.value)
+        self.assertNotIn('bu1111111111', cookie.value)
+        self.assertTrue(cookie['httponly'])
+        # セッション（DB）にはアドレスを置かない
+        self.assertNotIn('bu1111111111', str(dict(self.client.session)))
+
+        state = parse_qs(urlparse(
+            self.client.get(reverse('wgjoin:github_start', args=[self.wg.pk]))['Location']).query)['state'][0]
+        response = self.client.get(reverse('wgjoin:github_callback'), {'state': state, 'code': 'c'})
+        # 最後の画面を出したら消す
+        self.assertEqual(response.cookies[ADDRESS_COOKIE].value, '')
+        self.assertEqual(response.cookies[ADDRESS_COOKIE]['max-age'], 0)
+
+    def test_without_the_cookie_the_chat_link_has_no_account(self):
+        link = self.mail_link()
+        with mock.patch.object(google, 'add_to_chat_space'):
+            self.client.post(link)
+        del self.client.cookies[ADDRESS_COOKIE]
+        state = parse_qs(urlparse(
+            self.client.get(reverse('wgjoin:github_start', args=[self.wg.pk]))['Location']).query)['state'][0]
+        response = self.client.get(reverse('wgjoin:github_callback'), {'state': state, 'code': 'c'})
+        self.assertContains(response, 'href="https://mail.google.com/chat/#chat/space/AAAAbc123"')
 
     def test_success_does_not_tell_the_staff(self):
         link = self.mail_link()

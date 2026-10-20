@@ -22,6 +22,8 @@
 # のに使うだけで、保存もログ出力もしない（確認のリンクには暗号化して入れる）。session に置くのは
 # 「どの WG の手続きか」とリンクの番号、Chat に追加できたか、OAuth の state だけ。GitHub の
 # ユーザー名とトークンもその場で使って捨てる。
+# 最後の画面の「Chat を開く」を申請したアカウントで開くため（authuser）、アドレスは暗号化して
+# 申請者のブラウザの Cookie にだけ預け、最後の画面を出したら消す（ADDRESS_COOKIE）。
 
 import logging
 import secrets
@@ -42,11 +44,17 @@ from . import github, google, mail
 from .config import chat_space_url, club_classroom_url, club_course_id, is_enabled, repo_url
 from .forms import JoinEmailForm
 from .http import ServiceError
-from .verify import LinkInvalid, allow_send, is_used, make_link_token, mark_used, read_link_token
+from .verify import (LinkInvalid, allow_send, decrypt_address, encrypt_address, is_used, make_link_token,
+                     mark_used, read_link_token)
 
 logger = logging.getLogger(__name__)
 
 SESSION_KEY = 'wgjoin'
+
+#: 最後の画面の「Chat を開く」を申請したアカウントで開くため、アドレスを暗号化して申請者の
+#: ブラウザに預ける Cookie。サイトの DB・セッションには置かない。最後の画面を出したら消す。
+ADDRESS_COOKIE = 'wgjoin_address'
+ADDRESS_COOKIE_PATH = '/wg/'
 
 
 def _wg_or_404(pk):
@@ -65,9 +73,16 @@ def _page(request, template, wg, status=200, **extra):
 
 
 def _result(request, wg, outcome, status=200, **extra):
-    """結果の画面。outcome ごとの文言はテンプレート側に持つ。"""
+    """結果の画面。outcome ごとの文言はテンプレート側に持つ。
+
+    預けたアドレスがあれば「Chat を開く」をそのアカウントで開くようにし、Cookie は消す。
+    """
     request.session.pop(SESSION_KEY, None)
-    return _page(request, 'wgjoin/result.html', wg, status=status, outcome=outcome, **extra)
+    email = decrypt_address(request.COOKIES.get(ADDRESS_COOKIE, ''))
+    response = _page(request, 'wgjoin/result.html', wg, status=status, outcome=outcome,
+                     chat_url=chat_space_url(wg.chat_space, email), **extra)
+    response.delete_cookie(ADDRESS_COOKIE, path=ADDRESS_COOKIE_PATH)
+    return response
 
 
 @login_not_required
@@ -146,7 +161,13 @@ def verify(request, token):
                 logger.error('WG への参加: %s 運営への通知を送れませんでした（%s）', wg.code, type(e).__name__)
 
     request.session[SESSION_KEY] = {'wg': wg.pk, 'member_at': time.time(), 'nonce': nonce, 'chat': chat}
-    return redirect('wgjoin:github_start', pk=wg.pk)
+    response = redirect('wgjoin:github_start', pk=wg.pk)
+    if chat:
+        # 最後の画面の「Chat を開く」を申請したアカウントで開くため、申請者のブラウザに預ける
+        response.set_cookie(ADDRESS_COOKIE, encrypt_address(email), max_age=settings.WG_JOIN_STEP_TIMEOUT,
+                            path=ADDRESS_COOKIE_PATH, secure=settings.SESSION_COOKIE_SECURE,
+                            httponly=True, samesite='Lax')
+    return response
 
 
 def _member_flow(request, wg):

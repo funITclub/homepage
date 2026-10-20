@@ -37,11 +37,24 @@ def _fernet():
     ])
 
 
+def encrypt_address(email):
+    """アドレスを暗号化する（確認のリンクと、申請者のブラウザに預ける Cookie に使う）。"""
+    return _fernet().encrypt(email.encode()).decode()
+
+
+def decrypt_address(value):
+    """encrypt_address の逆。読めなければ None。"""
+    try:
+        return _fernet().decrypt(value.encode()).decode()
+    except (InvalidToken, ValueError):
+        return None
+
+
 def make_link_token(wg_pk, email=None):
     """確認のリンクの token。email を渡したときだけ、暗号化して入れる。"""
     data = {'wg': wg_pk, 'n': secrets.token_urlsafe(12)}
     if email:
-        data['e'] = _fernet().encrypt(email.encode()).decode()
+        data['e'] = encrypt_address(email)
     return signing.dumps(data, salt=SALT)
 
 
