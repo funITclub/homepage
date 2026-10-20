@@ -14,7 +14,7 @@
 #
 # 1 つの WG が複数のアプリを持つときは、URL を入れ子にできる。取り込みのときに
 # アプリの中へ .url という 1 行のファイルを置くと、その中身を URL として使う
-# （wg/welfare_tracker/.url に welfare/tracker → /welfare/tracker/）。
+# （wg/welfare_activity/.url に welfare/activity → /welfare/activity/）。
 # フォルダー名は Django のアプリ名になるので、ほかの WG と重ならない名前にする。
 
 from pathlib import Path
@@ -65,7 +65,7 @@ def installed(base_dir):
 def gate_back(base_dir):
     """config/gate.py の対応表（URL → 送り返す先）。
 
-    入れ子のときは、上の段（/welfare/）で一度通れば下（/welfare/tracker/）も
+    入れ子のときは、上の段（/welfare/）で一度通れば下（/welfare/activity/）も
     開ける。同じ WG のアプリのあいだを行き来できるようにするため。
     """
     return {f'/{url}/': FOLDERS[folder] for folder, _name, url in discover(base_dir)}

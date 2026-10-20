@@ -639,9 +639,13 @@ WG のメンバーだけに見せたいときの案。
     `GATE_BACK` に組み込む。**フォルダー名がそのまま URL**（`wg/protein` → `/protein/`）で、
     アプリの `urls.py` の `app_name` も同じ名前にする。
   - URL を入れ子にしたいときは `wg-apps.yml` の `take` に `{app, url}` と書く
-    （`{app: welfare_tracker, url: welfare/tracker}` → `/welfare/tracker/`）。取り込みの
+    （`{app: welfare_activity, url: welfare/activity}` → `/welfare/activity/`）。取り込みの
     ときにアプリの中へ `.url` が置かれ、`subapps` がそれを読む。通行証は上の段で
     1 枚取れば下の段も通る（同じ WG のアプリを行き来できる）。
+  - WG の活動ページ（紹介・構想資料・チケット管理）は `<WG>_activity` を `/<WG>/activity/` に
+    置く（[funITclub/claude-plugins](https://github.com/funITclub/claude-plugins) の
+    wg-activity スキル）。WG 一覧のカードには、編集画面で追加リンク「活動ページ」として
+    登録する。`/<WG>/` は WG が作る Web アプリのために空けておく。
   - **フォルダー名は Django のアプリ名になるので、WG をまたいで重ねない。** 同じ名前の
     アプリが 2 つあると、テンプレートと URL の名前空間がぶつかる。
   - WG が `requirements.txt` に足したものは本番の分に合流する。同じパッケージを

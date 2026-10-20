@@ -13,11 +13,11 @@
 #
 # URL を入れ子にしたいときは、文字列のかわりに {app, url} と書く。
 #       take:
-#         - welfare                            → /welfare/
-#         - {app: welfare_tracker, url: welfare/tracker}   → /welfare/tracker/
-# 上の段（/welfare/）の通行証で、下の段（/welfare/tracker/）も開ける。
+#         - welfare                            → /welfare/         WG が作る Web アプリ
+#         - {app: welfare_activity, url: welfare/activity}   → /welfare/activity/ 活動ページ
+# 上の段（/welfare/）の通行証で、下の段（/welfare/activity/）も開ける。下の段だけでもよい。
 # フォルダー名は Django のアプリ名になるので、ほかの WG と重ならない名前にすること
-# （wg-protein にも tracker があるなら、welfare 側は welfare_tracker のようにする）。
+# （活動ページは <WG>_activity。funITclub/claude-plugins の wg-activity スキルで入れる）。
 #
 # WG が終わったら、ここから消す。次のデプロイで本番から外れる
 # （DB のテーブルは残るので、消すときは別途）。
@@ -26,13 +26,11 @@ apps:
   # 機能性タンパク質設計サジェストAI研究 WG
   - repo: funITclub/wg-protein
     take:
-      - protein                                          # /protein/        検討中の資料
-      - {app: protein_tracker, url: protein/tracker}     # /protein/tracker/ チケット管理
+      - {app: protein_activity, url: protein/activity}   # /protein/activity/ 活動ページ（資料・チケット）
     as: wg
 
   # 福祉 WG
   - repo: funITclub/wg-welfare
     take:
-      - welfare                                          # /welfare/        構想の資料
-      - {app: welfare_tracker, url: welfare/tracker}     # /welfare/tracker/ チケット管理
+      - {app: welfare_activity, url: welfare/activity}   # /welfare/activity/ 活動ページ（資料・チケット）
     as: wg
