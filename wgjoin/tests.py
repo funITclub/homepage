@@ -49,6 +49,7 @@ class LinkTests(SimpleTestCase):
     def test_reads_chat_space_from_url_or_name(self):
         for value in ['https://mail.google.com/chat/u/0/#chat/space/AAAAbc-123_x',
                       'https://chat.google.com/room/AAAAbc-123_x?cls=7',
+                      'https://chat.google.com/u/1/app/chat/AAAAbc-123_x',
                       'spaces/AAAAbc-123_x', 'AAAAbc-123_x']:
             with self.subTest(value=value):
                 self.assertEqual(decode_chat_space(value), 'spaces/AAAAbc-123_x')

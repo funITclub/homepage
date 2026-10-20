@@ -13,8 +13,9 @@ GITHUB_TEAM_PATTERN = re.compile(r'^wg-[a-z0-9]+(?:-[a-z0-9]+)*$')
 
 _COURSE_SEGMENT = re.compile(r'/c/([A-Za-z0-9_-]+)')
 
-# Chat スペースの URL の形は2通りある（mail.google.com/chat/…#chat/space/<ID> と chat.google.com/room/<ID>）
-_CHAT_SPACE_SEGMENT = re.compile(r'(?:space/|spaces/|room/)([A-Za-z0-9_-]+)')
+# Chat スペースの URL の形はいくつかある（mail.google.com/chat/…#chat/space/<ID>、
+# chat.google.com/room/<ID>、chat.google.com/u/1/app/chat/<ID>）
+_CHAT_SPACE_SEGMENT = re.compile(r'(?:space/|spaces/|room/|app/chat/)([A-Za-z0-9_-]+)')
 _CHAT_SPACE_ID = re.compile(r'^[A-Za-z0-9_-]{6,}$')
 
 
