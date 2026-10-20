@@ -159,14 +159,25 @@ class SubAppDiscoveryTests(TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             self.make(tmp, 'wg', 'welfare')
-            self.make(tmp, 'wg', 'welfare_tracker')
-            (tmp / 'wg' / 'welfare_tracker' / subapps.URL_FILE).write_text('welfare/tracker\n')
+            self.make(tmp, 'wg', 'welfare_activity')
+            (tmp / 'wg' / 'welfare_activity' / subapps.URL_FILE).write_text('welfare/activity\n')
 
             self.assertEqual(subapps.discover(tmp),
                              [('wg', 'welfare', 'welfare'),
-                              ('wg', 'welfare_tracker', 'welfare/tracker')])
+                              ('wg', 'welfare_activity', 'welfare/activity')])
             self.assertEqual(subapps.gate_back(tmp),
-                             {'/welfare/': 'home:wg_list', '/welfare/tracker/': 'home:wg_list'})
+                             {'/welfare/': 'home:wg_list', '/welfare/activity/': 'home:wg_list'})
+
+    def test_nested_url_alone(self):
+        """上の段のアプリが無くても、下の段だけで載せられる（Web アプリより先に活動ページ）。"""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self.make(tmp, 'wg', 'welfare_activity')
+            (tmp / 'wg' / 'welfare_activity' / subapps.URL_FILE).write_text('welfare/activity\n')
+
+            self.assertEqual(subapps.discover(tmp),
+                             [('wg', 'welfare_activity', 'welfare/activity')])
+            self.assertEqual(subapps.gate_back(tmp), {'/welfare/activity/': 'home:wg_list'})
 
     def test_sends_each_back_to_its_own_list(self):
         with tempfile.TemporaryDirectory() as d:
@@ -178,18 +189,18 @@ class SubAppDiscoveryTests(TestCase):
                                                       '/countdown/': 'home:work_list'})
 
     @override_settings(GATE_BACK={'/welfare/': 'home:wg_list',
-                                  '/welfare/tracker/': 'home:wg_list'})
+                                  '/welfare/activity/': 'home:wg_list'})
     def test_one_pass_covers_the_apps_of_the_same_wg(self):
         """同じ WG のアプリは、上の段の通行証で行き来できる。"""
         self.client.get(f'/welfare/?{gate.PARAM}={gate.make_token("/welfare/")}')
         self.assertEqual(self.client.session[gate.SESSION_KEY], ['/welfare/'])
 
         # 通行証は通る（この URL のアプリは手元に無いので 404 になるだけ）
-        self.assertEqual(self.client.get('/welfare/tracker/').status_code, 404)
+        self.assertEqual(self.client.get('/welfare/activity/').status_code, 404)
 
         # 通行証が無ければ、下の段も一覧へ送り返す
         self.client.cookies.clear()
-        self.assertRedirects(self.client.get('/welfare/tracker/'), reverse('home:wg_list'),
+        self.assertRedirects(self.client.get('/welfare/activity/'), reverse('home:wg_list'),
                              fetch_redirect_response=False)
 
     def test_half_finished_folders_are_skipped(self):
