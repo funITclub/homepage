@@ -317,3 +317,141 @@ VS Code のユーザー設定に置く。
 **標準を変えるときは homepage と wg-template の両方を直す。** 既存の WG リポジトリには
 自動では反映されないので、必要なら各 WG に知らせる。本番の Python を上げたときは
 `devcontainer.json` のイメージ（`python:1-3.11-...`）と wg-template の CI も合わせる。
+
+## 14. 運営の作業に使うものを入れる（運営向け・初回だけ）
+
+メンバーの開発は 1〜7 の 3 つ（VS Code・Git・Docker Desktop）で足りる。ここから先は、本番の
+設定・デプロイ・資料づくりをする**運営だけ**が手元の PC に入れるもの。作業部屋（コンテナ）の
+中ではなく、PC 本体に入れる。
+
+| 入れるもの | 何に使う | 要るとき |
+|---|---|---|
+| Azure CLI（`az`）＋ 拡張機能 `communication` | 本番（App Service・Key Vault・DNS・ACS）の確認と設定 | [deploy.txt](../deploy.txt) の手順を流すとき |
+| GitHub CLI（`gh`） | Actions のシークレット・ログ、org とリポジトリの確認 | シークレットを入れる・デプロイのログを見るとき |
+| Python 3.11 ＋ `venv` | コンテナを使わずに手元で動かす。`wgjoin_google_authorize` を流す | 運営の Google の許可を取り直すとき |
+| `python-pptx` ＋ Keynote | WG 立ち上げガイド（`static/guide/*.pptx`）の文字の差し替えと PDF の確認 | 資料を直すとき（[deck/README.md](deck/README.md)） |
+| Claude Code ＋ funITclub のプラグイン | FE の問題づくり、WG の活動ページ（wg-activity スキル） | 問題集や活動ページを作るとき |
+
+手順は Mac（Homebrew を使う）を基本に書き、Windows の違いを添える。
+
+### 14-1. Homebrew（Mac だけ）
+
+Mac では、以下のツールを Homebrew でまとめて入れる。入っていれば飛ばす（ターミナルで
+`brew --version` と入れて版が出れば入っている）。
+
+1. [brew.sh](https://brew.sh/) の「Install Homebrew」の 1 行をコピーし、ターミナルに貼って Enter。
+2. Mac のパスワードを求められたら入れる。終わりに「Next steps」と出たら、そこに書かれた
+   2 行（`echo ... >> ~/.zprofile` と `eval ...`）も流す。
+3. ターミナルを開き直して `brew --version` で確かめる。
+
+Windows は、Windows 10/11 に最初から入っている `winget` を使う（PowerShell で入力する）。
+
+### 14-2. Azure CLI
+
+```bash
+brew install azure-cli
+```
+
+Windows：`winget install --exact --id Microsoft.AzureCLI`（入れたら PowerShell を開き直す）。
+
+1. **ログインする**：`az login`。ブラウザが開くので、本番のサブスクリプションを持つ
+   アカウントで入る。サブスクリプションを選ぶよう聞かれたら、funITclub のあるものを選ぶ。
+2. **メール送信（ACS）の拡張機能を入れる**：`az communication` を使う手順のため。
+
+   ```bash
+   az extension add --name communication
+   ```
+
+3. **既定値を置く**（リポジトリのフォルダーで流す）。deploy.txt のコマンドが
+   `--resource-group` などを省けるのは、この既定値のため。`.azure/config` にできる
+   （`.gitignore` 済みなので、PC ごとに一度流す）。
+
+   ```bash
+   az config set defaults.group=hirahira defaults.location=japanwest defaults.web=funITclub \
+     defaults.appserviceplan=hirahiratriangle_asp_1479 defaults.sku=B1 --local
+   ```
+
+   「Command group 'config' is experimental」の WARNING が出るが、気にしなくてよい。
+
+4. **確かめる**：`az webapp show --query state` が `"Running"` を返せばよい。
+
+### 14-3. GitHub CLI
+
+```bash
+brew install gh
+```
+
+Windows：`winget install --exact --id GitHub.cli`。
+
+1. **ログインする**：`gh auth login` →「GitHub.com」→「HTTPS」→「Login with a web browser」。
+   表示された 8 桁のコードをブラウザに入れる。org funITclub の**オーナー**のアカウントで入る
+   （シークレットを入れるにはリポジトリの管理者権限が要る）。
+2. **確かめる**：`gh repo view funITclub/homepage` でリポジトリの説明が出ればよい。
+
+### 14-4. Python 3.11（コンテナを使わずに動かすとき）
+
+本番と同じ 3.11 にそろえる（3.12 以上でも動くことが多いが、本番で落ちる違いに気づけない）。
+
+```bash
+brew install python@3.11
+```
+
+Windows：`winget install --exact --id Python.Python.3.11`（または [python.org](https://www.python.org/downloads/)
+から 3.11 の最新を入れ、最初の画面で「Add python.exe to PATH」にチェック）。
+
+リポジトリのフォルダーで、直下に `venv` を作る（`.claude/launch.json` もこの `venv` を使う）。
+
+```bash
+python3.11 -m venv venv
+source venv/bin/activate          # Windows は venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+python manage.py migrate --settings=config.settings_dev
+python manage.py createcachetable --settings=config.settings_dev
+python manage.py runserver --settings=config.settings_dev
+```
+
+コンテナの外では **`--settings=config.settings_dev` を毎回付ける**（付け忘れると本番の設定で
+動き、DB に繋がらずに落ちる）。
+
+### 14-5. 資料を直す道具（python-pptx・Keynote）
+
+```bash
+source venv/bin/activate
+pip install python-pptx
+```
+
+`python-pptx` は資料を直すときにしか使わないので、`requirements.txt` には入れていない
+（本番に載せない）。PDF に書き出して見た目を確かめるのは Keynote（Mac の App Store から無料）。
+Windows では `topdf.sh` が使えないので、PowerPoint で開いて目で確かめる。
+
+### 14-6. Claude Code とプラグイン
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Windows：PowerShell で `irm https://claude.ai/install.ps1 | iex`。デスクトップアプリ
+（[claude.ai/download](https://claude.ai/download)）の「Code」からも使える。
+
+1. リポジトリのフォルダーで `claude` と入れ、ブラウザでログインする。
+2. funITclub のプラグイン（wg-activity スキルなど）を入れる。Claude Code の中で次の 2 行を入れる。
+
+   ```
+   /plugin marketplace add funITclub/claude-plugins
+   /plugin install wg-activity@funitclub
+   ```
+
+   入れたあとに Claude Code を開き直す。
+
+### 14-7. まとめて確かめる
+
+```bash
+az version --query '"azure-cli"' && az extension show --name communication --query version
+gh auth status
+venv/bin/python --version
+venv/bin/python -c "import pptx; print('python-pptx ok')"
+claude --version
+```
+
+どれかでエラーが出たら、その節からやり直す。

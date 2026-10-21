@@ -6,10 +6,11 @@
 - **編集画面（`/edit/`）だけログイン必須**。公開サイトとは別レイアウトで、相互にリンクしない
 - 掲載内容（お知らせ・WG紹介・成果物紹介）はモデル化済みで、編集画面から編集する
 - **参加の申し込みフォーム（`/join/apply/`）**。大学のメールアドレス（`@bukkyo-u.ac.jp`）のみ受け付ける。申し込みの時点でクラブの Classroom のクラスに招待する
-- **サブアプリ（WGごとのWebアプリ）は未実装**。URL 未設定のリンクは「作成中」ページ（`/coming-soon/`）へ流す
-- **FE 基本情報技術者試験 対策（`/fe/`）**。ログインなしで誰でも使える公開アプリ。成績はアプリの中の ID ごとに持つ（ID を登録しなくても使える）。問題集の管理（`/fe/manage/`）だけは編集画面のログインが要る。詳しくは `fe/README.md`
-- **WG への参加（`/wg/<id>/join/`）**。クラブのメンバー（Classroom のクラブのクラスにいる人）だけが、大学のアドレスの確認を経て、自分で GitHub の WG のチームに入れる。会員の情報はサイトに持たない
-- デザインは `ホームページのイメージ案.pptx` に準拠（ネイビー #001E3C ＋ アクセント #5BB8FF、Consolas ＋ Meiryo）
+- **サブアプリ**。公表した成果物は `works/`（countdown・fe）、WG が作っている途中のアプリと活動ページは、デプロイのときに WG のリポジトリから `wg/` に取り込む（下の「今後」の WG のアプリの項）。URL 未設定のリンクは「作成中」ページ（`/coming-soon/`）へ流す
+- **FE 基本情報技術者試験 対策（`/fe/`）**。ログインなしで誰でも使える公開アプリ。成績はアプリの中の ID ごとに持つ（ID を登録しなくても使える）。問題集の管理（`/fe/manage/`）だけは編集画面のログインが要る。詳しくは [works/fe/README.md](works/fe/README.md)
+- **WG への参加（`/wg/<id>/join/`）**。クラブのメンバー（Classroom のクラブのクラスにいる人）だけが、大学のアドレスの確認を経て、自分で WG の Chat スペースと GitHub の WG のチームに入れる。会員の情報はサイトに持たない
+- **技術設計**（メール送信・参加の申し込み・WG への参加の仕組み）は [docs/design.md](docs/design.md)
+- デザインはネイビー #001E3C ＋ アクセント #5BB8FF、Consolas ＋ Meiryo（元にした `ホームページのイメージ案.pptx` はリポジトリに入れていない。定義は `static/css/funitclub.css`）
 
 ## 構成
 
@@ -18,10 +19,10 @@ config/                設定（common / 本番 settings.py / 開発 settings_de
 .env.example           ローカルの秘密情報のひな形（.env にコピーして使う。.env は git に入らない）
 home/                  公開サイトの6ページ＋作成中ページ（モデルは持たず、表示だけ）
   forms.py             参加フォーム（/join/apply/）。入力内容をメールで送るだけで DB には残さない（クラスへの招待は views.py）
-  templates/home/      index / news_list / wg_list / work_list / join / join_apply / guide / coming_soon
+  templates/home/      index / news_list / wg_list / work_list / join / join_apply / join_done / guide / coming_soon / blocked（403）
 news/                  お知らせ（モデル＋編集画面＋admin 登録）
 catalog/               WG紹介・成果物紹介（モデル＋編集画面＋admin 登録）
-wgjoin/                WG への参加（/wg/<id>/join/）。Classroom でメンバーか確かめ、GitHub のチームに登録する
+wgjoin/                WG への参加（/wg/<id>/join/）。Classroom でメンバーか確かめ、Chat スペースに追加して GitHub のチームに登録する。参加の申し込みでのクラスへの招待もここ（google.py）
 wg-apps.yml            デプロイのときに取り込む WG のアプリの一覧（ソースはこのリポジトリに入れない）
 works/                 公表した成果物のアプリ。フォルダー名は URL に出さない（config/subapps.py が自動で組み込む）
   countdown/           サブアプリ「カウントアップ＆ダウン」（/countdown/）。ログイン不要
@@ -31,7 +32,7 @@ edit/                  編集画面の枠（ログイン・メニュー・共通
   models.py            管理者（連絡先）。通知の宛先と公開の問い合わせ先はここだけを見る
   notify.py            管理者への通知メールの共通部分
   signals.py           ログイン失敗の監視
-  checks.py            定期点検（SMTP のシークレット期限、FE 対策アプリの一時的な記録の掃除）
+  checks.py            定期点検（SMTP のシークレット期限、FE 対策アプリの一時的な記録の掃除、countdown の通知メール）
   templates/edit/      base（共通レイアウト）/ login / index（メニュー）
 templates/base.html    公開サイトのヘッダー・ナビ・フッター（編集画面では使わない）
 static/css/funitclub.css   デザイン一式（公開サイト・編集画面とも）
@@ -39,7 +40,7 @@ static/guide/          WG 立ち上げガイドの資料（pptx 5 本）。/guid
 deploy.txt             Azure へのデプロイ・本番環境の作成手順（az コマンド一式）
 startup.sh             App Service の起動コマンド（migrate → gunicorn）
 .github/workflows/     main への push で App Service にデプロイする（GitHub Actions）
-docs/                  補足資料（開発の手順・セキュリティ対応一覧など）。デプロイの zip からは除外する
+docs/                  補足資料（開発の手順・技術設計・セキュリティ対応一覧など）。デプロイの zip からは除外する
   deck/                WG 立ち上げガイド（static/guide/*.pptx）を直すための道具と決まりごと
 .devcontainer/         開発環境（VS Code の Dev Container）の定義。デプロイの zip からは除外する
 .vscode/               VS Code の共通設定（起動構成・タスク）。デプロイの zip からは除外する
@@ -379,7 +380,8 @@ WG 一覧の各カードの「WG に参加」から、**クラブのメンバー
 保護は hirahira_room と同じ二段構え。
 
 1. `LoginRequiredMiddleware`（`config/settings_common.py`）で**全ビューを既定ログイン必須**にする。
-   公開ページ（`home/views.py`）だけ `login_not_required` を付けて除外している。
+   公開ページ（`home/views.py`）・WG への参加（`wgjoin/views.py`）・ログイン不要のサブアプリ
+   （`works/countdown`・`works/fe`）のビューだけ `login_not_required` を付けて除外している。
    新しい編集画面を足したときに保護を書き忘れても、素通りにはならない。
 2. 各編集ビューは `edit.views.EditorMixin`（＝`LoginRequiredMixin`）も継承している。
 
@@ -390,7 +392,7 @@ WG 一覧の各カードの「WG に参加」から、**クラブのメンバー
 
 | 編集対象 | モデル | 公開側の出かた |
 |---|---|---|
-| お知らせ | `news.News` | TOP に公開中の新しい順で3件（件数は `home.views.IndexView.news_limit`）。掲載日が未来のものは出ないので予約投稿にできる |
+| お知らせ | `news.News` | TOP に公開中の新しい順で5件（件数は `home.views.IndexView.news_limit`）、`/news/` に全件。掲載日が未来のものは出ないので予約投稿にできる |
 | WG紹介 | `catalog.Wg` | `/wg/` に表示順で並ぶ。「準備中」のカードは参加ボタンだけを出す |
 | 成果物紹介 | `catalog.Work` | `/works/` に表示順で並ぶ |
 
@@ -458,7 +460,7 @@ python manage.py createsuperuser --settings=config.settings_dev
 |---|---|---|
 | IP を遮断した | 都度 | 1時間5通まで |
 | ログイン失敗が続いた | 上限到達時に1回 | 既定は10分に5回。**遮断はしない** |
-| 未処理の例外（500） | 都度 | `edit.log_handlers.DbAdminEmailHandler`。本番のみ |
+| 未処理の例外（500）・ERROR のログ | 都度 | `edit.log_handlers.DbAdminEmailHandler`。本番のみ。ルートのロガーで受けるので、`works/` の成果物や取り込んだ WG のアプリの ERROR も届く |
 | SMTP シークレットの期限接近 | 30日前・14日前・7日前・前日・失効後 | 各1回 |
 
 通知は種類ごとに1時間あたりの通数を制限する（`settings.ADMIN_NOTIFY_MAX_PER_HOUR`）。
@@ -508,6 +510,8 @@ python manage.py check_secret_expiry --settings=config.settings_dev
 [docs/development.md](docs/development.md)。コンテナを作ると、パッケージの導入・`.env` の
 用意・`migrate`・`createcachetable` まで済む。コンテナの中では `DJANGO_SETTINGS_MODULE` が
 `config.settings_dev` になっているので、`--settings=...` は付けなくてよい。
+運営が手元に入れるもの（Azure CLI・GitHub CLI・Python 3.11・資料の道具・Claude Code）の
+入れ方は、同じ文書の「14. 運営の作業に使うものを入れる」。
 
 コンテナを使わずに手元の Python で動かすこともできる。hirahira_room と同じく、リポジトリ直下の
 `venv` を使う（`.claude/launch.json` も `venv/bin/python` を呼ぶ）。このときは `--settings` が要る。
@@ -529,7 +533,7 @@ python manage.py createsuperuser --settings=config.settings_dev
 ```
 
 参加フォームのメールを実際に送るなら、ACS の認証情報を `.env` に入れる
-（詳しくは[参加フォーム](#参加フォームjoin)）。入れなければコンソール出力で動く。
+（詳しくは[参加フォーム](#参加フォームjoinapply)）。入れなければコンソール出力で動く。
 
 ```bash
 cp .env.example .env
@@ -546,7 +550,7 @@ hirahira_room と同じ構成。設定を3ファイルに分け、**既定は本
 | DEBUG | `True` | 既定 `False`。環境変数 `DEBUG=True` で一時的に有効化できる |
 | DB | SQLite（`DB_HOST` を渡したときだけ PostgreSQL） | PostgreSQL（funITclub 専用DB） |
 | 静的ファイル | runserver が配信 | WhiteNoise（圧縮＋ハッシュ付き） |
-| メール | 大学アカウントの SMTP（`.env` の `EMAIL_HOST_PASSWORD`）。未設定ならコンソール出力 | 大学アカウントの SMTP（smtp.gmail.com） |
+| メール | ACS の SMTP リレー（`smtp.azurecomm.net`。`.env` の `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD`）。未設定ならコンソール出力 | ACS の SMTP リレー（`smtp.azurecomm.net`。パスワードは Key Vault 参照） |
 | Cookie | 通常 | `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` が True |
 | ログ | DEBUG レベル・詳細フォーマット | INFO レベル |
 
@@ -568,7 +572,7 @@ PostgreSQL サーバーは hirahira_room と同じものを使うが、**デー�
 設定）から読む。既定値は持たないので、未設定なら接続しない。
 
 例外は1つだけ。運営が手で流す `manage.py fe_pull_learner` は、hirahira_room のデータベースを
-**読み取り専用で**開き、運営の ID の FE の成績を読む（`fe/README.md` の「hirahira_room から
+**読み取り専用で**開き、運営の ID の FE の成績を読む（`works/fe/README.md` の「hirahira_room から
 運営の成績を持ってくる」）。書き込みはしない。
 
 ローカル（`config/settings_dev.py`）は SQLite。`DB_HOST` を渡したときだけ PostgreSQL に切り替わる。
@@ -576,8 +580,9 @@ PostgreSQL サーバーは hirahira_room と同じものを使うが、**デー�
 
 > **注意: hirahira_room の共有DBに対して `migrate` を実行しないこと。**
 > `DB_NAME` が funITclub 専用DBを指していることを確認してから実行する。
-> なおテーブル名は `funitclub_news` / `funitclub_wg` / `funitclub_work` に固定してあり
-> （各モデルの `db_table`）、万一DBを取り違えても既存テーブルとは衝突しないようにしてある。
+> なおテーブル名はすべて `funitclub_` で始まる名前に固定してあり（`funitclub_news`・
+> `funitclub_wg`・`funitclub_fe_question` など。各モデルの `db_table`）、万一DBを取り違えても
+> 既存テーブルとは衝突しないようにしてある。サブアプリのモデルを足すときも同じようにする。
 
 本番DBの初期化（専用DBの作成 → 環境変数 → migrate）は [deploy.txt](deploy.txt) の
 「初回のみ」を参照。
@@ -585,23 +590,59 @@ PostgreSQL サーバーは hirahira_room と同じものを使うが、**デー�
 ## 環境変数（本番）
 
 Azure App Service（`funITclub`）のアプリケーション設定。hirahira-room と同じ構成。
+「設定済み」は 2026-10-21 に App Service の設定名を一覧して確かめたもの（値は見ていない）。
+「Key Vault」は値を `@Microsoft.KeyVault(...)` の参照で入れているもの（`funitclub-kv`）。
+
+| 変数 | 本番 | 用途 |
+|---|---|---|
+| `SECRET_KEY` | 設定済み | 本番の秘密鍵。確認のリンクの暗号化と countdown の通知先の暗号化の鍵もここから作る |
+| `SECRET_KEY_FALLBACKS` | 未設定 | 任意。`SECRET_KEY` を替えるとき、前の値を入れる（カンマ区切り）。下の注意を参照 |
+| `DB_NAME` | 設定済み | funITclub 専用データベース名（`funitclub`）。hirahira_room の共有DBを指さないこと |
+| `DB_USER` / `DB_PASSWORD` / `DB_HOST` | 設定済み | PostgreSQL の接続情報（hirahira-room と同じ値） |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | 設定済み | `True`。デプロイ時に pip install と collectstatic を走らせる |
+| `WEBSITE_HOSTNAME` | Azure が自動 | CSRF_TRUSTED_ORIGINS に反映 |
+| `WEBSITE_HTTPLOGGING_RETENTION_DAYS` | 設定済み | App Service の HTTP ログを残す日数（Azure の設定。コードは読まない） |
+| `EMAIL_HOST_USER` | 設定済み | ACS の SMTP ユーザー名。未設定だと送信できない |
+| `EMAIL_HOST_PASSWORD` | Key Vault | 紐づけた Entra アプリのクライアント シークレット |
+| `EMAIL_HOST` | 未設定（既定） | 任意。SMTP サーバー。既定は `smtp.azurecomm.net` |
+| `EMAIL_SECRET_EXPIRES_ON` | 設定済み | シークレットの期限（`YYYY-MM-DD`）。更新時に必ず直す |
+| `JOIN_FROM_EMAIL` | 未設定（既定） | 任意。差出人アドレス。既定は `no-reply@funitclub.org` |
+| `JOIN_NOTIFY_EMAIL` | 設定済み | 管理者テーブルが空のときの予備の宛先（通知用） |
+| `PUBLIC_CONTACT_EMAIL` | 未設定（既定） | 任意。同じく予備の公開問い合わせ先。既定は `contact@funitclub.org` |
+| `CLUB_CLASSROOM_COURSE` | 設定済み | クラブの Classroom のクラス。ここにいる人をメンバーとみなす |
+| `GOOGLE_OAUTH_CLIENT_ID` | 設定済み | Google の OAuth クライアント |
+| `GOOGLE_OAUTH_CLIENT_SECRET` / `GOOGLE_OAUTH_REFRESH_TOKEN` | Key Vault | OAuth クライアントのシークレットと、運営（クラスの先生）の許可 |
+| `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 設定済み | GitHub App（funitclub-wg-join） |
+| `GITHUB_APP_CLIENT_SECRET` / `GITHUB_APP_PRIVATE_KEY` | Key Vault | 同じ App の Client secret と秘密鍵 |
+| `GITHUB_ORG` | 未設定（既定） | 任意。既定は `funITclub` |
+| `COUNTDOWN_NOTIFY_TOKEN` | 設定済み | countdown の毎日0時の送信の合言葉。GitHub の Actions のシークレットと同じ値（[deploy.txt](deploy.txt) の「カウントダウンのメール通知」） |
+| `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 未設定 | 任意。IP遮断の停止・除外（ロックアウトからの復旧用。済んだら消す） |
+| `DEBUG` | 未設定 | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
+| `FE_SOURCE_DB` | 未設定 | 任意。`fe_pull_learner` の `--source-db` を省くときの hirahira_room の DB 名。SSH で流すときにその場で渡してもよい |
+
+WG への参加の 8 つ（`CLUB_CLASSROOM_COURSE`・`GOOGLE_OAUTH_*`・`GITHUB_APP_*`）がそろうまで、「WG に参加」は
+出ない（作り方は「[WG への参加](#wg-への参加wgidjoin)」の準備）。
+
+次の変数は**開発（`config/settings_dev.py`）だけ**が読む。本番では入れても効かない。
 
 | 変数 | 用途 |
 |---|---|
-| `SECRET_KEY` | 本番の秘密鍵 |
-| `DB_NAME` | funITclub 専用データベース名（`funitclub`）。hirahira_room の共有DBを指さないこと |
-| `DB_USER` / `DB_PASSWORD` / `DB_HOST` | PostgreSQL の接続情報（hirahira-room と同じ値） |
-| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `True`。デプロイ時に pip install と collectstatic を走らせる |
-| `WEBSITE_HOSTNAME` | Azure が自動設定。CSRF_TRUSTED_ORIGINS に反映 |
-| `EMAIL_HOST_USER` | ACS の SMTP ユーザー名。未設定だと送信できない |
-| `EMAIL_HOST_PASSWORD` | 紐づけた Entra アプリのクライアント シークレット。本番は Key Vault 参照（`@Microsoft.KeyVault(...)`）で入れている |
-| `JOIN_FROM_EMAIL` | 任意。差出人アドレス。既定は `no-reply@funitclub.org` |
-| `JOIN_NOTIFY_EMAIL` | 任意。管理者テーブルが空のときの予備の宛先（通知用） |
-| `PUBLIC_CONTACT_EMAIL` | 任意。同じく予備の公開問い合わせ先。既定は `contact@funitclub.org` |
-| `EMAIL_SECRET_EXPIRES_ON` | シークレットの期限（`YYYY-MM-DD`）。更新時に必ず直す |
-| `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 任意。IP遮断の停止・除外（ロックアウトからの復旧用） |
-| `DEBUG` | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
-| `CLUB_CLASSROOM_COURSE` ほか | WG への参加の設定。一覧は「[WG への参加](#wg-への参加wgidjoin)」。そろうまで「WG に参加」は出ない |
+| `EXTRA_ALLOWED_HOSTS` | 手元のサーバーを別の名前で開くとき（カンマ区切り） |
+| `CSRF_TRUSTED_ORIGINS` | 同じく、フォームを送るときに信頼するオリジン |
+| `SITE_URL` | countdown のメールに書くリンクの頭。既定は `http://localhost:8010`。本番は `https://funitclub.org` に固定 |
+
+> **`SECRET_KEY` を替えるときは、前の値を `SECRET_KEY_FALLBACKS` に入れてから替える。**
+> 署名（確認のリンク・セッション）と暗号化（WG への参加のアドレス・countdown の通知先）は、
+> 前の鍵でも読める。入れずに替えると countdown の通知先が読めなくなり、全員が未登録の扱いになる。
+> 通知先は読み直しても暗号化し直さないので、`SECRET_KEY_FALLBACKS` は**消さずに残しておく**
+> （確認のリンクやセッションだけなら 1 時間〜2 週間で前の鍵は要らなくなる）。
+
+設定の一覧（名前と Key Vault 参照かどうか。値は出さない）は次で見られる。
+
+```bash
+az webapp config appsettings list --name funITclub \
+  --query "[].{name:name, keyVault:starts_with(value || '', '@Microsoft.KeyVault')}" -o table
+```
 
 `DJANGO_SETTINGS_MODULE` は不要（`manage.py` と `wsgi.py` の既定が `config.settings`）。
 
@@ -686,8 +727,6 @@ WG のメンバーだけに見せたいときの案。
   マイグレーションも DB もそのまま使える。
 - 編集する項目を増やすときは、`catalog` と同じ作りでモデル・フォーム・画面を足し、
   `edit/templates/edit/base.html` のナビにリンクを追加する。
-- TOP の「すべて見る →」はまだ `/coming-soon/` を指している。お知らせの一覧ページを
-  作ったら差し替える。
 - 「CC BY 成果物ライセンス」のタイルだけは `home/templates/home/index.html` の直書き。
 - `manage.py check --deploy` は SECURE_HSTS_SECONDS と SECURE_SSL_REDIRECT の未設定を
   警告する（着手前からの状態）。ログイン機能が入ったので、いずれ対応しておきたい。
