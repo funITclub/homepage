@@ -56,7 +56,7 @@ Azure Communication Services（funitclub-comm）── リンク済みドメイ�
 | WG への参加の「確認できませんでした」 | 入力されたアドレス | 公開の問い合わせ先 | `wgjoin/mail.py` `send_not_member` | 名簿にいなかった |
 | Chat スペースに追加できなかった | 運営 | — | `wgjoin/mail.py` `send_chat_failed` | Chat への追加に失敗したときだけ。アドレスはこのメールにだけ載せる |
 | IP を遮断した | 運営 | — | `home/notifications.py` | 遮断のたび（1 時間に 5 通まで） |
-| ログインの失敗が続いた | 運営 | — | `edit/signals.py` | 10 分に 5 回を超えたとき 1 回 |
+| ログインの失敗が続いた | 運営 | — | `edit/signals.py` | 同じ IP で 10 分に 5 回を超えたとき 1 回（`LOGIN_FAILURE_RULE`）。**IP は遮断しない**（正規の運営が打ち間違えて締め出されると、復旧の手段を失うため。判断は人に任せる） |
 | エラー（500・ERROR のログ） | 運営 | — | `edit/log_handlers.py` | 本番だけ。1 時間に 10 通まで |
 | SMTP のシークレットの期限 | 運営 | — | `edit/checks.py` | 30・14・7・1 日前と失効後に 1 回ずつ |
 | countdown の確認・解除・毎日の通知 | 登録したアドレス | — | `works/countdown/notify.py` | 本人が登録を頼んだとき・毎日 0 時 |
@@ -73,10 +73,29 @@ GitHub の org への招待（GitHub が送る）。
 | 運営への通知 | `edit.models.notification_emails()` | 有効かつ「通知を受け取る」の全員 | `JOIN_NOTIFY_EMAIL`（未設定なら `PUBLIC_CONTACT_EMAIL`） |
 | 公開する問い合わせ先・Reply-To | `edit.models.public_contact_email()` | 「公開ページの問い合わせ先にする」の先頭 1 件 | `PUBLIC_CONTACT_EMAIL`（`contact@funitclub.org`） |
 
+- 管理者テーブルの編集は admin（`/admin/` → 管理者）から。最初の 1 件（公開の問い合わせ先）は
+  マイグレーション（`edit/migrations/0002_seed_administrator.py`）で入る。
+- テンプレートからは `{{ public_contact }}` で参照する（`edit/context_processors.py`）。アドレスを HTML に
+  書かないので、担当者が代わってもテーブルを直すだけで全ページに反映される。
+- 公開の問い合わせ先（役割アドレス）は転送で運営の受信箱に届くので、通知の宛先には入れない
+  （同じ受信箱に二重に届くため）。
+
 公開側の予備を `JOIN_NOTIFY_EMAIL` に**倒さない**のが要点。運営の受信箱は個人の大学アドレスで、
 ローカル部が学籍番号なので、障害のときに公開ページへ出てはいけない。
 
-### 1-4. 失敗したとき
+### 1-4. シークレットの期限
+
+SMTP の認証に使う Entra アプリのクライアント シークレットには期限がある（いまは 2028-08-19）。
+切れると申し込みの控えも運営への通知も止まるが、「申し込みが来ない」状態と区別がつかず気づけない。
+そこで期限日を `EMAIL_SECRET_EXPIRES_ON` に持ち、30・14・7・1 日前と失効後に運営へ知らせる。
+
+- 点検は 1 日 1 回、その日の最初のリクエストのついでに走る（`config.middleware.DailyCheckMiddleware` →
+  `edit/checks.py`）。App Service に常設のスケジューラがないため。手で流すなら `manage.py check_secret_expiry`。
+- 通知の本文に更新の手順を書いてあるので、受け取った人はそれを読めば対応できる。
+- **シークレットを更新したら `EMAIL_SECRET_EXPIRES_ON` も必ず直す。** 忘れると通知が嘘になる。
+- この仕組みはメールが送れる状態でしか働かない。
+
+### 1-5. 失敗したとき
 
 | 場面 | 振る舞い |
 |---|---|
@@ -84,9 +103,9 @@ GitHub の org への招待（GitHub が送る）。
 | 運営への通知を送れない | `edit.notify.notify_admins` が例外を握り、ログだけ残す。呼び出し元は止めない |
 | 通知が続く | 種類ごとに 1 時間あたりの通数を数え（DB キャッシュ）、超えたら送らない。数えられないときは送る（異常のときに黙るより、うるさいほうがよい） |
 | ERROR のログ | 本番ではルートのロガーに `DbAdminEmailHandler` を付けてあり、どのアプリ（`works/` の成果物や取り込んだ WG のアプリも）の ERROR も運営に届く。アプリを足しても設定は要らない。この仕組みが「失敗したら運営に知らせる」の土台 |
-| ACS が止まる・シークレットが切れる | メールで知らせる仕組みは全部止まる。シークレットの期限は `EMAIL_SECRET_EXPIRES_ON` で前もって知らせる。ACS の障害は検知しない（Azure Monitor は使っていない） |
+| ACS が止まる・シークレットが切れる | メールで知らせる仕組みは全部止まる。ACS の障害は検知しない（Azure Monitor は使っていない） |
 
-### 1-5. 開発環境とテスト
+### 1-6. 開発環境とテスト
 
 - `config/settings_dev.py` は、`.env` に `EMAIL_HOST_USER` と `EMAIL_HOST_PASSWORD` があれば本番と同じ ACS から
   **本当に送る**。なければ console backend（runserver のログに出す）。
@@ -141,10 +160,13 @@ JoinApplyView.form_valid
 |---|---|
 | 数え方 | `detect_and_block_burst_submissions`。IP ごとに `(件数, 窓の開始時刻)` を DB キャッシュ（`funitclub_cache`）に置き、`JOIN_BURST_RULES`＝10 分に 3 件／1 時間に 10 件を超えたら遮断する。worker をまたいで数えるため、ローカルメモリではなく DB に置く。超えた送信そのものは受け付ける |
 | 遮断 | `home.BlockedIp` に記録する。期間は 24 時間 → 7 日 → 恒久（`IP_BLOCK_DURATIONS`）。期限が切れた行も消さず、次に遮断したとき回数を引き継ぐ |
-| 止める場所 | `config.middleware.BlockedIpMiddleware` が全リクエストを 403 にする（静的ファイルも）。403 の画面は CSS を埋め込んだ 1 枚。遮断リストは 60 秒キャッシュする |
+| 止める場所 | `config.middleware.BlockedIpMiddleware` が全リクエストを 403 にする（公開ページ・編集画面・静的ファイルも）。403 の画面（`home/templates/home/blocked.html`）は連絡先と「共有回線では他の方の操作が原因の場合がある」旨を出し、CSS を埋め込んだ 1 枚で返す（静的ファイルも 403 になるため。外部ファイルを読ませないこと）。遮断リストは 60 秒キャッシュするので、解除の反映は最大 60 秒遅れる |
 | IP の取り方 | `home.netutils.client_ip`。`X-Forwarded-For` の**右端**（Azure の front end が付けた値）。左端は詐称できるので信じない |
-| 逃げ道 | `IP_BLOCK_EXEMPT`（除外）と `IP_BLOCK_ENABLED=False`（止める）。どちらも App Service の設定だけで戻せる |
-| 知らせ | 遮断したら運営に通知する（遮断された人は問い合わせフォームにも来られないため） |
+| 期間を延ばしていく理由 | IP は個人の持ち物ではない。構内の回線や携帯の CGNAT では多数の人が同じ IP を使い、動的な IP は時間とともに別の人に渡る。初回から恒久にすると無関係な人を締め出し続け、しかもこちらは気づけない（遮断された人は問い合わせフォームにも来られない）。まず短く切って自動で解き、繰り返す相手だけ恒久にする |
+| 解除 | admin（`/admin/` → 遮断IP → 「今すぐ解除する」） |
+| 逃げ道 | 自分の IP を遮断すると admin にも入れなくなる。`IP_BLOCK_EXEMPT`（除外。遮断リストより優先）と `IP_BLOCK_ENABLED=False`（止める）を用意し、どちらも App Service の設定だけで DB を触らずに戻せる |
+| 知らせ | 遮断したら運営に通知する（遮断された人は問い合わせフォームにも来られないため）。IP を変えながら来られても溢れないよう、1 時間に 5 通まで（`IP_BLOCK_NOTIFY_MAX_PER_HOUR`） |
+| 掲示 | 申し込みページに、入力内容の扱いとアクセス制限の**方針だけ**を出す。閾値や期間の数値は出さない（ぎりぎりを狙われるため）。仕組みを伏せて守る設計ではないので、方針を出しても強さは変わらず、共有回線での巻き添えに前もって触れておくと問い合わせが早くなる |
 | 壊れたとき | キャッシュや DB を読めなければ数えず・止めずに通す |
 
 ### 2-5. 持つもの・持たないもの
@@ -200,7 +222,7 @@ GitHub でログイン（アカウントがなければその場で作る）
 
 暗号は `cryptography` の Fernet。鍵は `SECRET_KEY` に用途ごとの salt を付けた SHA-256 から作る
 （`wgjoin/verify.py`。countdown の通知先の暗号化と同じ作り）。`MultiFernet` で `SECRET_KEY_FALLBACKS` の鍵も
-試すので、`SECRET_KEY` を替えても、前の値を環境変数 `SECRET_KEY_FALLBACKS` に残しておけば読める。
+試す（鍵を替えるときの注意は README の「環境変数（本番）」）。
 
 ### 3-3. 各段の設計の理由
 

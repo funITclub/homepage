@@ -219,12 +219,8 @@ python manage.py createsuperuser
 ########################################
 
 # Azure Communication Services（ACS）の Email を使い、独自ドメイン funitclub.org の
-# 差出人（no-reply@funitclub.org）で送る。申し込みの通知先と Reply-To は
-# 運営の受信箱（JOIN_NOTIFY_EMAIL）のままなので、受信はこれまで通り。
-#
-# ※ 大学アカウント（bukkyo-u.ac.jp）の SMTP は使えない。Google Workspace 側で
-#    2段階認証が許可されておらず、アプリ パスワードを発行できないため。
-#    2SV なしの SMTP 認証は Google が廃止済み。
+# 差出人（no-reply@funitclub.org）で送る。経路・認証の仕組みと、大学のアカウントから
+# 送らない理由は docs/design.md の「1. メール送信の仕組み」。ここは構成と手順だけ。
 #
 # funitclub.org の DNS は Azure DNS（リソースグループ hirahira のゾーン funitclub.org）に
 # あるので、検証用レコードも az で足せる。
@@ -273,9 +269,7 @@ python manage.py createsuperuser
 #
 #   連続送信の検知・遮断のログを見る（WARNING で出る）
 #     az webapp log tail --name funITclub | grep -e 連続送信 -e 遮断
-#     ※ 遮断は 24時間 → 7日間 → 恒久 と、繰り返すほど延びる。
-#       遮断すると運営（JOIN_NOTIFY_EMAIL）に通知メールが届く。
-#       手動の解除は /admin/ の「遮断IP」→「今すぐ解除する」。
+#     手動の解除は /admin/ の「遮断IP」→「今すぐ解除する」（遮断の仕組みは docs/design.md の 2-4）。
 #
 #   自分のIPを誤って遮断して admin に入れなくなったときの復旧（DB を触らずに戻せる）
 #     az webapp config appsettings set --name funITclub --settings IP_BLOCK_EXEMPT="<自分のIP>"
@@ -426,7 +420,7 @@ az webapp log tail --name funITclub
 # WG 一覧の「WG に参加」。大学のアドレスでクラブの Classroom のクラスの名簿を引き
 # （運営＝クラスの先生の許可）、確認のメールから WG の Chat スペースに追加し、
 # GitHub の WG のチームに登録する。参加の申し込み（/join/apply/）では、同じ許可で
-# クラブのクラスに招待する。仕組みは README の「WG への参加」。会員の情報はどこにも保存しない。
+# クラブのクラスに招待する。仕組みは docs/design.md の 2・3 章。会員の情報はどこにも保存しない。
 
 # ---- 現在の構成（2026-09-19 に構築。2026-10-20 に Chat と招待のために許可を広げた） ----
 #   Google Cloud プロジェクト   : 大学のアカウントで作成（プロジェクト番号 75278251249）
@@ -454,6 +448,31 @@ az webapp log tail --name funITclub
 #     WG-01 機能性タンパク質設計サジェストAI研究              → wg-protein
 #     WG-02 動画鑑賞向け 音声字幕システム開発                 → wg-subtitles
 #     WG-03 福祉従事者アセスメント&プランニング支援kit開発研究 → wg-welfare
+
+# ---- 初回のみ（作り直すとき。いまは構築済み） ----
+# 1. Google Cloud の OAuth クライアント（大学のアカウントで作る）
+#    - プロジェクトを作り、「Google Classroom API」を有効にする
+#    - 「Google Chat API」も有効にし、Chat API の「構成」でアプリ名・アバター・説明を入れて保存する
+#      （ユーザーの権限で呼ぶだけでも、構成を保存しないと API が使えない）
+#    - OAuth 同意画面：ユーザーの種類は「内部」（大学のアカウントだけが使える）。
+#      スコープは .../auth/classroom.rosters と .../auth/chat.memberships
+#    - 認証情報 → OAuth クライアント ID → デスクトップ アプリ
+# 2. 運営の許可（クラブのクラスの先生のアカウントで、手元で一度だけ）
+#      python manage.py wgjoin_google_authorize --settings=config.settings_dev
+#    ブラウザが開くので、先生のアカウントで許可する。2 つの権限の両方にチェックを入れる
+#    （片方だけだとトークンを受け取らない）。「このアプリはブロックされています」と出たら、
+#    大学の管理者の設定で止められている。表示されたリフレッシュトークンを Key Vault の
+#    funitclub-google-oauth-refresh-token に入れる（チャットやリポジトリに貼らない）。
+#    Chat スペースもこの先生のアカウントで作る（管理者として、メンバーを追加できるように）。
+# 3. GitHub App（org funITclub の Settings → Developer settings → GitHub Apps → New GitHub App）
+#    - Callback URL: https://funitclub.org/wg/join/github/callback/（手元用に localhost も足せる）
+#    - Webhook: Active を外す
+#    - 権限: Organization permissions の Members を Read and write だけ
+#    - 作ったら Client secret と Private key（.pem）を発行し、org funITclub に Install する
+# 4. App Service の設定を入れる（一覧は README の「環境変数（本番）」）。
+#    シークレット・リフレッシュトークン・秘密鍵（PEM のまま）は Key Vault に入れて参照する
+#    （メールと同じやり方。上の「現在の構成」の Key Vault の名前を使う）。
+#    手元で試すときは同じ値を .env に書く（鍵は1行にして改行を \n と書く）。
 
 # ---- Chat スペースの準備（WG ごと） ----
 #   Chat への追加は、WG紹介に「Chat スペース」が入っている WG だけで動く。
@@ -497,16 +516,10 @@ az webapp log tail --name funITclub
 # カウントダウンのメール通知（/countdown/）
 ########################################
 
-# 印を付けたカウントダウンの残り日数を、ID に登録された通知先へ毎日0時（日本時間）に
-# 1通にまとめて送る（countdown/notify.py）。メールの送信は参加フォームと同じ ACS を使う。
-#
-# App Service には常設のスケジューラが無いので、GitHub Actions の定時実行
-# （.github/workflows/countdown-notify.yml）が毎日 /countdown/notify/run/ を呼んで
-# 送信を起こす。呼び出しは合言葉（COUNTDOWN_NOTIFY_TOKEN）を知っているものだけを受け付ける。
-#   - 合言葉が未設定の間は、入口は閉じている（404）。その間も、1日1回の定期点検
-#     （その日の最初のアクセスで動く）が送るので、通知そのものは届く。時刻が0時にならないだけ。
+# 毎日0時に GitHub Actions（.github/workflows/countdown-notify.yml）が /countdown/notify/run/ を
+# 合言葉（COUNTDOWN_NOTIFY_TOKEN）付きで呼んで送信を起こす。仕組み（予備の定期点検・1日1通・
+# 通知先の持ち方）は works/countdown/README.md の「メール通知」。ここは設定と操作だけ。
 #   - GitHub の定時実行は数分〜十数分遅れることがある。
-#   - 同じ日に何度呼んでも、同じ ID には1通しか送らない。
 #
 # ---- 設定（初回のみ） ----
 # 1. 合言葉を作る
@@ -521,19 +534,13 @@ az webapp log tail --name funITclub
 #   応答の {"sent": n} が、そのとき送った通数。
 #
 # ---- 通知先のアドレス ----
-#   ID ごとに1つ、本人が確認のメールのリンクを開いたものだけを DB に持つ（任意）。
-#   通知を止めると消える。個人情報をシステムに持たない方針の例外で、通知を送る以外には使わない。
-#   通知先がある間は、画面からは変更も解除もできない。解除は登録されたアドレスに届く
-#   メールのリンクからだけ（ID を知っている人が止めたり差し替えたりできないように）。
+#   持ち方（暗号化・解除はメールのリンクからだけ）は works/countdown/README.md の「メール通知」。
 #   本人がメールを受け取れなくなったときは、admin の「カウント ID」で ID を選び、
 #   操作の「選んだ ID の通知先を消す」を実行する（アドレスは見えないまま消せる）。
-#   DB には暗号化して入れてある（countdown/crypto.py）。鍵は SECRET_KEY から作るので、
-#   DB の中身だけでは読めない。管理画面にもアドレスは出ない（登録の有無だけ）。
-#   ※ SECRET_KEY を替えるときは、前の値を SECRET_KEY_FALLBACKS に残すこと。
-#     残さずに替えると通知先が読めなくなり、全員が未登録の扱いになる（登録し直してもらう）。
+#   ※ SECRET_KEY を替えるときは、前の値を SECRET_KEY_FALLBACKS に残す（理由は README の
+#     「環境変数（本番）」の注意）。2つ以上残すときはカンマ区切り。
 #     az webapp config appsettings set --name funITclub --settings \
 #       SECRET_KEY_FALLBACKS="<前の SECRET_KEY>" SECRET_KEY="<新しい値>"
-#     （2つ以上残すときはカンマ区切り。通知先は暗号化し直さないので、消さずに残しておく）
 #   admin の「カウント ID」から ID を消せば、アドレスも一緒に消える。
 
 
@@ -570,16 +577,14 @@ az webapp start --name funITclub
 # WG のアプリを載せる（/<アプリ名>/）
 ########################################
 
-# WG のアプリは WG のリポジトリ（非公開）で作り、homepage には入れない。
-# デプロイのときだけ取り込んで App Service に載せる（.github/workflows/deploy.yml）。
-# homepage は公開リポジトリなので、この形でないと WG のソースが公開されてしまう。
+# WG のアプリは WG のリポジトリ（非公開）で作り、homepage には入れない。デプロイのときだけ
+# wg/<名前>/ に取り込んで App Service に載せる。仕組み（なぜ取り込むのか・組み込み方・
+# requirements の合流・通行証）は README の「サブアプリ（works/・wg/）」。ここは手順だけ。
 #
 #   funITclub/wg-<名前>（非公開）         ソースの置き場。ここで開発する
-#        ↓ デプロイのときだけ取り込む
+#        ↓ デプロイのときだけ取り込む（wg-apps.yml）
 #   App Service funITclub の wg/<名前>/   公開はここで動く。URL は /<名前>/
 #
-# 取り込む相手は wg-apps.yml に書く。置かれたアプリは config/subapps.py が自動で
-# 見つけて INSTALLED_APPS・URL・GATE_BACK に組み込む（フォルダー名がそのまま URL）。
 # 公表できる形になったら as を works に変えるだけでよい（URL は変わらない）。
 #
 # ---- 使う GitHub App（初回のみ） ----
@@ -629,15 +634,12 @@ az webapp start --name funITclub
 #   - アプリ側に apps.py を置かない（または name を書かない）。WG のリポジトリでは
 #     <名前>、本番では wg.<名前> と読み込まれる名前が変わるため。無ければ Django が
 #     自動で作り、呼び名（label）はどちらも <名前> になるのでマイグレーションが一致する。
-#   - WG の requirements.txt は本番の分に合流する。同じパッケージがあれば本番の版が勝つ
-#     （.github/merge-requirements.py。食い違いはデプロイのログに warning で出る）。
+#   - WG の requirements.txt は本番の分に合流し、同じパッケージは本番の版が勝つ。
+#     食い違いはデプロイのログに warning で出る。
 #   - 初回のデプロイで、WG アプリのテーブルが本番 DB にできる（起動時の migrate）。
 #     あとから消すのは手作業になるので、モデルの形を決めてから載せる。
-#   - zip デプロイは丸ごと置き換えなので、どこから起動されても homepage ＋ 登録済みの
-#     WG すべてを組み立て直す。片方だけ入れるともう片方が消える。
-#   - 出す前に test.yml（テスト＋使い捨て PostgreSQL への migrate）、出した後に
-#     応答の確認が走る。応答が返らなければ直前に通った zip に自動で戻す（成果物
-#     funitclub-deploy、30日保存）。B1 のプランでは検証スロットが使えないための代替。
+#   - 出す前のテストと、出した後の応答の確認・自動の巻き戻しは README の「開発と本番の切り替え」。
+#     止まったら Actions のログの「Check the site with the WG apps」などを見る。
 #   - WG のアプリが出した ERROR のログも、運営に通知メールで届く（ログはルートのロガーで受けている）。
 #     ログにアドレスや個人の情報を書かないよう、WG に伝えておく。
 #   - WG が終わったら wg-apps.yml から消す。次のデプロイで本番から外れる（DB は残る）。

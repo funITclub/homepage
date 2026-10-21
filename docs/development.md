@@ -414,6 +414,22 @@ python manage.py runserver --settings=config.settings_dev
 コンテナの外では **`--settings=config.settings_dev` を毎回付ける**（付け忘れると本番の設定で
 動き、DB に繋がらずに落ちる）。
 
+編集画面（`/edit/`）や管理画面を触るなら、ログイン用のアカウントも作る。
+
+```bash
+python manage.py createsuperuser --settings=config.settings_dev
+```
+
+**メールを実際に送って確かめる**：`.env` に `EMAIL_HOST_USER` と `EMAIL_HOST_PASSWORD`（ACS の SMTP の
+認証情報）を入れて runserver を起動し直すと、本番と同じ経路で**本当に送る**（`.env` は起動時に一度だけ
+読む）。フォームには自分のアドレスを入れること。入れなければ送らずに、メールの中身を runserver の
+ログに出す。テスト（`manage.py test`）は、どちらでも送らない。フォームを使わずに送れるかだけを
+確かめるなら:
+
+```bash
+python manage.py sendtestemail <確認用のアドレス> --settings=config.settings_dev
+```
+
 ### 14-5. 資料を直す道具（python-pptx・Keynote）
 
 ```bash
