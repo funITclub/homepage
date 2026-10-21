@@ -195,8 +195,11 @@ class SubAppDiscoveryTests(TestCase):
         self.client.get(f'/welfare/?{gate.PARAM}={gate.make_token("/welfare/")}')
         self.assertEqual(self.client.session[gate.SESSION_KEY], ['/welfare/'])
 
-        # 通行証は通る（この URL のアプリは手元に無いので 404 になるだけ）
-        self.assertEqual(self.client.get('/welfare/activity/').status_code, 404)
+        # 通行証は通る（一覧へ送り返されない）。アプリは手元では無いので 404、デプロイのときは
+        # 活動ページを取り込んだ後にも流すので 200 になる。どちらでもよい
+        response = self.client.get('/welfare/activity/')
+        self.assertNotEqual(response.get('Location'), reverse('home:wg_list'))
+        self.assertIn(response.status_code, (200, 404))
 
         # 通行証が無ければ、下の段も一覧へ送り返す
         self.client.cookies.clear()
