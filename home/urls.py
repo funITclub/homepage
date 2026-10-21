@@ -18,6 +18,6 @@ urlpatterns = [
     # WG 立ち上げガイド（資料）。ナビには置かず、参加の完了画面とメールから案内する。
     path('guide/', views.GuideView.as_view(), name='guide'),
 
-    # サブアプリ未実装のためのプレースホルダ
+    # リンク先（サブアプリの URL）が未設定の WG・成果物のためのプレースホルダ
     path('coming-soon/', views.ComingSoonView.as_view(), name='coming_soon'),
 ]

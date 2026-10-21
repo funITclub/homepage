@@ -65,7 +65,7 @@ DATABASES = {
     }
 }
 
-# 送信メール（参加フォーム /join/）。
+# 送信メール（参加フォーム /join/apply/・WG への参加・運営への通知・countdown の通知）。
 # Azure Communication Services（Email）の SMTP リレーを使う。
 #   ※ 大学アカウント（bukkyo-u.ac.jp）は2段階認証が許可されておらずアプリ パスワードを
 #     発行できないため、Gmail の SMTP では送れない。差出人は funitclub.org のアドレスにし、
@@ -99,29 +99,21 @@ LOGGING = {
             'class': 'edit.log_handlers.DbAdminEmailHandler',
         },
     },
+    # 受け皿はルートの1か所だけにする。どのロガーも最後はルートに流れ着くので、
+    # home・wgjoin のほか、works/ の成果物や取り込んだ WG のアプリ（wg.*）を足しても、
+    # ここに名前を並べなくてよい（ERROR は管理者に届く。通数は ERROR_NOTIFY_MAX_PER_HOUR まで）。
+    # ライブラリのログがうるさいときは、そのロガーだけ 'loggers' で level を上げる。
+    'root': {
+        'handlers': ['console', 'admin_email'],
+        'level': 'INFO',
+    },
     'loggers': {
+        # Django の既定の受け皿（DEBUG のときだけの console・ADMINS あての mail_admins）を外し、
+        # ルートに流すだけにする（二重に出さないため）
         'django': {
-            'handlers': ['console', 'admin_email'],
+            'handlers': [],
             'level': 'INFO',
-        },
-        # 参加フォームの受付・送信失敗をログに残す
-        'home': {
-            'handlers': ['console', 'admin_email'],
-            'level': 'INFO',
-        },
-        # 管理者テーブル・通知・ログイン失敗の監視
-        'edit': {
-            'handlers': ['console', 'admin_email'],
-            'level': 'INFO',
-        },
-        'config': {
-            'handlers': ['console', 'admin_email'],
-            'level': 'INFO',
-        },
-        # WG への参加（Google・GitHub の手続きの失敗）。ユーザー名やアドレスは出さない
-        'wgjoin': {
-            'handlers': ['console', 'admin_email'],
-            'level': 'INFO',
+            'propagate': True,
         },
     },
 }

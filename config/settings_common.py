@@ -8,6 +8,12 @@ from . import subapps
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
+# SECRET_KEY を替えるときは、前の値をここに残す（カンマ区切り）。署名（確認のリンク・
+# セッション）と暗号化（WG への参加のアドレス・countdown の通知先）が前の鍵でも読める。
+# 残さずに替えると、countdown の通知先が読めなくなり全員が未登録の扱いになる。
+SECRET_KEY_FALLBACKS = [
+    key.strip() for key in os.getenv('SECRET_KEY_FALLBACKS', '').split(',') if key.strip()
+]
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -157,7 +163,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = FE_MAX_UPLOAD_BYTES + 1024 * 1024
 SITE_NAME = 'fun IT club'
 SITE_TAGLINE = '佛教大学 通信教育課程 課外活動団体'
 
-# 参加フォーム（/join/）
+# 参加フォーム（/join/apply/）
 # 申し込みは大学から発行されたメールアドレスからのみ受け付ける。活動ツールが
 # 大学の Google Workspace 前提なので、私用アドレスでは先に進めないため。
 JOIN_ALLOWED_EMAIL_DOMAIN = 'bukkyo-u.ac.jp'

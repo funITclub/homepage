@@ -52,18 +52,18 @@ if os.environ.get('DB_HOST'):
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    # 受け皿はルートの1か所だけ（本番の config/settings.py と同じ形）。どのアプリのログも
+    # DEBUG から画面に出る。Django 自身は INFO から（DEBUG だと SQL が全部出るため）。
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',
+    },
     'loggers': {
+        # Django の既定の受け皿を外し、ルートに流すだけにする（二重に出さないため）
         'django': {
-            'handlers': ['console'],
+            'handlers': [],
             'level': 'INFO',
-        },
-        'home': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-        },
-        'wgjoin': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
+            'propagate': True,
         },
     },
     'handlers': {
@@ -85,7 +85,7 @@ LOGGING = {
     },
 }
 
-# 送信メール。参加フォーム（/join/）の動作をローカルでも本番と同じ経路で確かめられるよう、
+# 送信メール。参加フォーム（/join/apply/）や WG への参加のメールの動作をローカルでも本番と同じ経路で確かめられるよう、
 # 認証情報があれば実際に Azure Communication Services の SMTP で送る。
 #
 # 認証情報は .env に置くか、環境変数で渡す。

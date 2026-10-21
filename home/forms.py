@@ -1,6 +1,6 @@
 # home/forms.py
 #
-# 参加フォーム（/join/）。hirahira_room の InquiryForm と同じ作りで、
+# 参加フォーム（/join/apply/）。hirahira_room の InquiryForm と同じ作りで、
 # モデルは持たず、入力内容をメールで送るだけ（DB には残さない）。
 #
 # 申し込みは大学から発行されたメールアドレスからのみ受け付ける
@@ -113,7 +113,7 @@ class JoinForm(forms.Form):
                 f'{summary}\n'
                 f'Classroom　　 : {CLASSROOM_NOTES[classroom]}\n\n'
                 '--\n'
-                'このメールは公開サイト（/join/）から自動送信しています。\n'
+                'このメールは公開サイト（/join/apply/）から自動送信しています。\n'
                 'このまま返信すると申込者に届きます。\n'
             ),
             from_email=from_email,

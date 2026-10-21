@@ -1,8 +1,8 @@
 # home/views.py
 #
 # 認証なしの公開サイト。掲載内容は編集画面（/edit/）で編集し、
-# ここでは DB から読んで表示するだけ。各WGのサブアプリはまだ無いため、
-# リンク先が未設定のものは「作成中」ページへ集約する。
+# ここでは DB から読んで表示するだけ。WG・成果物のリンク先（サブアプリの URL）が
+# 未設定のものは「作成中」ページへ集約する。
 #
 # LoginRequiredMiddleware で全ビューが既定ログイン必須になっているため、
 # このファイルのビューだけ login_not_required で公開している。
@@ -44,8 +44,9 @@ def detect_and_block_burst_submissions(request):
     数と間隔で異常を拾う。
 
     遮断は home.BlockedIp に記録され、以降そのIPからのアクセスは
-    config.middleware.BlockedIpMiddleware が 403 で止める。**期限は無く、
-    admin から消すまで続く**。
+    config.middleware.BlockedIpMiddleware が 403 で止める。期間は繰り返すほど延び
+    （24時間 → 7日 → 恒久。settings.IP_BLOCK_DURATIONS）、admin から今すぐ解除もできる。
+    上限を超えた送信そのものは受け付ける（遮断が効くのは次のアクセスから）。
 
     ログにはメールアドレスを出さず、IP と件数だけを残す。
     数えるだけの機能なので、キャッシュが使えなくても申し込みは通す。
