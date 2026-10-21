@@ -2,12 +2,18 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
 
+from home.views import robots_txt, sitemap_xml
+
 from . import subapps
 
 urlpatterns = [
     # 管理画面。テーブルの中身を一覧・検索するために使う（編集の主導線は /edit/）。
     # LoginRequiredMiddleware があるので、未ログインだと /edit/login/ に飛ぶ。
     path('admin/', admin.site.urls),
+
+    # 検索エンジン向け（Google Search Console にはサイトマップの URL を登録する）
+    path('robots.txt', robots_txt, name='robots_txt'),
+    path('sitemap.xml', sitemap_xml, name='sitemap'),
 
     # 公開サイト（認証なし）
     path('', include('home.urls', namespace='home')),

@@ -595,3 +595,38 @@ class GuideTests(TestCase):
     def test_not_in_the_nav(self):
         """メンバー向けのページなので、初めて来た人に見せるナビには出さない。"""
         self.assertNotContains(self.client.get(reverse('home:index')), self.url)
+
+
+@override_settings(SITE_URL='https://funitclub.org', ALLOWED_HOSTS=['*'])
+class SearchEngineTests(TestCase):
+    """Google などに載せるための robots.txt・サイトマップ・canonical。"""
+
+    def test_robots_txt_hides_private_paths_and_points_to_sitemap(self):
+        response = self.client.get('/robots.txt')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
+        body = response.content.decode()
+        for path in ['/edit/', '/admin/', '/join/apply/', '/wg/*/join/']:
+            self.assertIn(f'Disallow: {path}\n', body)
+        for prefix in settings.GATE_BACK:
+            self.assertIn(f'Disallow: {prefix}\n', body)
+        # WG一覧そのものは巡回させる
+        self.assertNotIn('Disallow: /wg/\n', body)
+        self.assertIn('Sitemap: https://funitclub.org/sitemap.xml', body)
+
+    def test_sitemap_lists_public_pages(self):
+        response = self.client.get('/sitemap.xml')
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        for path in ['/', '/news/', '/wg/', '/works/', '/join/']:
+            self.assertIn(f'<loc>https://funitclub.org{path}</loc>', body)
+        self.assertNotIn('/edit/', body)
+
+    def test_canonical_uses_site_url_whatever_host(self):
+        response = self.client.get('/wg/', HTTP_HOST='funitclub.azurewebsites.net')
+        self.assertContains(response, '<link rel="canonical" href="https://funitclub.org/wg/">')
+
+    def test_placeholder_pages_are_noindex(self):
+        self.assertContains(self.client.get(reverse('home:coming_soon')),
+                            '<meta name="robots" content="noindex">')
+        self.assertNotContains(self.client.get(reverse('home:index')), 'name="robots"')

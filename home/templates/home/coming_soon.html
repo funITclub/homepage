@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{# 中身の無い案内なので検索結果に出さない #}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 {% block title %}作成中 — fun IT club{% endblock %}
 
 {% block contents %}

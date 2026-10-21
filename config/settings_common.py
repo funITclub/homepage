@@ -78,6 +78,8 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 # 問い合わせ先（管理者テーブル）をどのページからも参照できるようにする
                 'edit.context_processors.public_contact',
+                # 正規の URL の頭（canonical・OGP 用）
+                'home.context_processors.site_url',
             ],
         },
     },

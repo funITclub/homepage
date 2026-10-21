@@ -3,8 +3,17 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% block robots %}{% endblock %}
     <meta name="description" content="fun IT club — 佛教大学 通信教育課程 課外活動団体。テーマごとのWGで手を動かして成果物を作る同好会です。">
     <title>{% block title %}fun IT club{% endblock %}</title>
+    {# 検索結果とSNSでの表示。URL は正規のホスト（funitclub.org）で書く #}
+    <link rel="canonical" href="{{ site_url }}{{ request.path }}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="fun IT club">
+    <meta property="og:title" content="fun IT club — 佛教大学 通信教育課程 課外活動団体">
+    <meta property="og:description" content="テーマごとのWGで手を動かして成果物を作る同好会です。オンライン完結・全国参加可。">
+    <meta property="og:url" content="{{ site_url }}{{ request.path }}">
+    <meta property="og:locale" content="ja_JP">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23001E3C'/><text x='16' y='23' font-size='18' font-family='monospace' fill='%235BB8FF' text-anchor='middle'>f</text></svg>">
 
     {% include "_assets.html" %}

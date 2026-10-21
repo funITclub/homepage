@@ -8,6 +8,8 @@
 ページなので、再送の入口を作ると意味がなくなる（views.JoinDoneView の説明を参照）。
 {% endcomment %}
 
+{# 中身の無い案内なので検索結果に出さない #}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 {% block title %}申し込みを受け付けました — fun IT club{% endblock %}
 
 {% block contents %}

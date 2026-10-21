@@ -16,6 +16,8 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.core.cache import cache
 from django.core.mail import BadHeaderError
+from django.http import HttpResponse
+from django.shortcuts import render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -325,3 +327,36 @@ class ComingSoonView(NavMixin, TemplateView):
         context['back_url'] = reverse(url_name)
         context['nav'] = nav
         return context
+
+
+# ---- 検索エンジン向け ----------------------------------------------------
+# Google などに載せたいのは公開サイトの一覧ページだけ。編集画面・申し込みの途中・
+# サブアプリ（一覧から辿って入るもの。config/gate.py）は robots.txt で巡回から外す。
+
+#: サイトマップに載せるページ（URL名）。ナビにある公開ページだけを並べる
+SITEMAP_PAGES = ['home:index', 'home:news_list', 'home:wg_list', 'home:work_list', 'home:join']
+
+
+@login_not_required
+def robots_txt(request):
+    lines = [
+        'User-agent: *',
+        'Disallow: /edit/',
+        'Disallow: /admin/',
+        'Disallow: /join/apply/',
+        'Disallow: /coming-soon/',
+        # WG への参加の手続き（/wg/<id>/join/ と /wg/join/...）。WG一覧 /wg/ は載せる
+        'Disallow: /wg/*/join/',
+        'Disallow: /wg/join/',
+    ]
+    # サブアプリは通行証が無いと一覧へ送り返すので、巡回させても中身は読めない
+    lines += [f'Disallow: {prefix}' for prefix in sorted(settings.GATE_BACK)]
+    lines += ['', f'Sitemap: {settings.SITE_URL}{reverse("sitemap")}', '']
+    return HttpResponse('\n'.join(lines), content_type='text/plain; charset=utf-8')
+
+
+@login_not_required
+def sitemap_xml(request):
+    urls = [f'{settings.SITE_URL}{reverse(name)}' for name in SITEMAP_PAGES]
+    return render(request, 'home/sitemap.xml', {'urls': urls},
+                  content_type='application/xml; charset=utf-8')
