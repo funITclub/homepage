@@ -304,27 +304,26 @@ class JoinDoneView(NavMixin, TemplateView):
 class ComingSoonView(NavMixin, TemplateView):
     """サブアプリ（WGごとのWebアプリ・成果物ページ）の作成中プレースホルダ。
 
-    どこから来たかを ?from= で受け取り、戻るボタンを元の一覧に向ける。
-    直接開かれたときや想定外の値のときは TOP に戻す。値は下の対応表に
-    載っているものしか見ないので、任意の URL には飛ばせない。
+    一覧から別タブで開かれ、閉じるボタンで元の一覧に戻る。どこから来たかを
+    ?from= で受け取り、説明文とナビの現在地をそれに合わせる。直接開かれたときや
+    想定外の値のときは、どちらでもない文にする。
     """
 
     template_name = 'home/coming_soon.html'
     nav = ''
 
-    #: ?from= の値 -> (ボタンの文言, URL名, ナビの現在地)
-    back_links = {
-        'wg': ('WG一覧へ戻る', 'home:wg_list', 'wg'),
-        'works': ('成果物へ戻る', 'home:work_list', 'works'),
+    #: ?from= の値 -> (説明文, ナビの現在地)
+    sources = {
+        'wg': ('このWGのWebアプリは準備中です。', 'wg'),
+        'works': ('この成果物のページは準備中です。', 'works'),
     }
-    default_back = ('TOPへ戻る', 'home:index', '')
+    default_source = ('リンク先のページは準備中です。', '')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        label, url_name, nav = self.back_links.get(
-            self.request.GET.get('from'), self.default_back)
-        context['back_label'] = label
-        context['back_url'] = reverse(url_name)
+        message, nav = self.sources.get(
+            self.request.GET.get('from'), self.default_source)
+        context['message'] = message
         context['nav'] = nav
         return context
 

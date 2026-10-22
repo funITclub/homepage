@@ -507,32 +507,39 @@ class NewsListTests(TestCase):
 
 
 class ComingSoonTests(TestCase):
-    """「作成中」ページ（/coming-soon/）の戻り先。"""
+    """「作成中」ページ（/coming-soon/）。一覧から別タブで開かれ、閉じて戻る。"""
 
     def setUp(self):
         self.url = reverse('home:coming_soon')
 
-    def test_back_to_list_it_came_from(self):
-        for value, label, name in [('wg', 'WG一覧へ戻る', 'home:wg_list'),
-                                   ('works', '成果物へ戻る', 'home:work_list')]:
+    def test_message_for_list_it_came_from(self):
+        """WGのWebアプリと成果物とで説明文を分ける。"""
+        for value, message, nav in [('wg', 'このWGのWebアプリは準備中です。', 'wg'),
+                                    ('works', 'この成果物のページは準備中です。', 'works')]:
             with self.subTest(value=value):
                 response = self.client.get(self.url, {'from': value})
 
-                self.assertContains(response, label)
-                self.assertEqual(response.context['back_url'], reverse(name))
+                self.assertContains(response, message)
+                self.assertEqual(response.context['nav'], nav)
 
-    def test_back_to_top_by_default(self):
-        """直接開かれたときや想定外の値のときは TOP に戻す。"""
+    def test_neutral_message_by_default(self):
+        """直接開かれたときや想定外の値のときは、どちらでもない文にする。"""
         for params in [{}, {'from': 'https://example.com'}, {'from': 'news'}]:
             with self.subTest(params=params):
                 response = self.client.get(self.url, params)
 
-                self.assertContains(response, 'TOPへ戻る')
-                self.assertEqual(response.context['back_url'], reverse('home:index'))
+                self.assertContains(response, 'リンク先のページは準備中です。')
+                self.assertEqual(response.context['nav'], '')
+
+    def test_close_button_instead_of_back_link(self):
+        response = self.client.get(self.url, {'from': 'wg'})
+
+        self.assertContains(response, 'このタブを閉じる')
+        self.assertNotContains(response, '戻る')
 
 
 class ExternalLinkTests(TestCase):
-    """一覧カードのリンク。外部サイトは別タブ、「作成中」は同じタブ。"""
+    """一覧カードのリンク。外部サイトも「作成中」も別タブ。"""
 
     def test_wg_links(self):
         Wg.objects.create(code='WG-01', name='外部あり', description='説明',
@@ -544,7 +551,7 @@ class ExternalLinkTests(TestCase):
 
         self.assertIn('href="https://example.com/app" target="_blank" rel="noopener noreferrer"', html)
         self.assertIn('href="https://example.com/repo" target="_blank" rel="noopener noreferrer"', html)
-        self.assertNotIn('?from=wg" target="_blank"', html)
+        self.assertIn('?from=wg" target="_blank" rel="noopener noreferrer"', html)
 
     def test_work_link(self):
         Work.objects.create(category='Web App', title='外部あり', description='説明',
@@ -554,7 +561,7 @@ class ExternalLinkTests(TestCase):
         html = self.client.get(reverse('home:work_list')).content.decode()
 
         self.assertIn('href="https://example.com/work" target="_blank" rel="noopener noreferrer"', html)
-        self.assertNotIn('?from=works" target="_blank"', html)
+        self.assertIn('?from=works" target="_blank" rel="noopener noreferrer"', html)
 
 
 class GuideTests(TestCase):

@@ -11,12 +11,29 @@
             <p class="coming-label">// UNDER CONSTRUCTION</p>
             <h1>このページは作成中です</h1>
             <p>
-                各WGのWebアプリ・成果物ページは準備中です。<br>
+                {# 説明文は ?from= で決まる（WGのWebアプリか成果物か） #}
+                {{ message }}<br>
                 公開までもうしばらくお待ちください。
             </p>
-            {# 戻り先は ?from= で決まる。直接開かれたときは TOP。 #}
-            <a class="btn btn-primary" href="{{ back_url }}">{{ back_label }}</a>
+            {# 一覧から別タブで開かれる。閉じれば元の一覧（スクロール位置もそのまま）に戻る。 #}
+            <button type="button" class="btn btn-primary" id="coming-close">このタブを閉じる</button>
+            <p class="coming-close-note" id="coming-close-note" hidden>
+                このタブは閉じられませんでした。ブラウザの操作で閉じてください。
+            </p>
         </div>
     </section>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 直接開かれたときやアプリの中のブラウザでは、閉じる操作を拒まれることがある。
+// 拒まれても何も起きないので、少し待ってまだ開いていれば案内を出す。
+document.getElementById('coming-close').addEventListener('click', function () {
+    window.close();
+    setTimeout(function () {
+        document.getElementById('coming-close-note').hidden = false;
+    }, 300);
+});
+</script>
 {% endblock %}

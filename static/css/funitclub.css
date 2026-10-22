@@ -604,8 +604,15 @@ a:hover {
 }
 
 .coming .btn {
+    display: block;
+    width: 100%;
     max-width: 260px;
     margin: 0 auto;
+}
+
+.coming .coming-close-note {
+    margin: 16px 0 0;
+    font-size: .8rem;
 }
 
 /* ---------- WG 立ち上げガイド（/guide/） ---------- */
