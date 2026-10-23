@@ -243,8 +243,12 @@ python manage.py createsuperuser --settings=config.settings_dev
 
 - 取り込むのはアプリのフォルダーだけで、WG 側の `config/` や `manage.py` は入れない。1 つの
   リポジトリに複数のアプリがあるときは `take` に並べる（並べなかったものは本番に載らない）。
-- WG の活動ページ（紹介・構想資料・チケット管理）は `<WG>_activity` を `/<WG>/activity/` に置く
+- WG の活動ページ（紹介・構想資料・チケットの一覧）は `<WG>_activity` を `/<WG>/activity/` に置く
   （[funITclub/claude-plugins](https://github.com/funITclub/claude-plugins) の wg-activity スキル）。
+  チケットは会員が WG のリポジトリの Issue（と org の Project）に GitHub で直接書き、活動ページは
+  それを GitHub App（funitclub-wg-join、Issues と Projects の読み取り）で読んで出すだけ。題名と
+  本文は一般公開する（担当者・コメント・画像は出さない）。手順は [deploy.txt](deploy.txt) の
+  「WG の活動ページのチケット」。
   WG 一覧のカードには、編集画面で追加リンク「活動ページ」として登録する。`/<WG>/` は WG が作る
   Web アプリのために空けておく。
 - WG が `requirements.txt` に足したものは本番の分に合流する。同じパッケージを両方が指定していたら
@@ -366,10 +370,10 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `CLUB_CLASSROOM_COURSE` | 設定済み | クラブの Classroom のクラス。ここにいる人をメンバーとみなす |
 | `GOOGLE_OAUTH_CLIENT_ID` | 設定済み | Google の OAuth クライアント |
 | `GOOGLE_OAUTH_CLIENT_SECRET` / `GOOGLE_OAUTH_REFRESH_TOKEN` | Key Vault | OAuth クライアントのシークレットと、運営（クラスの先生）の許可 |
-| `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 設定済み | GitHub App（funitclub-wg-join） |
+| `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 設定済み | GitHub App（funitclub-wg-join）。WG への参加と、WG の活動ページのチケットの読み取り |
 | `GITHUB_APP_CLIENT_SECRET` / `GITHUB_APP_PRIVATE_KEY` | Key Vault | 同じ App の Client secret と秘密鍵 |
 | `GITHUB_ORG` | 未設定（既定） | 任意。既定は `funITclub` |
-| `COUNTDOWN_NOTIFY_TOKEN` | 設定済み | countdown の毎日0時の送信の合言葉。GitHub の Actions のシークレットと同じ値（[deploy.txt](deploy.txt) の「カウントダウンのメール通知」） |
+| `COUNTDOWN_NOTIFY_TOKEN` | 設定済み | countdown の毎日0時の送信の合言葉。GitHub の環境 production のシークレットと同じ値（[deploy.txt](deploy.txt) の「カウントダウンのメール通知」） |
 | `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 未設定 | 任意。IP遮断の停止・除外（ロックアウトからの復旧用。済んだら消す） |
 | `DEBUG` | 未設定 | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
 | `FE_SOURCE_DB` | 未設定 | 任意。`fe_pull_learner` の `--source-db` を省くときの hirahira_room の DB 名。SSH で流すときにその場で渡してもよい |

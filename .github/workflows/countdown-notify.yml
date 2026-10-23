@@ -4,7 +4,7 @@
 # 届かないので、ここでは送信のきっかけを送るだけ。実際に送るのはサイト側
 # （/countdown/notify/run/ → countdown/notify.py の send_daily）。
 #
-# シークレット COUNTDOWN_NOTIFY_TOKEN に、App Service のアプリケーション設定
+# 環境 production のシークレット COUNTDOWN_NOTIFY_TOKEN に、App Service のアプリケーション設定
 # COUNTDOWN_NOTIFY_TOKEN と同じ値を入れておく（deploy.txt の「カウントダウンのメール通知」）。
 #
 # GitHub の定時実行は混み具合で数分〜十数分遅れることがある。同じ日に何度呼んでも
@@ -23,6 +23,7 @@ permissions: {}
 jobs:
   notify:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: 今日の分の通知を送らせる
         env:

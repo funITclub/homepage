@@ -246,6 +246,7 @@ GitHub でログイン（アカウントがなければその場で作る）
 | Google（Classroom・Chat） | 運営（クラブのクラスの先生）のリフレッシュトークンから、呼ぶたびにアクセストークンをもらう。許可は `manage.py wgjoin_google_authorize`（デスクトップ アプリの OAuth クライアント・PKCE・`access_type=offline`） | `classroom.rosters`（名簿を見る・招待する）、`chat.memberships`（Chat のメンバーを管理する）。許可を取るとき、両方がそろっていなければトークンを受け取らない | `courses.students.get`・`courses.teachers.get`・`invitations.create`・`spaces.members.create` |
 | GitHub（本人の確認） | GitHub App `funitclub-wg-join` のユーザー認可（OAuth）。`allow_signup=true` | 本人のユーザー名を読むだけ | `GET /user`、トークンの取り消し |
 | GitHub（チームへの追加） | 同じ App の秘密鍵で JWT を作り、org のインストール トークンをもらう | Organization の Members: Read and write | `teams/<チーム>/memberships/<ユーザー>` の GET・PUT |
+| GitHub（活動ページのチケット） | 同じ App。WG の活動ページ（`wg/<WG>_activity/github.py`）が、`repositories` と `permissions` を指定して絞ったインストール トークンをもらう | その WG のリポジトリの Issues: Read、Organization の Projects: Read | GraphQL（Issue と Project の項目）。5 分キャッシュ |
 
 - 外部の API は `wgjoin/http.py` の `call` で呼ぶ（標準ライブラリだけ・タイムアウト 15 秒）。4xx/5xx は例外にせず
   ステータスを返し、呼ぶ側で判断する。例外の文言にはホスト名だけを出す（パスにユーザー名が入る API があるため）。

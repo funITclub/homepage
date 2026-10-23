@@ -8,8 +8,12 @@
 # WG すべて」を組み立て直す（片方だけ入れると、もう片方が消える）。
 #
 # Azure へのログインは OIDC。マネージド ID funitclub-github-deploy に
-# このリポジトリの main を信頼させ、App Service funITclub だけに
+# このリポジトリの環境 production を信頼させ、App Service funITclub だけに
 # Web サイト共同作成者を付けてある。SCM の基本認証はオフのままでよい。
+#
+# 秘密情報（Azure と WG を読む GitHub App）は、リポジトリではなく環境 production に
+# 置いてある。production は main からしか使えないので、書き込み権のある人が
+# 別のブランチでワークフローを書き換えて push しても、秘密情報には届かない。
 #
 # migrate と createcachetable は App Service の起動時に startup.sh が流す。
 # DB は VNet の中にあり、GitHub のランナーからは届かないため。
@@ -58,6 +62,7 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    environment: production
 
     # 取り込んだ WG のマイグレーションを、本番と同じ PostgreSQL で流してみるため
     services:

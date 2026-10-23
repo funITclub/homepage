@@ -266,7 +266,10 @@ VS Code の左の「**ソース管理**」から操作する。
   新しいブランチを作るよう促し、`main` への push も送る前に止まる。
   ブランチを切ってプルリクエストを出す。手順は
   [wg-template の README](https://github.com/funITclub/wg-template#開発の流れ) の「開発の流れ」。
-- **homepage**：`main` に push すると、そのまま本番（funitclub.org）に出る。テストを通してから push する。
+- **homepage**：WG のリポジトリと同じく、ブランチを切ってプルリクエストを出す。`main` には直接
+  push できない。プルリクエストでテストが通り、承認されてマージされると、そのまま本番
+  （funitclub.org）に出る。書き込めるのはチーム `homepage` の人だけ（[deploy.txt](../deploy.txt) の
+  「main の保護と書き込み権」）。
 
 初めて push するときは「GitHub にサインイン」を求められる。「**許可**」→ ブラウザで
 「**Authorize**」を押す。

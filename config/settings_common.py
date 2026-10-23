@@ -253,7 +253,9 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 #                                （参加の申し込みでのクラブのクラスへの招待にも使う。home/views.py）
 #                                （manage.py wgjoin_google_authorize で受け取る）
 #   GITHUB_APP_ID / GITHUB_APP_CLIENT_ID / GITHUB_APP_CLIENT_SECRET / GITHUB_APP_PRIVATE_KEY
-#                              … funITclub の GitHub App（org の Members を読み書きできるもの）
+#                              … funITclub の GitHub App（org の Members を読み書きできるもの）。
+#                                WG の活動ページ（wg/<WG>_activity）も、同じ App でチケット（Issues と
+#                                Projects）を読む。トークンはその WG の読み取りだけに絞って取る
 GITHUB_ORG = os.getenv('GITHUB_ORG', 'funITclub')
 CLUB_CLASSROOM_COURSE = os.getenv('CLUB_CLASSROOM_COURSE', '')
 GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '')
