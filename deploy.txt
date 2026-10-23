@@ -431,7 +431,9 @@ az webapp log tail --name funITclub
 #   運営の許可                   : クラブのクラスの先生のアカウントで wgjoin_google_authorize を実行
 #                                 （2026-10-20 に2つの権限で取り直し、Key Vault を入れ替え済み）
 #   GitHub App                  : funitclub-wg-join（org funITclub 所有・インストール済み）
-#                                 App ID 4998453 / 権限は Organization の Members: Read and write だけ
+#                                 App ID 4998453 / 権限は Organization の Members: Read and write
+#                                 （活動ページのチケットを読むため、Issues と Projects の Read-only も足す。
+#                                  下の「WG の活動ページのチケット」）
 #                                 Redirect URI: https://funitclub.org/wg/join/github/callback/
 #                                              （手元用に localhost:8000 / 8010 も登録）
 #   Key Vault（funitclub-kv）   : funitclub-google-oauth-client-secret
@@ -467,8 +469,10 @@ az webapp log tail --name funITclub
 # 3. GitHub App（org funITclub の Settings → Developer settings → GitHub Apps → New GitHub App）
 #    - Callback URL: https://funitclub.org/wg/join/github/callback/（手元用に localhost も足せる）
 #    - Webhook: Active を外す
-#    - 権限: Organization permissions の Members を Read and write だけ
+#    - 権限: Organization permissions の Members を Read and write、Projects を Read-only。
+#      Repository permissions の Issues を Read-only（後の 2 つは活動ページのチケット用）
 #    - 作ったら Client secret と Private key（.pem）を発行し、org funITclub に Install する
+#      （Repository access は All repositories）
 # 4. App Service の設定を入れる（一覧は README の「環境変数（本番）」）。
 #    シークレット・リフレッシュトークン・秘密鍵（PEM のまま）は Key Vault に入れて参照する
 #    （メールと同じやり方。上の「現在の構成」の Key Vault の名前を使う）。
@@ -649,3 +653,57 @@ az webapp start --name funITclub
 #     gh run view --repo funITclub/homepage --log | grep "→ wg/"
 #   直打ちで開けないこと（一覧へ送り返される）
 #     curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://funitclub.org/<名前>/
+
+
+########################################
+# WG の活動ページのチケット（GitHub の読み取り）
+########################################
+
+# 活動ページ（/<WG>/activity/、funITclub/claude-plugins の wg-activity スキル）は、チケットを
+# WG のリポジトリの Issue と org の Project から読んで出す。書くのは会員が GitHub で直接行い、
+# 活動ページには書き込む画面が無い。題名と本文は一般公開する（担当者・コメント・画像は出さない）。
+#
+# 読むのは「WG への参加」と同じ GitHub App funitclub-wg-join。鍵も同じ（Key Vault の
+# funitclub-github-app-private-key）で、App Service の設定は増えない。トークンは読むたびに、
+# その WG のリポジトリの Issues（と org の Projects）の読み取りだけに絞って取る
+# （活動ページのトークンに Members の書き込みは付かない）。読んだものは DB キャッシュ
+# （funitclub_cache）に 5 分置き、読めなかったら最後に読めた分（1 日とっておく）を出す。
+#
+# ※ funitclub-wg-deploy（デプロイの取り込み用）は使わない。その鍵は WG のリポジトリの
+#   シークレットにも置いてあり、学生が触れる場所のため。
+#
+# ---- App に権限を足す（初回のみ） ----
+# 1. org funITclub の Settings → Developer settings → GitHub Apps → funitclub-wg-join →
+#    Permissions & events
+#      Repository permissions:   Issues = Read-only（Metadata = Read-only は自動で付く）
+#      Organization permissions: Projects = Read-only
+#    → Save changes
+# 2. org の Settings → GitHub Apps → funitclub-wg-join → Configure
+#      - 権限が増えた知らせの「Review request」→「Accept new permissions」
+#      - Repository access を All repositories にする（WG が増えても足さなくてよい）
+# 3. 下の「確認」で読めることを確かめる
+#   権限が入る前に活動ページを出しても、「いま GitHub からチケットを読めません」と出るだけで、
+#   紹介と構想資料は出る（ログに WARNING。通知メールは来ない）。
+#
+# ---- Project のテンプレート（初回のみ） ----
+# ステータス・優先度・期日などを使う WG は、このテンプレートを wg-activity スキルで複製する。
+# 使うかは WG が決める（運営は WG ごとの作業をしない）。題名と項目の名前はスキルと活動ページが
+# 名前で探すので変えない。手元で（gh は org のオーナーのアカウントで）:
+gh auth refresh -s project
+N=$(gh project create --owner funITclub --title "活動ページのテンプレート" --format json --jq .number)
+gh project field-create "$N" --owner funITclub --name 優先度 --data-type SINGLE_SELECT --single-select-options "低め,通常,高め,急いで"
+gh project field-create "$N" --owner funITclub --name 開始日 --data-type DATE
+gh project field-create "$N" --owner funITclub --name 期日 --data-type DATE
+gh project field-create "$N" --owner funITclub --name 進捗率 --data-type NUMBER
+gh project field-create "$N" --owner funITclub --name プロジェクト --data-type SINGLE_SELECT --single-select-options "全体"
+gh project mark-template "$N" --owner funITclub
+# 続けてブラウザで https://github.com/orgs/funITclub/projects/<N> を開き:
+#   - Settings → Status の選択肢を、新規・進行中・解決・フィードバック・終了・却下 の順にする
+#     （活動ページは、解決・終了・却下と Closed の Issue を完了とみなす。並べ替えはこの順）
+#   - Workflows で「Item added to project → 新規」「Item closed → 終了」「Item reopened → 進行中」を On
+#
+# ---- 確認 ----
+#   App Service の SSH から（活動ページを載せた WG で）
+#     python manage.py shell -c "from wg.welfare_activity import github; print(len(github.fetch('wg-welfare')['issues']))"
+#   読めなかったときのログ
+#     az webapp log tail --name funITclub | grep "活動ページのチケット"
