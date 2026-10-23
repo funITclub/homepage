@@ -744,7 +744,10 @@ az webapp start --name funITclub
 #     Workflows  Item added to project → 新規 / Item closed → 終了 / Item reopened → 進行中 /
 #                Auto-close issue（終了 にしたら閉じる）/ Pull request merged（オン）/
 #                Pull request linked to issue → オフ
-#     複製すると、項目・選択肢・Workflows が引き継がれる（複製はテンプレートの印なしの普通の Project）
+#     表示     View 1（表）/ WBS（表。Group by: Parent issue、列に Sub-issues progress・開始日・期日など）/
+#                ガントチャート（Roadmap。Date fields: Start date = 開始日、Target date = 期日）
+#     複製すると、項目・選択肢・Workflows・表示（まとめ方・日付の設定も）が引き継がれる
+#     （複製はテンプレートの印なしの普通の Project）
 #     活動ページは、解決・終了・却下と Closed の Issue を完了とみなし、並べ替えは Status の選択肢の順
 #
 # 作り直すとき（手元で。gh は org のオーナーのアカウントで）:
@@ -766,6 +769,12 @@ gh api graphql -f fid="$F" -f query='mutation($fid: ID!) {
     {name: "フィードバック", color: ORANGE, description: "返事・確認を待っている"},
     {name: "終了", color: GRAY, description: "終わった"},
     {name: "却下", color: GRAY, description: "やらないことにした"}]}) { clientMutationId } }'
+# 表示は API で作れるが、WBS のまとめ方とガントチャートの日付は画面で選ぶ
+P=$(gh project view "$N" --owner funITclub --format json --jq .id)
+gh api graphql -f query="mutation { createProjectV2View(input: {projectId: \"$P\", name: \"WBS\", layout: TABLE_LAYOUT}) { clientMutationId } }"
+gh api graphql -f query="mutation { createProjectV2View(input: {projectId: \"$P\", name: \"ガントチャート\", layout: ROADMAP_LAYOUT}) { clientMutationId } }"
+#   WBS：列の + で Parent issue・Sub-issues progress・開始日・期日などを足し、Parent issue の見出し →
+#        Group by values → 保存。ガントチャート：右上の Date fields で 開始日・期日 → 保存
 # Workflows は gh で設定できないので、ブラウザで https://github.com/orgs/funITclub/projects/<N> の
 # 右上の … → Workflows を開き、上の「現在の構成」のとおりにする。選択肢を入れ替えたので、
 # 元の Done・In Progress を指していた Auto-close issue と Pull request linked to issue は赤い印に
