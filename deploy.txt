@@ -13,10 +13,11 @@
 
 
 ########################################
-# 通常のデプロイ（main に push するだけ）
+# 通常のデプロイ（PR を main にマージするだけ）
 ########################################
 
-# main に push すると GitHub Actions（.github/workflows/deploy.yml）が
+# main には直接 push できない（下の「main の保護と書き込み権」）。ブランチを切って PR を出し、
+# テストが通ってマージすると、GitHub Actions（.github/workflows/deploy.yml）が
 # zip を作って App Service に送る。完了まで2〜3分。
 #   - docs/・README.md・deploy.txt だけの変更ではデプロイしない
 #   - 同じものをもう一度送りたいときは GitHub の Actions →「Deploy」→「Run workflow」
@@ -57,10 +58,16 @@ az webapp log tail --name funITclub
 # ---- 現在の構成 ----
 #   マネージド ID           : funitclub-github-deploy（hirahira / Japan West）
 #                             クライアント ID 4cc3caab-2f2f-439b-9918-09b16392efec
-#   フェデレーション資格情報 : github-main
-#                             subject repo:funITclub@316769444/homepage@1333670349:ref:refs/heads/main
+#   フェデレーション資格情報 : github-production
+#                             subject repo:funITclub@316769444/homepage@1333670349:environment:production
 #   ロール                  : Web サイト共同作成者（App Service funITclub スコープのみ）
-#   GitHub の secrets       : AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#   GitHub の環境           : production（使えるのは main だけ）
+#   環境の secrets          : AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#                             （WG_READ_APP_ID / WG_READ_APP_PRIVATE_KEY / COUNTDOWN_NOTIFY_TOKEN もここ）
+#
+# 秘密情報はリポジトリの secrets に置かない。リポジトリに Write があれば、別のブランチで
+# ワークフローを書き換えて push するだけで読めてしまう。環境 production は main からしか
+# 使えず、main は PR でしか変えられない（下の「main の保護と書き込み権」）。
 #   スタートアップ コマンド : bash startup.sh（起動時に migrate → gunicorn）
 #
 # ---- 作り直すときの手順（Azure ポータル） ----
@@ -71,25 +78,27 @@ az webapp log tail --name funITclub
 #      リージョン       : Japan West
 #      名前             : funitclub-github-deploy
 #
-# 2. main ブランチを信頼させる
+# 2. 環境 production を信頼させる
+#    （先に GitHub の funITclub/homepage → Settings → Environments で production を作り、
+#      Deployment branches and tags を「Selected branches and tags」にして main だけを足す）
 #    funitclub-github-deploy →「設定」→「フェデレーション資格情報」→「資格情報の追加」
 #      シナリオ      : GitHub Actions による Azure リソースのデプロイ
 #      組織          : funITclub
 #      組織 ID       : 316769444
 #      リポジトリ    : homepage
 #      リポジトリ ID : 1333670349
-#      エンティティ  : ブランチ
-#      ブランチ      : main
-#      名前          : github-main
+#      エンティティ  : 環境
+#      環境          : production
+#      名前          : github-production
 #    ※ このリポジトリの OIDC トークンは ID 入りのサブジェクト（use_immutable_subject）を
 #      使う。名前を変えても ID は変わらないので、なりすましたリポジトリを弾ける。
 #      サブジェクト識別子は手で編集せず、自動生成の
-#      repo:funITclub@316769444/homepage@1333670349:ref:refs/heads/main のままにする。
+#      repo:funITclub@316769444/homepage@1333670349:environment:production のままにする。
 #      1文字でも違うとログインに失敗する。
 #    ※ ID の調べ方
 #      gh api repos/funITclub/homepage --jq '{owner_id: .owner.id, repo_id: .id}'
 #      gh api repos/funITclub/homepage/actions/oidc/customization/sub   # sub_claim_prefix
-#    ※ main 以外のブランチからはログインできない（それで正しい）。
+#    ※ production を付けたジョブ以外、main 以外のブランチからはログインできない（それで正しい）。
 #
 # 3. デプロイの権限を付ける
 #    App Service funITclub →「アクセス制御 (IAM)」→「追加」→「ロールの割り当ての追加」
@@ -100,8 +109,9 @@ az webapp log tail --name funITclub
 #
 # 4. funitclub-github-deploy の「概要」でクライアント ID を控える
 #
-# 5. GitHub の funITclub/homepage → Settings → Secrets and variables → Actions に
-#    Repository secret を3つ登録する（リポジトリの管理者権限が要る）。
+# 5. GitHub の funITclub/homepage → Settings → Environments → production の
+#    Environment secrets に3つ登録する（リポジトリの管理者権限が要る）。
+#    gh なら gh secret set <名前> --repo funITclub/homepage --env production
 #      AZURE_CLIENT_ID       : 4. のクライアント ID
 #      AZURE_TENANT_ID       : az account show --query tenantId -o tsv
 #      AZURE_SUBSCRIPTION_ID : az account show --query id -o tsv
@@ -123,6 +133,37 @@ az identity federated-credential list --identity-name funitclub-github-deploy \
 az role assignment list --assignee 4cc3caab-2f2f-439b-9918-09b16392efec \
   --scope "$(az webapp show --name funITclub --query id -o tsv)" \
   --query "[].{role:roleDefinitionName,scope:scope}"
+
+
+########################################
+# main の保護と書き込み権
+########################################
+
+# main に入ったものはそのまま本番に出るので、main は PR でしか変えられないようにしてある。
+#
+# ---- 現在の構成 ----
+#   書き込み権   : チーム homepage に Write。人ごとには付けない（卒業で入れ替わるため）。
+#                  org のオーナーは admin のまま
+#   ルールセット : main（funITclub/homepage → Settings → Rules → Rulesets）
+#                  - PR 必須・承認 1 件
+#                  - テスト（Test ワークフローの test）が通らないとマージできない
+#                  - 直接 push・force push・ブランチの削除は禁止
+#                  - 迂回できるのは admin だけ、それも PR の上でだけ（直接 push はできない）
+#   マージしたブランチは自動で消す
+#
+# ※ チームの名前を wg- で始めないこと。WG への参加の仕組みは wg- のチームに誰でも
+#   入れるので（wgjoin/links.py）、運営のチームが紛れると誰でも homepage に書けてしまう。
+# ※ 承認 1 件は、書き込める人が自分ひとりのときは満たせない。そのときは admin が
+#   gh pr merge <番号> --admin で迂回してマージする（テストが通ってから）。
+#
+# 人を足す・外す
+#   gh api -X PUT orgs/funITclub/teams/homepage/memberships/<ユーザー名> -f role=member
+#   gh api -X DELETE orgs/funITclub/teams/homepage/memberships/<ユーザー名>
+#   （org の管理者権限が要る。gh は gh auth refresh -h github.com -s admin:org で権限を足す）
+#
+# 確認
+gh api repos/funITclub/homepage/rulesets --jq '.[]|[.name,.enforcement]'
+gh api repos/funITclub/homepage/teams --jq '.[]|[.slug,.permission]'
 
 
 ########################################
@@ -530,8 +571,8 @@ az webapp log tail --name funITclub
 #      python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 # 2. App Service のアプリケーション設定に入れる
 #      az webapp config appsettings set --name funITclub --settings COUNTDOWN_NOTIFY_TOKEN="<合言葉>"
-# 3. GitHub のリポジトリのシークレットに同じ値を入れる
-#      gh secret set COUNTDOWN_NOTIFY_TOKEN --repo funITclub/homepage
+# 3. GitHub の環境 production のシークレットに同じ値を入れる
+#      gh secret set COUNTDOWN_NOTIFY_TOKEN --repo funITclub/homepage --env production
 #
 # ---- 確かめる・手で送る ----
 #   GitHub の Actions →「Countdown notify」→「Run workflow」。
@@ -610,8 +651,8 @@ az webapp start --name funITclub
 # 3. Install App → funITclub → Only select repositories で homepage と各 WG を選ぶ
 #    （WG を増やしたら、ここに足す）
 # 4. シークレットを入れる（.pem はそのまま貼る。改行も含める）
-#      gh secret set WG_READ_APP_ID --repo funITclub/homepage --body "<App ID>"
-#      gh secret set WG_READ_APP_PRIVATE_KEY --repo funITclub/homepage < <鍵のファイル>
+#      gh secret set WG_READ_APP_ID --repo funITclub/homepage --env production --body "<App ID>"
+#      gh secret set WG_READ_APP_PRIVATE_KEY --repo funITclub/homepage --env production < <鍵のファイル>
 #      gh secret set HOMEPAGE_DEPLOY_APP_ID --repo funITclub/wg-<名前> --body "<App ID>"
 #      gh secret set HOMEPAGE_DEPLOY_PRIVATE_KEY --repo funITclub/wg-<名前> < <鍵のファイル>
 # 5. 入れ終わったら .pem をローカルから消す（鍵は作り直せる）

@@ -373,7 +373,7 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 設定済み | GitHub App（funitclub-wg-join）。WG への参加と、WG の活動ページのチケットの読み取り |
 | `GITHUB_APP_CLIENT_SECRET` / `GITHUB_APP_PRIVATE_KEY` | Key Vault | 同じ App の Client secret と秘密鍵 |
 | `GITHUB_ORG` | 未設定（既定） | 任意。既定は `funITclub` |
-| `COUNTDOWN_NOTIFY_TOKEN` | 設定済み | countdown の毎日0時の送信の合言葉。GitHub の Actions のシークレットと同じ値（[deploy.txt](deploy.txt) の「カウントダウンのメール通知」） |
+| `COUNTDOWN_NOTIFY_TOKEN` | 設定済み | countdown の毎日0時の送信の合言葉。GitHub の環境 production のシークレットと同じ値（[deploy.txt](deploy.txt) の「カウントダウンのメール通知」） |
 | `IP_BLOCK_ENABLED` / `IP_BLOCK_EXEMPT` | 未設定 | 任意。IP遮断の停止・除外（ロックアウトからの復旧用。済んだら消す） |
 | `DEBUG` | 未設定 | 任意。`True` のときだけ本番でも DEBUG が有効になる。切り分け用で、常設しないこと |
 | `FE_SOURCE_DB` | 未設定 | 任意。`fe_pull_learner` の `--source-db` を省くときの hirahira_room の DB 名。SSH で流すときにその場で渡してもよい |
