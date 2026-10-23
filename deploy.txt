@@ -732,11 +732,23 @@ az webapp start --name funITclub
 #   権限が入る前に活動ページを出しても、「いま GitHub からチケットを読めません」と出るだけで、
 #   紹介と構想資料は出る（ログに WARNING。通知メールは来ない）。
 #
-# ---- Project のテンプレート（初回のみ） ----
+# ---- Project のテンプレート ----
 # ステータス・優先度・期日などを使う WG は、このテンプレートを wg-activity スキルで複製する。
 # 使うかは WG が決める（運営は WG ごとの作業をしない）。題名と項目の名前はスキルと活動ページが
-# 名前で探すので変えない。手元で（gh は org のオーナーのアカウントで）:
-gh auth refresh -s project
+# 名前で探すので変えない。
+#
+#   現在の構成（2026-10-23 に作成。スキルの手順で複製・読み取りまで確かめた）
+#     https://github.com/orgs/funITclub/projects/1 「活動ページのテンプレート」（テンプレートの印つき・非公開）
+#     項目       Status（新規・進行中・解決・フィードバック・終了・却下）・優先度（低め・通常・高め・急いで）・
+#                開始日・期日・進捗率・プロジェクト（選択肢「全体」。複製した WG が直す）
+#     Workflows  Item added to project → 新規 / Item closed → 終了 / Item reopened → 進行中 /
+#                Auto-close issue（終了 にしたら閉じる）/ Pull request merged（オン）/
+#                Pull request linked to issue → オフ
+#     複製すると、項目・選択肢・Workflows が引き継がれる（複製はテンプレートの印なしの普通の Project）
+#     活動ページは、解決・終了・却下と Closed の Issue を完了とみなし、並べ替えは Status の選択肢の順
+#
+# 作り直すとき（手元で。gh は org のオーナーのアカウントで）:
+gh auth refresh -h github.com -s project
 N=$(gh project create --owner funITclub --title "活動ページのテンプレート" --format json --jq .number)
 gh project field-create "$N" --owner funITclub --name 優先度 --data-type SINGLE_SELECT --single-select-options "低め,通常,高め,急いで"
 gh project field-create "$N" --owner funITclub --name 開始日 --data-type DATE
@@ -744,10 +756,20 @@ gh project field-create "$N" --owner funITclub --name 期日 --data-type DATE
 gh project field-create "$N" --owner funITclub --name 進捗率 --data-type NUMBER
 gh project field-create "$N" --owner funITclub --name プロジェクト --data-type SINGLE_SELECT --single-select-options "全体"
 gh project mark-template "$N" --owner funITclub
-# 続けてブラウザで https://github.com/orgs/funITclub/projects/<N> を開き:
-#   - Settings → Status の選択肢を、新規・進行中・解決・フィードバック・終了・却下 の順にする
-#     （活動ページは、解決・終了・却下と Closed の Issue を完了とみなす。並べ替えはこの順）
-#   - Workflows で「Item added to project → 新規」「Item closed → 終了」「Item reopened → 進行中」を On
+# Status の選択肢を入れ替える（元の Todo・In Progress・Done を消して並べ直す）
+F=$(gh project field-list "$N" --owner funITclub --format json --jq '.fields[] | select(.name=="Status") | .id')
+gh api graphql -f fid="$F" -f query='mutation($fid: ID!) {
+  updateProjectV2Field(input: {fieldId: $fid, singleSelectOptions: [
+    {name: "新規", color: RED, description: "まだ手を付けていない"},
+    {name: "進行中", color: BLUE, description: "取りかかっている"},
+    {name: "解決", color: GREEN, description: "直した・作った。確かめ待ち"},
+    {name: "フィードバック", color: ORANGE, description: "返事・確認を待っている"},
+    {name: "終了", color: GRAY, description: "終わった"},
+    {name: "却下", color: GRAY, description: "やらないことにした"}]}) { clientMutationId } }'
+# Workflows は gh で設定できないので、ブラウザで https://github.com/orgs/funITclub/projects/<N> の
+# 右上の … → Workflows を開き、上の「現在の構成」のとおりにする。選択肢を入れ替えたので、
+# 元の Done・In Progress を指していた Auto-close issue と Pull request linked to issue は赤い印に
+# なっている。値を選び直すか、オフにする。
 #
 # ---- 確認 ----
 #   App Service の SSH から（活動ページを載せた WG で）
