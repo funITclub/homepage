@@ -545,7 +545,8 @@ az webapp log tail --name funITclub
 #       az webapp restart --name funITclub
 #
 # GitHub App の秘密鍵・シークレットを作り直した
-#   → App の設定画面（Settings → Developer settings → GitHub Apps → funitclub-wg-join）で発行し、
+#   → App の設定画面（Settings → Developer settings → GitHub Apps → funitclub-wg-join →
+#     左のメニューの Credentials）で発行し、
 #     Key Vault の funitclub-github-app-private-key / funitclub-github-app-client-secret を更新して
 #     az webapp restart。古い鍵は App の設定画面から消す（新しいのを作ってからでないと消せない）。
 
@@ -647,7 +648,9 @@ az webapp start --name funITclub
 #      Webhook: Active のチェックを外す
 #      Repository permissions: Contents = Read-only、Actions = Read and write
 #      Where can this GitHub App be installed?: Only on this account
-# 2. 作成後の画面で App ID を控え、Private keys → Generate a private key（.pem が落ちる）
+# 2. 作成後の画面（General）で App ID を控え、左のメニューの Credentials →
+#    Private keys → Generate a private key（.pem が落ちる）。秘密鍵とクライアント
+#    シークレットは General ではなく Credentials にある
 # 3. Install App → funITclub → Only select repositories で homepage と各 WG を選ぶ
 #    （WG を増やしたら、ここに足す）
 # 4. シークレットを入れる（.pem はそのまま貼る。改行も含める）
@@ -656,6 +659,9 @@ az webapp start --name funITclub
 #      gh secret set HOMEPAGE_DEPLOY_APP_ID --repo funITclub/wg-<名前> --body "<App ID>"
 #      gh secret set HOMEPAGE_DEPLOY_PRIVATE_KEY --repo funITclub/wg-<名前> < <鍵のファイル>
 # 5. 入れ終わったら .pem をローカルから消す（鍵は作り直せる）
+#
+# 鍵を作り直すとき：2. の Credentials で新しい鍵を作り、4. の homepage と WG すべての
+# PRIVATE_KEY を入れ替える。デプロイが通るのを確かめてから、古い鍵を Credentials で消す。
 #
 # ---- WG を1つ載せる ----
 # 1. WG のリポジトリに .github/workflows/deploy.yml を置く（wg-template に入っている。
