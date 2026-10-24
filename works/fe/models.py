@@ -20,8 +20,6 @@ from django.db import models
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from .crypto import decrypt, encrypt
-
 # 科目。要綱が科目ごとに別の出題範囲を定めているので、分類も科目を持つ。
 SUBJECT_A = 'A'
 SUBJECT_B = 'B'
@@ -58,7 +56,7 @@ class Learner(models.Model):
     )
     is_admin = models.BooleanField(
         verbose_name='管理用', default=False,
-        help_text='問題集の取り込みと、問題の一覧ができる。',
+        help_text='問題集の取り込み・書き出しと、問題の一覧ができる。',
     )
     created_at = models.DateTimeField(verbose_name='作成日時', auto_now_add=True)
     # 一時的な記録をいつ消してよいかの判断に使う。画面を開くたびに更新する。
@@ -202,19 +200,12 @@ class Question(models.Model):
     stem = models.TextField(verbose_name='問題文')
     # 選択肢のリスト。ア／イ／ウ／エ の記号は表示側で付けるので本文には含めない。
     choices = models.JSONField(verbose_name='選択肢')
-    # 図は公開問題の冊子から切り出した PNG を、data URI のまま持つ。画像を別ファイルに
-    # すると取り込みのたびに画像も運ぶことになり、JSON 4本で完結しなくなるため。
-    # figures は問題文の下に並べる図（{"src", "alt"} の配列）、choice_figures は
-    # 選択肢そのものが図の問題で、選択肢と同じ並びの data URI（図の無い選択肢は null）。
-    figures = models.JSONField(verbose_name='図', default=list, blank=True)
-    choice_figures = models.JSONField(verbose_name='選択肢の図', null=True, blank=True)
     answer_index = models.PositiveSmallIntegerField(verbose_name='正解の選択肢番号（0始まり）')
     explanation = models.TextField(verbose_name='解説', blank=True)
     difficulty = models.PositiveSmallIntegerField(
         verbose_name='難易度', choices=DIFFICULTY_CHOICES, default=2
     )
-    # 出典にシラバスの項目まで書くので、転記の問題では長くなる
-    source = models.CharField(verbose_name='出典・根拠', max_length=255, blank=True)
+    source = models.CharField(verbose_name='出典・根拠', max_length=120, blank=True)
 
 
     template = models.ForeignKey(
@@ -312,22 +303,6 @@ class Question(models.Model):
         if 0 <= self.answer_index < len(self.choices):
             return self.choices[self.answer_index]
         return ''
-
-    def choice_figure(self, index):
-        """その選択肢の図（data URI）。図の無い選択肢なら None。"""
-        figures = self.choice_figures or []
-        return figures[index] if 0 <= index < len(figures) else None
-
-    @property
-    def answer_figure(self):
-        return self.choice_figure(self.answer_index)
-
-    def choice_rows(self):
-        """(番号, 記号, 本文, 図) のリスト。labeled_choices に選択肢の図を添えたもの。"""
-        return [
-            (i, label, text, self.choice_figure(i))
-            for i, label, text in self.labeled_choices()
-        ]
 
     @staticmethod
     def choice_label(index):
@@ -502,8 +477,7 @@ class LearningNote(models.Model):
     topic = models.CharField(verbose_name='小分類', max_length=60, blank=True)
     title = models.CharField(verbose_name='見出し', max_length=120)
     body = models.TextField(verbose_name='本文')
-    # 扱っているシラバスの項目を全部書くので、長くなる
-    source = models.CharField(verbose_name='出典', max_length=255, blank=True)
+    source = models.CharField(verbose_name='出典', max_length=120, blank=True)
     created_at = models.DateTimeField(verbose_name='作成日時', auto_now_add=True)
 
     class Meta:
@@ -555,9 +529,6 @@ class LearningRound(models.Model):
     position = models.PositiveSmallIntegerField(verbose_name='解答中の位置', default=0)
     started_at = models.DateTimeField(verbose_name='開始日時', auto_now_add=True)
     finished_at = models.DateTimeField(verbose_name='終了日時', null=True, blank=True)
-    # 読み上げている間は読む時間を止める。止めていた合計と、いま止めている始まり。
-    paused_seconds = models.PositiveIntegerField(verbose_name='止めていた秒数', default=0)
-    paused_at = models.DateTimeField(verbose_name='止めた日時', null=True, blank=True)
 
     class Meta:
         db_table = 'funitclub_fe_learning_round'
@@ -581,29 +552,6 @@ class LearningRound(models.Model):
             LearningNote.objects.filter(category=self.note.category, topic=self.note.topic)
             .select_related('category').order_by('id')
         )
-
-    def remaining_seconds(self, now=None):
-        """読む時間の残り。開始時刻から数え、止めていた時間は差し引く。"""
-        now = now or timezone.now()
-        paused = self.paused_seconds
-        if self.paused_at is not None:
-            paused += (now - self.paused_at).total_seconds()
-        elapsed = (now - self.started_at).total_seconds() - paused
-        return max(0, int(self.reading_seconds - elapsed))
-
-    def pause(self, now=None):
-        """読む時間を止める。止まっていれば何もしない。"""
-        if self.paused_at is None:
-            self.paused_at = now or timezone.now()
-            self.save(update_fields=['paused_at'])
-
-    def resume(self, now=None):
-        """読む時間を動かす。止めていた時間を合計に足す。"""
-        if self.paused_at is not None:
-            now = now or timezone.now()
-            self.paused_seconds += int((now - self.paused_at).total_seconds())
-            self.paused_at = None
-            self.save(update_fields=['paused_seconds', 'paused_at'])
 
     @property
     def title(self):
@@ -658,77 +606,6 @@ class LearningItem(models.Model):
         if self.selected_index is None:
             return ''
         return Question.choice_label(self.selected_index)
-
-
-class MailSubscription(models.Model):
-    """毎日0時に届く問題メールの登録。ID ごとに1件で、送り方は fe.mail が受け持つ。
-
-    ID には合言葉がないので、アドレスは確認のメールのリンクを開いて「受け取る」を
-    押したものだけを email に入れる。それまでは pending_email に置き、確認の期限
-    （FE_MAIL_CONFIRM_MAX_AGE）を過ぎたら消す（fe.mail.purge_pending）。登録したあとは
-    画面からアドレスを変えられず、解除もメールのリンクからだけできる。
-
-    アドレスは DB に暗号化して持つ（fe.crypto）。読み書きは email と pending_email を通す。
-
-    マラソンと特訓は並行して両方選べる。両方なら1日2通になる。
-    """
-
-    learner = models.OneToOneField(
-        Learner, verbose_name='ID', on_delete=models.CASCADE,
-        related_name='mail_subscription',
-    )
-    # 確認を済ませたアドレス（暗号化）。空なら未登録（または解除済み）
-    email_enc = models.TextField(verbose_name='配信先（暗号化）', blank=True, editable=False)
-    pending_email_enc = models.TextField(verbose_name='確認待ちのアドレス（暗号化）', blank=True, editable=False)
-    # 確認・解除のメールを続けて送らせないための控え。確認待ちのアドレスを置いた日時も兼ねる
-    # （確認待ちがあるのは、確認のメールを送ってから「受け取る」が押されるまでの間だけ）
-    link_sent_at = models.DateTimeField(verbose_name='確認・解除のメールを送った日時', null=True, blank=True)
-
-    # マラソン：全問を、はじめから順番に送る。位置は全問の並び（fe.mail.marathon_questions）の何番目か。
-    # 問題の取り込みで並びが変わっても、位置はそのまま使う。
-    marathon = models.BooleanField(verbose_name='マラソン', default=False)
-    marathon_position = models.PositiveIntegerField(verbose_name='マラソンの次の位置', default=0)
-    marathon_laps = models.PositiveIntegerField(verbose_name='マラソンの周回数', default=0)
-    marathon_sent_on = models.DateField(verbose_name='マラソンを最後に送った日', null=True, blank=True)
-
-    # 特訓：選んだ小分類を順に、1通に1つずつ送る。[[中分類番号, 小分類], ...]
-    training = models.BooleanField(verbose_name='特訓', default=False)
-    training_topics = models.JSONField(verbose_name='特訓の小分類', default=list, blank=True)
-    training_index = models.PositiveIntegerField(verbose_name='特訓の次の小分類', default=0)
-    training_offset = models.PositiveIntegerField(verbose_name='特訓の小分類の中の次の位置', default=0)
-    training_sent_on = models.DateField(verbose_name='特訓を最後に送った日', null=True, blank=True)
-
-    created_at = models.DateTimeField(verbose_name='作成日時', auto_now_add=True)
-
-    class Meta:
-        db_table = 'funitclub_fe_mail_subscription'
-        verbose_name = verbose_name_plural = 'FE メール配信'
-
-    def __str__(self):
-        return '{} {}'.format(self.learner, '登録済み' if self.email else '未登録')
-
-    @property
-    def email(self):
-        return decrypt(self.email_enc)
-
-    @email.setter
-    def email(self, value):
-        self.email_enc = encrypt(value)
-
-    @property
-    def pending_email(self):
-        return decrypt(self.pending_email_enc)
-
-    @pending_email.setter
-    def pending_email(self, value):
-        self.pending_email_enc = encrypt(value)
-
-    @property
-    def masked_email(self):
-        """画面に出す配信先。ID を知っている人なら誰でも見られるので、伏せて出す。"""
-        email = self.email
-        local, _, domain = email.partition('@')
-        return '{}***@{}'.format(local[:1], domain) if email else ''
 
 
 class PassReport(models.Model):

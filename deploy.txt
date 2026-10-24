@@ -591,40 +591,6 @@ az webapp log tail --name funITclub
 
 
 ########################################
-# FE 対策アプリの問題メール（/fe/）
-########################################
-
-# 毎日0時に GitHub Actions（.github/workflows/fe-mails.yml）が /fe/tasks/send-mails/ を
-# 合言葉（FE_MAIL_TOKEN）付きで呼んで送信を起こす。仕組み（確認のリンク・マラソンと特訓・
-# 宛先の暗号化）は works/fe/mail.py の冒頭。countdown と違い、予備の定期点検はない。
-#
-# ---- 設定（初回のみ） ----
-# 1. 合言葉を作る
-#      python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-# 2. App Service のアプリケーション設定に入れる
-#      az webapp config appsettings set --name funITclub --settings FE_MAIL_TOKEN="<合言葉>"
-# 3. GitHub の環境 production のシークレットに同じ値を入れる
-#      gh secret set FE_MAIL_TOKEN --repo funITclub/homepage --env production
-#
-# ---- 確かめる・手で送る ----
-#   GitHub の Actions →「FE mails」→「Run workflow」。同じ日に2通は送らない。
-#   手元で送るとき: python manage.py send_fe_mails
-#   ※ 宛先は SECRET_KEY から作った鍵で暗号化している。SECRET_KEY を替えるときの注意は
-#     上の「カウントダウンのメール通知」と同じ。
-
-
-########################################
-# FE 対策アプリの読み上げ音声（/fe/）
-########################################
-
-# 科目Aの技術解説の MP3 を Azure AI Speech で作り、/home/fe_audio に置く（FE_AUDIO_ROOT）。
-# 音声が無い解説は、再生のボタンを出さないだけ。キーは環境変数 AZURE_SPEECH_KEY と
-# AZURE_SPEECH_REGION から読む（make_note_audio を流すところにだけ要る）。
-#   python manage.py make_note_audio --dry-run   # 作る本数と文字数
-#   python manage.py make_note_audio             # まだ無いものを全部作る
-
-
-########################################
 # 一時的にデバッグする（本番）
 ########################################
 

@@ -31,8 +31,7 @@
         {% if question.topic %}<span class="text-muted small ms-2">{{ question.topic }}</span>{% endif %}
     </div>
 
-    <div class="fe-stem {% if question.figures %}mb-0{% else %}mb-4{% endif %}">{{ question.stem }}</div>
-    {% if question.figures %}<div class="mb-4">{% include 'fe/_figures.html' with figures=question.figures %}</div>{% endif %}
+    <div class="fe-stem mb-4">{{ question.stem }}</div>
 
     {% if answered %}
     <div class="alert {% if is_correct %}alert-success{% else %}alert-danger{% endif %}">
@@ -43,11 +42,11 @@
     </div>
 
     <ul class="list-group {% if question.source %}mb-2{% else %}mb-4{% endif %}">
-        {% for index, label, text, figure in question.choice_rows %}
+        {% for index, label, text in question.labeled_choices %}
         <li class="list-group-item d-flex
             {% if index == question.answer_index %}list-group-item-success{% elif index == selected %}list-group-item-danger{% endif %}">
             <span class="fe-choice-label">{{ label }}</span>
-            <span>{{ text }}{% if figure %}<img src="{{ figure }}" alt="{{ label }}：{{ text }}" class="img-fluid border rounded bg-white p-1 mt-2 d-block" loading="lazy">{% endif %}</span>
+            <span>{{ text }}</span>
         </li>
         {% endfor %}
     </ul>
@@ -73,12 +72,12 @@
     <form method="post">
         {% csrf_token %}
         <ul class="list-group {% if question.source %}mb-2{% else %}mb-4{% endif %}">
-            {% for index, label, text, figure in question.choice_rows %}
+            {% for index, label, text in question.labeled_choices %}
             <li class="list-group-item fe-choice">
                 <label class="d-flex w-100 mb-0" style="cursor: pointer;">
                     <input class="form-check-input me-3" type="radio" name="choice" value="{{ index }}">
                     <span class="fe-choice-label">{{ label }}</span>
-                    <span>{{ text }}{% if figure %}<img src="{{ figure }}" alt="{{ label }}：{{ text }}" class="img-fluid border rounded bg-white p-1 mt-2 d-block" loading="lazy">{% endif %}</span>
+                    <span>{{ text }}</span>
                 </label>
             </li>
             {% endfor %}

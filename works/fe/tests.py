@@ -6,25 +6,18 @@
   ・一括差し替えをしても解答履歴と分野別の正答率が残るか
 """
 
-import io
 import json
 import random
-import tempfile
-from pathlib import Path
-from unittest import mock
 import html
 import re
-from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Sum
 from django.core.management import call_command
 from django.test import TestCase, override_settings
-from django.utils import timezone
 from django.urls import reverse
 
-from . import speech
 from .exam import EXAM, build_prompt
 from .generators import REGISTRY, generate_question
 from .importer import (ImportError_, needs_confirmation, parse, preview, sync,
@@ -614,7 +607,7 @@ class ViewTests(TestCase):
             with self.subTest(url=url):
                 html = self.client.get(url).content.decode('utf-8')
                 self.assertIn('このアプリが対応していない問題・問題形式', html)
-                self.assertIn('図を見ないと解けない問題（自作の分）', html)
+                self.assertIn('図を見ないと解けない問題', html)
                 self.assertIn('本番どおりの模擬試験', html)
                 self.assertIn('記述・入力・並べ替え', html)
 
@@ -624,7 +617,7 @@ class ViewTests(TestCase):
         enter(self.client, admin)
         html = self.client.get(reverse('fe:manage_upload')).content.decode('utf-8')
         self.assertIn('このアプリで出せない問題', html)
-        for word in ('図は公開問題を転記するときだけ使えます', '上付き', '組合せを1つの選択肢'):
+        for word in ('図が本質の問題は作れません', '上付き', '組合せを1つの選択肢'):
             self.assertIn(word, html)
 
     def test_prompt_states_unsupported_formats(self):
@@ -632,7 +625,7 @@ class ViewTests(TestCase):
         from .exam import build_prompt
         prompt = build_prompt()
         self.assertIn('【このアプリが扱えないもの】', prompt)
-        for word in ('図は公開問題を転記するときだけ使う', '2のn乗', 'ルビ', '複数正解や部分点はない'):
+        for word in ('図が必要な問題は作らない', '2のn乗', 'ルビ', '複数正解や部分点はない'):
             self.assertIn(word, prompt)
 
     def test_index_renders(self):
@@ -1158,7 +1151,7 @@ class LearnerIdTests(TestCase):
         build_questions()
         boss = make_learner('boss', is_admin=True)
         put_learner(self.client, boss.pk)
-        for name in ('fe:manage_list', 'fe:manage_upload'):
+        for name in ('fe:manage_list', 'fe:manage_upload', 'fe:manage_export'):
             with self.subTest(page=name):
                 url = reverse(name)
                 self.assertRedirects(
@@ -1177,7 +1170,7 @@ class LearnerIdTests(TestCase):
         self.client.force_login(
             get_user_model().objects.create_user(username='editor', is_staff=True))
         enter(self.client, make_learner('plain'))
-        for name in ('fe:manage_list', 'fe:manage_upload'):
+        for name in ('fe:manage_list', 'fe:manage_upload', 'fe:manage_export'):
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 403)
         response = self.client.post(reverse('fe:manage_upload'), {})
@@ -1202,8 +1195,8 @@ class ManageTests(TestCase):
         enter(self.client, self.learner)
 
     def _upload(self, n=3, prefix='問題'):
-        """取り込みは JSON ファイルだけなので、テストもファイルで投げる。"""
-        return {'questions_a_file': SimpleUploadedFile(
+        """取り込みは JSON ファイル1本だけなので、テストもファイルで投げる。"""
+        return {'questions_file': SimpleUploadedFile(
             'q.json', self._payload(n, prefix).encode('utf-8'),
             content_type='application/json',
         )}
@@ -1220,18 +1213,17 @@ class ManageTests(TestCase):
             })
         return response
 
-    def _json_upload(self, records, field='questions_a_file'):
-        return {field: SimpleUploadedFile(
+    def _json_upload(self, records):
+        return {'questions_file': SimpleUploadedFile(
             'q.json', json.dumps(records, ensure_ascii=False).encode('utf-8'),
             content_type='application/json',
         )}
 
     def _upload_with_notes(self, n=3, codes=(9, 11), topic=None):
-        return {
-            **self._json_upload({'questions': json.loads(self._payload(n))}),
-            **self._json_upload(
-                {'notes': build_notes(codes=codes, topic=topic)}, 'notes_a_file'),
-        }
+        return self._json_upload({
+            'notes': build_notes(codes=codes, topic=topic),
+            'questions': json.loads(self._payload(n)),
+        })
 
     def _payload(self, n=3, prefix='問題'):
         return json.dumps([
@@ -1272,14 +1264,15 @@ class ManageTests(TestCase):
             }
             for i in range(120)
         ]
-        payload = json.dumps({'notes': notes}, ensure_ascii=False).encode('utf-8')
+        payload = json.dumps(
+            {'notes': notes, 'questions': records}, ensure_ascii=False
+        ).encode('utf-8')
         # 小分類ぶんの解説を厚く書いた実運用の大きさを想定する。
         self.assertGreater(len(payload), 2 * 1024 * 1024, '2MB を超える前提のテスト')
 
         response = self.client.post(reverse('fe:manage_upload'), {
-            **self._json_upload({'questions': records}),
-            'notes_a_file': SimpleUploadedFile('big.json', payload,
-                                               content_type='application/json'),
+            'questions_file': SimpleUploadedFile('big.json', payload,
+                                         content_type='application/json'),
         })
         self.assertRedirects(response, reverse('fe:manage_list'))
         self.assertEqual(Question.objects.all().count(), 200)
@@ -1347,14 +1340,14 @@ class ManageTests(TestCase):
         build_questions()
         self._post_upload(self._upload(2))
         self.assertEqual(
-            Question.objects.filter(template__isnull=True, subject='A').count(), 2,
+            Question.objects.filter(template__isnull=True).count(), 2,
             '問題集は共有なので、取り込むと全員の問題集が入れ替わる',
         )
 
     def test_broken_json_is_rejected_without_touching_anything(self):
         self.client.post(reverse('fe:manage_upload'), self._upload(2))
         before = list(Question.objects.all().values_list('id', flat=True))
-        response = self.client.post(reverse('fe:manage_upload'), {'questions_a_file': SimpleUploadedFile(
+        response = self.client.post(reverse('fe:manage_upload'), {'questions_file': SimpleUploadedFile(
             'q.json', b'{ not json', content_type='application/json')})
         self.assertEqual(response.status_code, 200)
         after = list(Question.objects.all().values_list('id', flat=True))
@@ -1376,11 +1369,43 @@ class ManageTests(TestCase):
                 self.assertTrue(response.context['form'].errors)
                 self.assertEqual(Question.objects.all().count(), 0)
 
-    def test_export_is_not_offered(self):
-        """正は手元の JSON なので、アプリから書き出す道は置かない。"""
-        response = self.client.get(reverse('fe:manage_list'))
-        self.assertNotContains(response, '書き出す')
-        self.assertNotContains(response, 'manage/export')
+    def test_export_round_trips_without_losing_notes(self):
+        """書き出して取り込み直しても、問題も解説も失われないこと。
+
+        取り込みは解説も一括で差し替えるので、書き出しに解説が入っていないと、
+        往復しただけで教材が消える。
+        """
+        self.client.post(reverse('fe:manage_upload'), self._upload_with_notes(4))
+        before_q = Question.objects.all().count()
+        before_n = LearningNote.objects.all().count()
+        self.assertEqual((before_q, before_n), (4, 2))
+
+        response = self.client.get(reverse('fe:manage_export'))
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode('utf-8'))
+        self.assertEqual(len(payload['questions']), 4)
+        self.assertEqual(len(payload['notes']), 2)
+        self.assertNotIn('key', payload['questions'][0], '書き出しにキーは含めない')
+
+        response = self.client.post(
+            reverse('fe:manage_upload'), self._json_upload(payload))
+        self.assertRedirects(response, reverse('fe:manage_list'))
+        self.assertEqual(Question.objects.all().count(), before_q)
+        self.assertEqual(LearningNote.objects.all().count(), before_n)
+
+    def test_export_can_be_limited_to_one_subject(self):
+        self.client.post(reverse('fe:manage_upload'), self._upload_with_notes(3))
+        b = Category.objects.filter(subject='B').first()
+        LearningNote.objects.create(
+            category=b, topic=b.name, title='科目Bの解説', body='本文',
+        )
+        payload = json.loads(
+            self.client.get(reverse('fe:manage_export'), {'subject': 'A'})
+            .content.decode('utf-8')
+        )
+        self.assertTrue(payload['notes'])
+        for note in payload['notes']:
+            self.assertLess(note['category'], 100, '科目Aの書き出しに科目Bの解説が混ざらない')
 
     def test_choice_labels_cover_a_long_answer_group(self):
         """選択肢が多くても記号が割り当たること。"""
@@ -1388,7 +1413,7 @@ class ManageTests(TestCase):
             'category': 103, 'subject': 'B', 'stem': 'x',
             'choices': ['選択肢{}'.format(i) for i in range(9)], 'answer': 8,
             'explanation': '解説',
-        }], 'questions_b_file'))
+        }]))
         question = Question.objects.get(template__isnull=True)
         labels = [label for _, label, _ in question.labeled_choices()]
         self.assertEqual(labels, list('アイウエオカキクケ'))
@@ -1465,8 +1490,8 @@ class ImportNotesTests(TestCase):
     def test_sync_updates_in_place_and_removes_missing(self):
         """解説や正解だけ直したら更新、ファイルから消えたら削除。"""
         build_questions(per_category=2)
+        total = Question.objects.filter(template__isnull=True).count()
         kept = Question.objects.filter(template__isnull=True).first()
-        total = Question.objects.filter(template__isnull=True, subject=kept.subject).count()
         records = [{
             'category': kept.category.code, 'subject': kept.subject,
             'stem': kept.stem, 'choices': kept.choices, 'answer': kept.answer_index,
@@ -1489,8 +1514,8 @@ class ImportNotesTests(TestCase):
         notes = json.dumps({'notes': build_notes()}, ensure_ascii=False)
 
         response = self.client.post(reverse('fe:manage_upload'), {
-            'questions_a_file': SimpleUploadedFile('q.json', questions.encode('utf-8')),
-            'notes_a_file': SimpleUploadedFile('n.json', notes.encode('utf-8')),
+            'questions_file': SimpleUploadedFile('q.json', questions.encode('utf-8')),
+            'notes_file': SimpleUploadedFile('n.json', notes.encode('utf-8')),
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Question.objects.filter(template__isnull=True).count(), 1)
@@ -1505,101 +1530,33 @@ class ImportNotesTests(TestCase):
         notes = json.dumps({'notes': build_notes()}, ensure_ascii=False)
 
         response = self.client.post(reverse('fe:manage_upload'), {
-            'notes_a_file': SimpleUploadedFile('n.json', notes.encode('utf-8')),
+            'notes_file': SimpleUploadedFile('n.json', notes.encode('utf-8')),
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(LearningNote.objects.count(), 2)
         self.assertEqual(Question.objects.count(), before, '問題はそのまま')
 
     def test_upload_needs_at_least_one_file(self):
-        """どの欄も選ばずに送ったら、理由を添えて止める。"""
+        """どちらも選ばずに送ったら、理由を添えて止める。"""
         admin = make_learner('nofile', is_admin=True)
         enter(self.client, admin)
         response = self.client.post(reverse('fe:manage_upload'), {})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '取り込むファイルを1つ以上選んでください')
+        self.assertContains(response, 'どちらか一方は選んでください')
 
-    def test_a_file_in_the_wrong_slot_is_rejected(self):
-        """欄と中身の側・科目が合わないファイルは、取り込む前に止める。"""
-        build_questions(per_category=1)
-        before = Question.objects.count()
-        admin = make_learner('wrongslot', is_admin=True)
+    def test_same_side_in_both_files_is_rejected(self):
+        """両方の欄に問題を入れたら、どちらを使うか決められないので弾く。"""
+        admin = make_learner('bothq', is_admin=True)
         enter(self.client, admin)
-        a_questions = json.dumps({'questions': [
-            {'category': 11, 'subject': 'A', 'stem': 'x', 'choices': ['a', 'b'], 'answer': 0},
+        payload = json.dumps({'questions': [
+            {'category': 11, 'stem': 'x', 'choices': ['a', 'b'], 'answer': 0},
         ]}, ensure_ascii=False).encode('utf-8')
-        a_notes = json.dumps({'notes': build_notes()}, ensure_ascii=False).encode('utf-8')
-        both = json.dumps({
-            'questions': json.loads(a_questions)['questions'], 'notes': build_notes(),
-        }, ensure_ascii=False).encode('utf-8')
-        cases = {
-            '科目Aの問題を科目Bの欄に': ('questions_b_file', a_questions, '科目Bではありません'),
-            '科目Aの解説を科目Bの欄に': ('notes_b_file', a_notes, '科目Bではありません'),
-            '解説を問題の欄に': ('questions_a_file', a_notes, '技術解説が入っています'),
-            '問題を解説の欄に': ('notes_a_file', a_questions, '問題が入っています'),
-            '両方入りのファイル': ('questions_a_file', both, '技術解説が入っています'),
-        }
-        for label, (field, payload, message) in cases.items():
-            with self.subTest(label=label):
-                response = self.client.post(reverse('fe:manage_upload'), {
-                    field: SimpleUploadedFile('x.json', payload),
-                })
-                self.assertEqual(response.status_code, 200)
-                self.assertContains(response, message)
-                self.assertEqual(Question.objects.count(), before, '何も変わらない')
-
-    def test_one_subject_leaves_the_other_subject_alone(self):
-        """科目Aのファイルだけを取り込んでも、科目Bの問題と解説は消えない。
-
-        問題も解説も科目ごとに別のファイルにしているので、ファイルに出てこない
-        科目まで同期の対象にすると、片方を取り込むたびにもう片方が全部消える。
-        """
-        build_questions(per_category=1)
-        b_note = Category.objects.filter(subject='B').first()
-        sync(validate({'questions': None, 'notes': build_notes() + [{
-            'category': b_note.code, 'topic': b_note.name, 'title': '科目Bの解説', 'body': '本文',
-        }]}))
-        b_questions = Question.objects.filter(template__isnull=True, subject='B').count()
-        self.assertTrue(b_questions)
-
-        result = sync(validate({'questions': [
-            {'category': 11, 'subject': 'A', 'stem': '科目Aだけ', 'choices': ['a', 'b'], 'answer': 0},
-        ], 'notes': build_notes(codes=(9,))}))
-
-        self.assertEqual(result['questions']['subjects'], ['A'])
-        self.assertEqual(result['notes']['subjects'], ['A'])
-        self.assertEqual(
-            Question.objects.filter(template__isnull=True, subject='B').count(), b_questions,
-            '科目Bの問題はそのまま',
-        )
-        self.assertEqual(
-            Question.objects.filter(template__isnull=True, subject='A').count(), 1,
-            '科目Aはファイルの内容に揃う',
-        )
-        self.assertTrue(LearningNote.objects.filter(title='科目Bの解説').exists(), '科目Bの解説も残る')
-        self.assertEqual(LearningNote.objects.filter(category__subject='A').count(), 1)
-
-    def test_four_files_can_be_uploaded_at_once(self):
-        """4つの欄をまとめて選んで、1回で取り込める。"""
-        admin = make_learner('fourfiles', is_admin=True)
-        enter(self.client, admin)
-        b = Category.objects.filter(subject='B').first()
-        files = {
-            'questions_a_file': {'questions': [
-                {'category': 11, 'subject': 'A', 'stem': 'A問', 'choices': ['a', 'b'], 'answer': 0}]},
-            'questions_b_file': {'questions': [
-                {'category': b.code, 'subject': 'B', 'stem': 'B問', 'choices': ['a', 'b'], 'answer': 1}]},
-            'notes_a_file': {'notes': build_notes()},
-            'notes_b_file': {'notes': [
-                {'category': b.code, 'topic': b.name, 'title': 'B解説', 'body': '本文'}]},
-        }
         response = self.client.post(reverse('fe:manage_upload'), {
-            field: SimpleUploadedFile(field + '.json', json.dumps(data, ensure_ascii=False).encode('utf-8'))
-            for field, data in files.items()
+            'questions_file': SimpleUploadedFile('a.json', payload),
+            'notes_file': SimpleUploadedFile('b.json', payload),
         })
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(Question.objects.filter(template__isnull=True).count(), 2)
-        self.assertEqual(LearningNote.objects.count(), 3)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '両方に問題が入っています')
 
     def test_preview_counts_without_writing(self):
         """下見は数えるだけで、1件も書き込まない。"""
@@ -1618,9 +1575,8 @@ class ImportNotesTests(TestCase):
     def test_large_removal_needs_confirmation(self):
         """削除が既存の3割を超えたら、確定の前に止める。"""
         build_questions(per_category=1)
+        total = Question.objects.filter(template__isnull=True).count()
         kept = Question.objects.filter(template__isnull=True).first()
-        # 同期はファイルに出てくる科目の中だけなので、数えるのも同じ科目
-        total = Question.objects.filter(template__isnull=True, subject=kept.subject).count()
         one = [{
             'category': kept.category.code, 'subject': kept.subject, 'stem': kept.stem,
             'choices': kept.choices, 'answer': kept.answer_index,
@@ -1631,7 +1587,7 @@ class ImportNotesTests(TestCase):
         self.assertTrue(needs_confirmation(counts))
 
         # 3割以下なら止めない
-        few = Question.objects.filter(template__isnull=True, subject=kept.subject)[:total - 1]
+        few = Question.objects.filter(template__isnull=True)[:total - 1]
         records = [{
             'category': q.category.code, 'subject': q.subject, 'stem': q.stem,
             'choices': q.choices, 'answer': q.answer_index,
@@ -1654,7 +1610,7 @@ class ImportNotesTests(TestCase):
         }]}, ensure_ascii=False)
 
         response = self.client.post(reverse('fe:manage_upload'), {
-            'questions_a_file': SimpleUploadedFile('q.json', payload.encode('utf-8')),
+            'questions_file': SimpleUploadedFile('q.json', payload.encode('utf-8')),
         })
         self.assertEqual(response.status_code, 200, '遷移せず確認画面を出す')
         self.assertContains(response, '削除が多いので、一度止めました')
@@ -1665,8 +1621,7 @@ class ImportNotesTests(TestCase):
             'confirm': '1', 'payload': payload,
         })
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            Question.objects.filter(template__isnull=True, subject=kept.subject).count(), 1)
+        self.assertEqual(Question.objects.filter(template__isnull=True).count(), 1)
 
     def test_duplicate_keys_in_one_file_are_rejected(self):
         """同じ鍵が1つのファイルに2件あると、どちらが勝つか不定なので止める。"""
@@ -2561,7 +2516,7 @@ class ExamDefinitionTests(TestCase):
 class ManageNeedsStaffTests(TestCase):
     """問題の管理は、管理用の ID に加えて、スタッフ権限のあるアカウントが要る。"""
 
-    PAGES = ('fe:manage_list', 'fe:manage_upload')
+    PAGES = ('fe:manage_list', 'fe:manage_upload', 'fe:manage_export')
 
     @classmethod
     def setUpTestData(cls):
@@ -2591,559 +2546,3 @@ class ManageNeedsStaffTests(TestCase):
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 200)
 
-
-
-def png_uri(width=1, extra=b''):
-    """テスト用の小さな PNG を data URI にする。extra で大きさを水増しできる。"""
-    import base64, struct, zlib
-
-    def chunk(kind, data):
-        body = kind + data
-        return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body))
-
-    raw = b''.join(b'\x00' + b'\xff' * width for _ in range(1))
-    png = (b'\x89PNG\r\n\x1a\n'
-           + chunk(b'IHDR', struct.pack('>IIBBBBB', width, 1, 8, 0, 0, 0, 0))
-           + chunk(b'IDAT', zlib.compress(raw))
-           + (chunk(b'tEXt', extra) if extra else b'')
-           + chunk(b'IEND', b''))
-    return 'data:image/png;base64,' + base64.b64encode(png).decode('ascii')
-
-
-class FigureTests(TestCase):
-    """図のある問題。公開問題の図を PNG の data URI で持ち、画面に出す。"""
-
-    @classmethod
-    def setUpTestData(cls):
-        seed_masters()
-
-    def _record(self, **extra):
-        record = {
-            'category': 2, 'subject': 'A', 'topic': 'データ構造',
-            'stem': '図の木構造は2分探索木である。', 'choices': ['ア案', 'イ案', 'ウ案', 'エ案'],
-            'answer': 1, 'source': '令和7年度 科目A 問3',
-        }
-        record.update(extra)
-        return record
-
-    def _sync(self, *records):
-        return sync(validate({'questions': list(records), 'notes': None}))
-
-    def test_figures_are_imported_and_kept(self):
-        figure = {'src': png_uri(), 'alt': '根が a の2分木'}
-        self._sync(self._record(figures=[figure], choice_figures=[png_uri(), None, png_uri(2), None]))
-        question = Question.objects.get(template__isnull=True)
-        self.assertEqual(question.figures, [figure])
-        self.assertIsNone(question.choice_figure(1), '図の無い選択肢は null のまま')
-        self.assertEqual(question.answer_figure, None)
-        self.assertEqual(question.choice_rows()[2][3], png_uri(2))
-
-    def test_questions_without_figures_still_import(self):
-        self._sync(self._record())
-        question = Question.objects.get(template__isnull=True)
-        self.assertEqual(question.figures, [])
-        self.assertIsNone(question.choice_figures)
-
-    def test_changing_a_figure_is_an_update_and_keeps_the_history(self):
-        """図は鍵に入らない。図を差し替えても同じ問題のままで、解答履歴は切れない。"""
-        self._sync(self._record(figures=[{'src': png_uri(), 'alt': '旧'}]))
-        question = Question.objects.get(template__isnull=True)
-        answer(make_learner('figure'), question, correct=True)
-
-        result = self._sync(self._record(figures=[{'src': png_uri(3), 'alt': '新'}]))
-        self.assertEqual(result['questions']['updated'], 1)
-        self.assertEqual(result['questions']['removed'], 0)
-        self.assertTrue(Attempt.objects.filter(question=question).exists())
-        question.refresh_from_db()
-        self.assertEqual(question.figures[0]['alt'], '新')
-
-    def test_broken_figures_are_rejected(self):
-        ok = {'src': png_uri(), 'alt': '図'}
-        jpeg = 'data:image/jpeg;base64,' + png_uri().split(',', 1)[1]
-        not_png = 'data:image/png;base64,' + __import__('base64').b64encode(b'GIF89a....').decode()
-        cases = {
-            '配列でない': {'figures': ok},
-            'src が画像でない': {'figures': [{'src': 'javascript:alert(1)', 'alt': '図'}]},
-            'PNG 以外の形式': {'figures': [{'src': jpeg, 'alt': '図'}]},
-            '中身が PNG でない': {'figures': [{'src': not_png, 'alt': '図'}]},
-            'base64 が壊れている': {'figures': [{'src': 'data:image/png;base64,@@@', 'alt': '図'}]},
-            '大きすぎる': {'figures': [{'src': png_uri(extra=b'x' * (301 * 1024)), 'alt': '図'}]},
-            'alt が空': {'figures': [{'src': png_uri(), 'alt': ' '}]},
-            '余計なキー': {'figures': [dict(ok, title='x')]},
-            '選択肢の図の数が違う': {'choice_figures': [png_uri()]},
-            '選択肢の図が画像でない': {'choice_figures': ['x', None, None, None]},
-        }
-        for label, extra in cases.items():
-            with self.subTest(label=label):
-                with self.assertRaises(ImportError_):
-                    validate({'questions': [self._record(**extra)], 'notes': None})
-
-    def test_source_longer_than_the_column_is_rejected(self):
-        """SQLite は長さを見ないので、検査しないと手元で通って本番で落ちる。"""
-        long = 'シラバス Ver.8.0 中分類2 データ構造' + '（1）項目' * 60
-        with self.assertRaises(ImportError_):
-            validate({'questions': [self._record(source=long)], 'notes': None})
-        with self.assertRaises(ImportError_):
-            validate({'questions': None, 'notes': [
-                {'category': 2, 'topic': 'データ構造', 'title': 't', 'body': 'b', 'source': long}]})
-        # 項目まで書いた転記の出典は通る
-        validate({'questions': [self._record(
-            source='令和7年度 科目A 問3（中分類2 データ構造（2）木構造）')], 'notes': None})
-
-    def test_quiz_shows_the_figures(self):
-        self._sync(self._record(
-            figures=[{'src': png_uri(), 'alt': '根が a の2分木'}],
-            choice_figures=[png_uri(4), None, None, None],
-        ))
-        # テンプレートが生成する計算問題が選ばれないよう、その問題だけにする
-        Question.objects.filter(template__isnull=False).delete()
-        enter(self.client, make_learner('seer'))
-        response = self.client.get(reverse('fe:quiz'))
-        self.assertContains(response, 'src="{}"'.format(png_uri()))
-        self.assertContains(response, 'alt="根が a の2分木"')
-        self.assertContains(response, 'src="{}"'.format(png_uri(4)))
-
-        question = response.context['question']
-        response = self.client.post(reverse('fe:quiz'), {
-            'question_id': question.id, 'choice': question.answer_index,
-        })
-        self.assertContains(response, 'src="{}"'.format(png_uri()), msg_prefix='答えた後も図を出す')
-        self.assertContains(response, 'src="{}"'.format(png_uri(4)))
-
-
-class NoteAudioTests(TestCase):
-    """技術解説の読み上げ。音声は解説ごとに一度だけ作り、読んでいる間は時間を止める。"""
-
-    @classmethod
-    def setUpTestData(cls):
-        seed_masters()
-        cls.learner = make_learner('listener')
-
-    def setUp(self):
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        override = override_settings(FE_AUDIO_ROOT=folder.name)
-        override.enable()
-        self.addCleanup(override.disable)
-        self.root = Path(folder.name)
-        enter(self.client, self.learner)
-
-    def _start_round(self):
-        build_questions(per_category=12)
-        LearningNote.objects.all().delete()
-        for note in build_notes(codes=(9,)):
-            LearningNote.objects.create(
-                category=Category.objects.get(code=note['category']),
-                topic=note['topic'], title=note['title'],
-                body=note['body'], source=note['source'],
-            )
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
-        return LearningRound.objects.get(learner=self.learner)
-
-    def _put_audio(self, note, data=b'0123456789'):
-        (self.root / speech.audio_name(note)).write_bytes(data)
-
-    def test_spoken_text_reads_symbols_as_words(self):
-        self.assertEqual(speech.spoken_text('n×(n−1)÷2'), 'nかける(nひく1)わる2')
-        self.assertEqual(speech.spoken_text('相関係数は−1から1'), '相関係数はマイナス1から1')
-        self.assertEqual(speech.spoken_text('30＋22、P＝10'), '30たす22、Pイコール10')
-        self.assertEqual(speech.spoken_text('JavaやC++'), 'Javaやシープラスプラス')
-
-    def test_long_text_is_split_at_paragraphs(self):
-        text = '\n\n'.join(['あ' * 500, 'い' * 500, 'う' * 500])
-        parts = speech.chunks(text)
-        self.assertEqual(parts, ['あ' * 500 + '\n' + 'い' * 500, 'う' * 500])
-
-    def test_name_changes_only_when_the_body_changes(self):
-        note = LearningNote(title='見出し', body='本文')
-        same = LearningNote(title='別の見出し', body='本文')
-        edited = LearningNote(title='見出し', body='直した本文')
-        self.assertEqual(speech.audio_name(note), speech.audio_name(same))
-        self.assertNotEqual(speech.audio_name(note), speech.audio_name(edited))
-        self.assertRegex(speech.audio_name(note), speech.NAME_PATTERN)
-
-    def test_player_appears_only_when_the_audio_exists(self):
-        round_ = self._start_round()
-        url = reverse('fe:learn_read', args=[round_.pk])
-        self.assertNotContains(self.client.get(url), '<audio')
-
-        self._put_audio(round_.note)
-        self.assertContains(
-            self.client.get(url),
-            reverse('fe:note_audio', args=[speech.audio_name(round_.note)]),
-        )
-
-    def test_audio_answers_range_requests(self):
-        """iPhone の Safari は Range 要求で取りに来るので、206 で一部だけ返す。"""
-        round_ = self._start_round()
-        self._put_audio(round_.note)
-        url = reverse('fe:note_audio', args=[speech.audio_name(round_.note)])
-
-        whole = self.client.get(url)
-        self.assertEqual(whole.status_code, 200)
-        self.assertEqual(b''.join(whole.streaming_content), b'0123456789')
-        self.assertEqual(whole['Accept-Ranges'], 'bytes')
-
-        part = self.client.get(url, HTTP_RANGE='bytes=0-1')
-        self.assertEqual(part.status_code, 206)
-        self.assertEqual(part.content, b'01')
-        self.assertEqual(part['Content-Range'], 'bytes 0-1/10')
-
-        tail = self.client.get(url, HTTP_RANGE='bytes=-3')
-        self.assertEqual(tail.content, b'789')
-        self.assertEqual(self.client.get(url, HTTP_RANGE='bytes=4-').content, b'456789')
-        self.assertEqual(self.client.get(url, HTTP_RANGE='bytes=20-').status_code, 416)
-
-    def test_audio_rejects_other_names_and_strangers(self):
-        self.assertEqual(
-            self.client.get(reverse('fe:note_audio', args=['db.sqlite3'])).status_code, 404
-        )
-        self.assertEqual(
-            self.client.get(reverse('fe:note_audio', args=['0' * 20 + '.mp3'])).status_code, 404
-        )
-        round_ = self._start_round()
-        self._put_audio(round_.note)
-        stranger = self.client_class()
-        response = stranger.get(reverse('fe:note_audio', args=[speech.audio_name(round_.note)]))
-        self.assertRedirects(response, reverse('fe:index'), fetch_redirect_response=False)
-
-    def test_time_spent_listening_is_not_counted(self):
-        round_ = self._start_round()
-        now = timezone.now()
-        LearningRound.objects.filter(pk=round_.pk).update(
-            started_at=now - timezone.timedelta(seconds=200),
-            paused_at=now - timezone.timedelta(seconds=150),
-        )
-        round_.refresh_from_db()
-        # 200秒前に始め、150秒前から止めている。進んだのは50秒だけ
-        self.assertEqual(round_.remaining_seconds(now), 250)
-        round_.resume(now)
-        self.assertEqual(round_.paused_seconds, 150)
-        self.assertEqual(round_.remaining_seconds(now), 250)
-
-    def test_timer_endpoint_pauses_and_resumes(self):
-        round_ = self._start_round()
-        url = reverse('fe:learn_timer', args=[round_.pk])
-        response = self.client.post(url, {'state': 'pause'})
-        self.assertIn('remaining', response.json())
-        round_.refresh_from_db()
-        self.assertIsNotNone(round_.paused_at)
-
-        self.client.post(url, {'state': 'resume'})
-        round_.refresh_from_db()
-        self.assertIsNone(round_.paused_at)
-
-    def test_reloading_while_paused_starts_the_timer_again(self):
-        """開き直すと読み上げは止まっているので、止めたままにしない。"""
-        round_ = self._start_round()
-        LearningRound.objects.filter(pk=round_.pk).update(
-            paused_at=timezone.now() - timezone.timedelta(seconds=30),
-        )
-        self.client.get(reverse('fe:learn_read', args=[round_.pk]))
-        round_.refresh_from_db()
-        self.assertIsNone(round_.paused_at)
-        self.assertGreaterEqual(round_.paused_seconds, 30)
-
-    def test_command_makes_only_missing_audio(self):
-        round_ = self._start_round()
-        notes = list(LearningNote.objects.all())
-        self._put_audio(notes[0])
-        calls = []
-
-        def fake(text, key, region):
-            calls.append(text)
-            return b'mp3'
-
-        with mock.patch.object(speech, 'synthesize', fake), \
-                mock.patch.object(speech, 'REQUEST_INTERVAL', 0), \
-                mock.patch.dict('os.environ', {'AZURE_SPEECH_KEY': 'k', 'AZURE_SPEECH_REGION': 'r'}):
-            call_command('make_note_audio', stdout=io.StringIO())
-        self.assertEqual(len(calls), len(notes) - 1)
-        for note in notes:
-            self.assertTrue(speech.has_audio(note))
-
-        (self.root / ('f' * 20 + '.mp3')).write_bytes(b'old')
-        call_command('make_note_audio', '--prune', stdout=io.StringIO())
-        self.assertEqual(
-            sorted(p.name for p in self.root.iterdir()),
-            sorted(speech.audio_name(n) for n in notes),
-        )
-
-    def test_only_subject_a_notes_are_read_aloud(self):
-        """科目Bの解説には音声を作らず、ファイルがあっても再生ボタンを出さない。"""
-        round_ = self._start_round()
-        b_category = Category.objects.filter(subject=Question.SUBJECT_B).first()
-        b_note = LearningNote.objects.create(
-            category=b_category, topic='擬似言語', title='科目Bの解説', body='科目Bの本文',
-        )
-        self.assertFalse(speech.speaks(b_note))
-        self._put_audio(b_note)
-        self.assertFalse(speech.has_audio(b_note))
-
-        with mock.patch.object(speech, 'synthesize', return_value=b'mp3') as fake, \
-                mock.patch.object(speech, 'REQUEST_INTERVAL', 0), \
-                mock.patch.dict('os.environ', {'AZURE_SPEECH_KEY': 'k', 'AZURE_SPEECH_REGION': 'r'}):
-            call_command('make_note_audio', stdout=io.StringIO())
-        texts = [c.args[0] for c in fake.call_args_list]
-        self.assertFalse(any('科目Bの本文' in t for t in texts))
-        self.assertTrue(speech.has_audio(round_.note))
-
-        LearningRound.objects.filter(pk=round_.pk).update(note=b_note)
-        page = self.client.get(reverse('fe:learn_read', args=[round_.pk]))
-        self.assertNotContains(page, '<audio')
-
-
-class MailTests(TestCase):
-    """問題メール。確認のメールを経た登録、メールのリンクからだけの解除、毎日の送り方。"""
-
-    @classmethod
-    def setUpTestData(cls):
-        seed_masters()
-
-    def setUp(self):
-        from django.core import mail as outbox
-        self.outbox = outbox
-        self.learner = make_learner('mailer')
-        enter(self.client, self.learner)
-
-    def _sync(self, counts):
-        """{(中分類番号, 小分類): 問数} の問題を作る。"""
-        records = []
-        for (code, topic), n in counts.items():
-            category = Category.objects.get(code=code)
-            for i in range(n):
-                records.append({
-                    'category': code, 'subject': category.subject, 'topic': topic,
-                    'stem': '{}の問題{}'.format(topic, i),
-                    'choices': ['選択肢{}-{}'.format(j, i) for j in range(6 if code > 100 else 4)],
-                    'answer': 1, 'explanation': '{}の解説{}'.format(topic, i), 'source': '自作',
-                })
-        return sync(validate({'questions': records, 'notes': None}))
-
-    def _subscribe(self, email='me@example.com', **fields):
-        from .models import MailSubscription
-        subscription, _ = MailSubscription.objects.get_or_create(learner=self.learner)
-        subscription.email = email
-        for key, value in fields.items():
-            setattr(subscription, key, value)
-        subscription.save()
-        return subscription
-
-    def _link(self, message):
-        return urlsplit(re.search(r'http://\S+/fe/mail/\S+/', message.body).group(0)).path
-
-    # ---- 登録と解除 ----
-
-    def test_address_is_saved_only_after_pressing_receive(self):
-        from .models import MailSubscription
-        self._sync({(11, '情報セキュリティ'): 3})
-        response = self.client.post(reverse('fe:mail_settings'), {
-            'email': 'me@example.com', 'marathon': 'on',
-        })
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(len(self.outbox.outbox), 1)
-        self.assertEqual(self.outbox.outbox[0].to, ['me@example.com'])
-        subscription = MailSubscription.objects.get(learner=self.learner)
-        self.assertEqual(subscription.email, '')
-
-        link = self._link(self.outbox.outbox[0])
-        self.client.logout()  # 別の端末で開いても使える
-        self.assertContains(self.client.get(link), '受け取る')
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.email, '', '開いただけでは登録しない')
-        self.assertContains(self.client.post(link), '登録しました')
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.email, 'me@example.com')
-        self.assertContains(self.client.post(link), 'このリンクは使えません')
-
-    def test_old_confirm_link_dies_when_another_address_is_requested(self):
-        self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'marathon': 'on'})
-        old = self._link(self.outbox.outbox[0])
-        with override_settings(FE_MAIL_LINK_INTERVAL=0):
-            self.client.post(reverse('fe:mail_settings'), {'email': 'b@example.com', 'marathon': 'on'})
-        self.assertContains(self.client.post(old), 'このリンクは使えません')
-        self.assertContains(self.client.post(self._link(self.outbox.outbox[1])), '登録しました')
-
-    def test_confirmation_mails_are_throttled(self):
-        self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'marathon': 'on'})
-        self.client.post(reverse('fe:mail_settings'), {'email': 'b@example.com', 'marathon': 'on'})
-        self.assertEqual(len(self.outbox.outbox), 1)
-
-    def test_registered_address_cannot_be_changed_from_the_screen(self):
-        self._subscribe(marathon=True)
-        self._sync({(11, '情報セキュリティ'): 3})
-        self.client.post(reverse('fe:mail_settings'), {
-            'email': 'attacker@example.com', 'training': 'on', 'topics': ['11|情報セキュリティ'],
-        })
-        subscription = self.learner.mail_subscription
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.email, 'me@example.com')
-        self.assertFalse(subscription.marathon)
-        self.assertTrue(subscription.training)
-        self.assertEqual(subscription.training_topics, [[11, '情報セキュリティ']])
-        self.assertEqual(len(self.outbox.outbox), 0)
-
-    def test_training_needs_a_topic(self):
-        self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'training': 'on'})
-        self.assertEqual(len(self.outbox.outbox), 0)
-
-    def test_stop_only_from_the_mailed_link(self):
-        subscription = self._subscribe(marathon=True)
-        self.client.post(reverse('fe:mail_settings'), {'action': 'send_stop'})
-        self.assertEqual(self.outbox.outbox[0].to, ['me@example.com'])
-        link = self._link(self.outbox.outbox[0])
-        self.client.get(link)
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.email, 'me@example.com', '開いただけでは解除しない')
-        self.assertContains(self.client.post(link), '配信を止めました')
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.email, '')
-
-    def test_addresses_are_encrypted_in_the_db(self):
-        from django.db import connection
-        self.client.post(reverse('fe:mail_settings'), {'email': 'secret@example.com', 'marathon': 'on'})
-        with connection.cursor() as cursor:
-            cursor.execute('SELECT email_enc, pending_email_enc FROM funitclub_fe_mail_subscription')
-            rows = cursor.fetchall()
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][0], '')
-        self.assertNotIn('secret', rows[0][1])
-        self.assertEqual(self.learner.mail_subscription.pending_email, 'secret@example.com')
-
-        self.client.post(self._link(self.outbox.outbox[0]))
-        with connection.cursor() as cursor:
-            cursor.execute('SELECT email_enc, pending_email_enc FROM funitclub_fe_mail_subscription')
-            email_enc, pending_enc = cursor.fetchone()
-        self.assertNotIn('secret', email_enc)
-        self.assertEqual(pending_enc, '')
-        self.learner.mail_subscription.refresh_from_db()
-        self.assertEqual(self.learner.mail_subscription.email, 'secret@example.com')
-
-    def test_unreadable_address_counts_as_unregistered(self):
-        """SECRET_KEY を替えて読めなくなった宛先には送らない。"""
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 3})
-        self._subscribe(marathon=True)
-        with override_settings(SECRET_KEY='another-key-' + 'x' * 40, SECRET_KEY_FALLBACKS=[]):
-            self.assertEqual(self.learner.mail_subscription.email, '')
-            self.assertEqual(send_daily()['marathon'], 0)
-
-    def test_pending_address_is_purged_after_the_deadline(self):
-        from .mail import purge_pending
-        self.client.post(reverse('fe:mail_settings'), {'email': 'late@example.com', 'marathon': 'on'})
-        subscription = self.learner.mail_subscription
-        link = self._link(self.outbox.outbox[0])
-        sent_at = subscription.link_sent_at
-        self.assertEqual(purge_pending(sent_at + timezone.timedelta(minutes=59)), 0)
-        self.assertEqual(purge_pending(sent_at + timezone.timedelta(minutes=61)), 1)
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.pending_email, '')
-        self.assertContains(self.client.post(link), 'このリンクは使えません')
-
-    def test_dashboard_and_daily_run_purge_expired_pending(self):
-        from .mail import send_daily
-        from .models import MailSubscription
-        self.client.post(reverse('fe:mail_settings'), {'email': 'late@example.com', 'marathon': 'on'})
-        MailSubscription.objects.update(link_sent_at=timezone.now() - timezone.timedelta(hours=2))
-        self.assertNotContains(self.client.get(dashboard(self.learner)), '確認のメールを送ってあります')
-        self.assertEqual(MailSubscription.objects.exclude(pending_email_enc='').count(), 0)
-
-        MailSubscription.objects.update(pending_email_enc='x', link_sent_at=None)
-        send_daily()
-        self.assertEqual(MailSubscription.objects.exclude(pending_email_enc='').count(), 0)
-
-    def test_temporary_use_cannot_subscribe(self):
-        temporary = Learner.objects.create(code=None)
-        put_learner(self.client, temporary.pk)
-        response = self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'marathon': 'on'})
-        self.assertEqual(response.status_code, 403)
-
-    def test_dashboard_shows_the_picker(self):
-        self._sync({(11, '情報セキュリティ'): 3, (101, 'アルゴリズム'): 2})
-        response = self.client.get(dashboard(self.learner))
-        self.assertContains(response, 'id="mail"')
-        self.assertContains(response, 'value="11|情報セキュリティ"')
-        self.assertContains(response, 'value="101|アルゴリズム"')
-
-    # ---- 送り方 ----
-
-    def test_marathon_goes_in_order_by_topic_and_wraps(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 12, (2, 'データ構造'): 3})
-        subscription = self._subscribe(marathon=True)
-        day = timezone.localdate()
-
-        sizes = []
-        for i in range(4):
-            send_daily(day + timezone.timedelta(days=i))
-            sizes.append(self.outbox.outbox[-1].body.count('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n問'))
-        # 中分類2（3問）→ 中分類11の10問 → 残り2問 → 最初に戻って中分類2
-        self.assertEqual(sizes, [3, 10, 2, 3])
-        self.assertIn('データ構造', self.outbox.outbox[0].subject)
-        self.assertIn('1〜3問目／全15問・2周目', self.outbox.outbox[3].subject)
-        subscription.refresh_from_db()
-        self.assertEqual((subscription.marathon_position, subscription.marathon_laps), (3, 1))
-
-    def test_same_day_is_sent_once(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 3})
-        self._subscribe(marathon=True)
-        self.assertEqual(send_daily()['marathon'], 1)
-        self.assertEqual(send_daily()['marathon'], 0)
-        self.assertEqual(len(self.outbox.outbox), 1)
-
-    def test_training_runs_through_picked_topics_and_marathon_in_parallel(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 12, (2, 'データ構造'): 3, (9, 'データベース'): 4})
-        self._subscribe(marathon=True, training=True,
-                        training_topics=[[11, '情報セキュリティ'], [9, 'データベース']])
-        day = timezone.localdate()
-        result = send_daily(day)
-        self.assertEqual((result['marathon'], result['training']), (1, 1))
-        for i in range(1, 4):
-            send_daily(day + timezone.timedelta(days=i))
-        subjects = [m.subject for m in self.outbox.outbox if '特訓' in m.subject]
-        self.assertIn('情報セキュリティ（1〜10問目／12問）', subjects[0])
-        self.assertIn('情報セキュリティ（11〜12問目／12問）', subjects[1])
-        self.assertIn('データベース（1〜4問目／4問）', subjects[2])
-        self.assertIn('情報セキュリティ（1〜10問目／12問）', subjects[3])
-
-    def test_mail_has_answers_my_rates_stop_link_and_inline_figures(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 1})
-        question = Question.objects.get(template__isnull=True)
-        question.figures = [{'src': png_uri(), 'alt': '構成図'}]
-        question.save()
-        answer(self.learner, question, True)
-        self._subscribe(marathon=True)
-        send_daily()
-        message = self.outbox.outbox[0]
-        self.assertIn('正解 イ', message.body)
-        self.assertIn('情報セキュリティの解説0', message.body)
-        self.assertIn('100％（1/1）', message.body)
-        self.assertIn('/fe/mail/stop/', message.body)
-        html_body = message.alternatives[0][0]
-        self.assertIn('cid:q{}-f0@fe.mail'.format(question.id), html_body)
-        images = [part for part in message.attachments if getattr(part, 'get_content_type', None)]
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0]['Content-ID'], '<q{}-f0@fe.mail>'.format(question.id))
-        self.assertIn('Content-Type: multipart/related', message.message().as_string())
-
-    def test_stopped_address_gets_nothing(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 3})
-        self._subscribe(email='', marathon=True)
-        self.assertEqual(send_daily()['marathon'], 0)
-
-    # ---- 起動口 ----
-
-    def test_task_endpoint_needs_the_token(self):
-        url = reverse('fe:send_mails')
-        self.client.logout()
-        with override_settings(FE_MAIL_TOKEN=''):
-            self.assertEqual(self.client.post(url).status_code, 503)
-        with override_settings(FE_MAIL_TOKEN='secret'):
-            self.assertEqual(self.client.post(url, HTTP_X_FE_MAIL_TOKEN='wrong').status_code, 403)
-            response = self.client.post(url, HTTP_X_FE_MAIL_TOKEN='secret')
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), {'marathon': 0, 'training': 0, 'failed': 0})

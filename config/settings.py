@@ -38,9 +38,6 @@ CANONICAL_HOST = 'funitclub.org'
 SITE_URL = f'https://{CANONICAL_HOST}'
 MIDDLEWARE.insert(idx + 2, 'config.middleware.CanonicalHostMiddleware')
 
-# FE の読み上げ音声は wwwroot の外に置く。wwwroot はデプロイで中身が入れ替わることがある。
-FE_AUDIO_ROOT = '/home/fe_audio'
-
 # Azure App Service 用の設定（既定ホスト名でもアクセスできるようにしておく）
 if 'WEBSITE_HOSTNAME' in os.environ:
     _origin = f"https://{os.environ['WEBSITE_HOSTNAME']}"
