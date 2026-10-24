@@ -26,6 +26,8 @@ jobs:
         env:
           FE_MAIL_TOKEN: ${{ secrets.FE_MAIL_TOKEN }}
         run: |
-          curl --fail-with-body --silent --show-error --max-time 300 --retry 3 --retry-delay 30 \
+          # 図の多い問題を何通も送ると時間がかかるので、待ち時間は長めにする
+          curl --fail-with-body --silent --show-error --max-time 600 \
+            --retry 3 --retry-delay 30 --retry-all-errors \
             -X POST -H "X-Fe-Mail-Token: ${FE_MAIL_TOKEN}" \
             https://funitclub.org/fe/tasks/send-mails/

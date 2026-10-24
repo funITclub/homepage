@@ -2695,8 +2695,11 @@ class FigureTests(TestCase):
             figures=[{'src': png_uri(), 'alt': '根が a の2分木'}],
             choice_figures=[png_uri(4), None, None, None],
         ))
-        # テンプレートが生成する計算問題が選ばれないよう、その問題だけにする
+        # テンプレートが生成する計算問題が選ばれないよう、その問題だけにする。
+        # 生成済みの問題を消すだけでは、出題のときにテンプレートから作り直されて
+        # ときどきそちらが出るので、テンプレートも止める。
         Question.objects.filter(template__isnull=False).delete()
+        QuestionTemplate.objects.update(is_active=False)
         enter(self.client, make_learner('seer'))
         response = self.client.get(reverse('fe:quiz'))
         self.assertContains(response, 'src="{}"'.format(png_uri()))
