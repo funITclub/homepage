@@ -1,0 +1,33 @@
+# FE 対策アプリの問題メールを、毎日0時（日本時間）に送らせる。
+#
+# countdown-notify.yml と同じ作り。ここでは送信のきっかけを送るだけで、実際に送るのは
+# サイト側（/fe/tasks/send-mails/ → works/fe/mail.py の send_daily）。
+#
+# 環境 production のシークレット FE_MAIL_TOKEN に、App Service のアプリケーション設定
+# FE_MAIL_TOKEN と同じ値を入れておく（deploy.txt の「FE 対策アプリの問題メール」）。
+#
+# 同じ日に何度呼んでも同じ送り方では1通しか送らないので、「Run workflow」で手で流し直してよい。
+name: FE mails
+
+on:
+  schedule:
+    # 15:00 UTC = 0:00 JST
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: 今日の分の問題メールを送らせる
+        env:
+          FE_MAIL_TOKEN: ${{ secrets.FE_MAIL_TOKEN }}
+        run: |
+          # 図の多い問題を何通も送ると時間がかかるので、待ち時間は長めにする
+          curl --fail-with-body --silent --show-error --max-time 600 \
+            --retry 3 --retry-delay 30 --retry-all-errors \
+            -X POST -H "X-Fe-Mail-Token: ${FE_MAIL_TOKEN}" \
+            https://funitclub.org/fe/tasks/send-mails/
