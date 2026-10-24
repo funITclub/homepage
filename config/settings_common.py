@@ -138,7 +138,7 @@ GATE_BACK = subapps.gate_back(BASE_DIR)
 # 通行証の要らない入口。それぞれ別の鍵（メールの署名付きリンク・呼び出しトークン・
 # 編集画面のログイン）で守られているところだけを並べる。ここは守りを緩めるための
 # 一覧ではないので、増やすときは「別の鍵があるか」を確かめること。
-GATE_EXEMPT = ['/countdown/notify/', '/fe/manage/']
+GATE_EXEMPT = ['/countdown/notify/', '/fe/manage/', '/fe/mail/confirm/', '/fe/mail/stop/', '/fe/tasks/']
 # 一覧を開いてからアプリに入るまでの猶予
 GATE_MAX_AGE = 10 * 60
 
@@ -160,6 +160,9 @@ FE_MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 # 効くのは取り込みの確認画面で、内容を hidden の欄に載せて送り直すとき。
 # 上の上限と食い違わないよう合わせておく。
 DATA_UPLOAD_MAX_MEMORY_SIZE = FE_MAX_UPLOAD_BYTES + 1024 * 1024
+
+# FE の技術解説の読み上げ音声（manage.py make_note_audio で作る）
+FE_AUDIO_ROOT = BASE_DIR / 'media' / 'fe_audio'
 
 # サイト共通の表示情報（テンプレートから参照）
 SITE_NAME = 'fun IT club'
@@ -277,6 +280,16 @@ COUNTDOWN_NOTIFY_TOKEN = os.getenv('COUNTDOWN_NOTIFY_TOKEN', '')
 COUNTDOWN_CONFIRM_MAX_AGE = 60 * 60
 # 確認のメールを送りすぎないための上限。((件数, 秒) 同じ IP, (件数, 秒) 同じアドレス)。
 COUNTDOWN_CONFIRM_SEND_LIMITS = ((10, 60 * 60), (3, 60 * 60))
+
+# ---- FE 対策アプリの問題メール（works/fe/mail.py） ----
+# リンクの頭は上の SITE_URL を使う。
+# 毎日0時の送信を起こす呼び出し（/fe/tasks/send-mails/）の合言葉。
+# 空のときは入口を閉じる（503）。GitHub の Actions のシークレットと同じ値を入れる。
+FE_MAIL_TOKEN = os.getenv('FE_MAIL_TOKEN', '')
+# 確認のメールのリンクの有効期限（秒）
+FE_MAIL_CONFIRM_MAX_AGE = 60 * 60
+# 確認・解除のメールを、同じ ID から続けて送らせない間隔（秒）
+FE_MAIL_LINK_INTERVAL = 5 * 60
 
 # 確認のメールのリンクの有効期限（秒）。
 WG_JOIN_LINK_MAX_AGE = 60 * 60
