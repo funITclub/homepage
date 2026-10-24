@@ -18,28 +18,34 @@ ID には合言葉がなく、公開の場では管理用の ID を言い当て�
 
 import logging
 
+import hmac
 import json
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
-from django.core.exceptions import PermissionDenied
+from django.conf import settings
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
-from django.http import Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.core.validators import validate_email
 from django.utils.decorators import method_decorator
 from django.views import generic
+from django.views.decorators.csrf import csrf_exempt
 
 from .exam import EXAM, build_prompt
 from .forms import LearnerForm, PassReportForm, QuestionUploadForm
-from .importer import (ImportError_, export_records, needs_confirmation, parse,
+from .importer import (ImportError_, needs_confirmation, parse,
                        preview, sync, validate)
 from .learning import current_item, focus_category, grade, note_menu, start_round
+from . import mail, speech
 from .models import (Attempt, Category, CategoryProgress, Learner, LearningNote,
-                     LearningRound, PassReport, Question, QuestionTemplate,
-                     StudySession)
+                     LearningRound, MailSubscription, PassReport, Question,
+                     QuestionTemplate, StudySession)
 from .selection import pick_question
 from .stats import (categories_for, category_options, category_stats, daily_counts,
                     field_stats, overall_stats, record_progress, site_summary,
@@ -296,6 +302,7 @@ class DashboardView(LearnerRequiredMixin, generic.TemplateView):
         context['summary'] = site_summary()
         context['my_report'] = PassReport.objects.filter(learner=learner).first()
         context['pass_form'] = PassReportForm()
+        context.update(mail_context(learner))
         return context
 
 
@@ -545,7 +552,7 @@ class HistoryView(LearnerRequiredMixin, generic.ListView):
 # ================================================================ 問題の管理
 # 問題は全 ID で共有し、JSON の取り込みが唯一の作成・更新経路。
 # 画面に入力フォームを置かないので、手元の JSON と画面の内容がずれない。
-# 一覧・取り込み・書き出しは、管理用の ID だけが使える。
+# 一覧・取り込みは、管理用の ID だけが使える。
 
 
 class ManageListView(AdminRequiredMixin, generic.ListView):
@@ -610,8 +617,9 @@ class QuestionUploadView(AdminRequiredMixin, generic.FormView):
                 lines.append('{}：変更なし（ファイルに{}が含まれていません）'.format(label, label))
                 continue
             lines.append(
-                '{}：追加 {} / 更新 {} / 変更なし {} / 削除 {}'.format(
-                    label, counts['added'], counts['updated'],
+                '{}（{}）：追加 {} / 更新 {} / 変更なし {} / 削除 {}'.format(
+                    label, '・'.join('科目' + s for s in counts['subjects']),
+                    counts['added'], counts['updated'],
                     counts['unchanged'], counts['removed'],
                 )
             )
@@ -723,14 +731,22 @@ class LearnReadView(LearnerRequiredMixin, generic.View):
         if round_.phase == LearningRound.PHASE_QUIZ:
             return redirect('fe:learn_quiz', pk=round_.pk)
 
-        elapsed = (timezone.now() - round_.started_at).total_seconds()
+        # 開き直した時点で読み上げは止まっているので、止めていた時間を動かす
+        if round_.phase == LearningRound.PHASE_READING:
+            round_.resume()
+        # 同じ小分類の解説は、まとめて続けて読む
+        notes = round_.notes
+        for note in notes:
+            note.audio_url = (
+                reverse('fe:note_audio', args=[speech.audio_name(note)])
+                if speech.has_audio(note) else None
+            )
         return render(request, self.template_name, {
             'round': round_,
-            # 同じ小分類の解説は、まとめて続けて読む
-            'notes': round_.notes,
+            'notes': notes,
             'finished': round_.phase == LearningRound.PHASE_DONE,
             # 途中で再読み込みしても、残り時間は開始時刻から数え直す
-            'remaining': max(0, int(round_.reading_seconds - elapsed)),
+            'remaining': round_.remaining_seconds(),
         })
 
     def post(self, request, pk, *args, **kwargs):
@@ -739,6 +755,69 @@ class LearnReadView(LearnerRequiredMixin, generic.View):
             round_.phase = LearningRound.PHASE_QUIZ
             round_.save(update_fields=['phase'])
         return redirect('fe:learn_quiz', pk=round_.pk)
+
+
+class LearnTimerView(LearnerRequiredMixin, generic.View):
+    """読む時間を止める・動かす。読み上げを再生している間は止める。
+
+    残り時間はサーバーで数えているので、止めたこともサーバーに残す。画面の
+    数字だけ止めると、再読み込みしたときに止めていた分が消える。
+    """
+
+    def post(self, request, pk, *args, **kwargs):
+        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
+        if round_.phase == LearningRound.PHASE_READING:
+            if request.POST.get('state') == 'pause':
+                round_.pause()
+            else:
+                round_.resume()
+        return JsonResponse({'remaining': round_.remaining_seconds()})
+
+
+_RANGE = re.compile(r'^bytes=(\d*)-(\d*)$')
+
+
+class NoteAudioView(LearnerRequiredMixin, generic.View):
+    """技術解説の読み上げ音声を返す。
+
+    iPhone の Safari は音声を「何バイト目から何バイト目まで」と区切って取りに来る
+    （Range 要求）。これに 206 で応えないと、再生や途中への移動ができないことがある。
+    ファイル名は本文から計算したハッシュで、中身が変わることはないので長く持たせる。
+    """
+
+    def get(self, request, name, *args, **kwargs):
+        if not speech.NAME_PATTERN.match(name):
+            raise Http404
+        path = speech.audio_root() / name
+        if not path.is_file():
+            raise Http404
+        size = path.stat().st_size
+        match = _RANGE.match(request.headers.get('Range', ''))
+        if match is None:
+            response = FileResponse(open(path, 'rb'), content_type='audio/mpeg')
+        else:
+            first, last = match.groups()
+            if first:
+                start, end = int(first), int(last) if last else size - 1
+            elif last:
+                # 「末尾の n バイト」の形
+                start, end = max(0, size - int(last)), size - 1
+            else:
+                start, end = 0, size - 1
+            end = min(end, size - 1)
+            if start > end:
+                response = HttpResponse(status=416)
+                response['Content-Range'] = 'bytes */{}'.format(size)
+                return response
+            with open(path, 'rb') as audio:
+                audio.seek(start)
+                data = audio.read(end - start + 1)
+            response = HttpResponse(data, status=206, content_type='audio/mpeg')
+            response['Content-Range'] = 'bytes {}-{}/{}'.format(start, end, size)
+            response['Content-Length'] = str(len(data))
+        response['Accept-Ranges'] = 'bytes'
+        response['Cache-Control'] = 'private, max-age=31536000, immutable'
+        return response
 
 
 class LearnQuizView(LearnerRequiredMixin, generic.View):
@@ -855,14 +934,165 @@ class LearnResultView(LearnerRequiredMixin, generic.DetailView):
         return context
 
 
-class QuestionExportView(AdminRequiredMixin, generic.View):
-    """共有の問題を、取り込みと同じ形式の JSON で書き出す。"""
+# ---- 問題メール（fe.mail） ----
 
-    def get(self, request, *args, **kwargs):
-        subject = request.GET.get('subject')
-        payload = export_records(subject)
-        body = json.dumps(payload, ensure_ascii=False, indent=1)
-        response = HttpResponse(body, content_type='application/json; charset=utf-8')
-        name = 'fe_{}.json'.format(subject.lower()) if subject in ('A', 'B') else 'fe_all.json'
-        response['Content-Disposition'] = 'attachment; filename="{}"'.format(name)
-        return response
+def mail_context(learner):
+    """ダッシュボードの「問題メール」の欄に渡すもの。"""
+    if learner.is_temporary:
+        return {'mail_subscription': None}
+    mail.purge_pending()
+    subscription = MailSubscription.objects.filter(learner=learner).first()
+    picked = {
+        mail.topic_value(code, topic) for code, topic in (subscription.training_topics if subscription else [])
+    }
+    total = len(mail.marathon_questions()) if subscription and subscription.marathon else 0
+    return {
+        'mail_subscription': subscription,
+        'mail_topic_groups': mail.topic_choices(),
+        'mail_picked_topics': picked,
+        'mail_marathon_total': total,
+    }
+
+
+class MailSettingsView(LearnerRequiredMixin, generic.View):
+    """問題メールの登録と、送り方の変更。
+
+    未登録なら、アドレスに確認のメールを送る（登録はリンクを開いてから）。
+    登録済みならアドレスは変えず、送り方と特訓の小分類だけを変える。
+    action=send_stop なら、配信先へ解除用のメールを送る。
+    """
+
+    def check_learner(self, learner):
+        if learner.is_temporary:
+            raise PermissionDenied('問題メールには ID の登録が必要です。')
+
+    def post(self, request, *args, **kwargs):
+        back = dashboard_url(self.learner) + '#mail'
+        subscription, _ = MailSubscription.objects.get_or_create(learner=self.learner)
+
+        if request.POST.get('action') == 'send_stop':
+            if not subscription.email:
+                return redirect(back)
+            if not mail.can_send_link(subscription):
+                messages.error(request, '解除用のメールは送ったばかりです。少し時間をおいてください。')
+                return redirect(back)
+            mail.send_stop_link(subscription)
+            subscription.link_sent_at = timezone.now()
+            subscription.save(update_fields=['link_sent_at'])
+            messages.success(request, '登録されているアドレスに、解除用のメールを送りました。')
+            return redirect(back)
+
+        marathon = request.POST.get('marathon') == 'on'
+        training = request.POST.get('training') == 'on'
+        topics = mail.parse_topic_values(request.POST.getlist('topics'))
+        if training and not topics:
+            messages.error(request, '特訓では、小分類を1つ以上選んでください。')
+            return redirect(back)
+
+        email = request.POST.get('email', '').strip()
+        if not subscription.email:
+            if not (marathon or training):
+                messages.error(request, 'マラソンか特訓の、少なくとも一方を選んでください。')
+                return redirect(back)
+            try:
+                validate_email(email)
+            except ValidationError:
+                messages.error(request, 'メールアドレスの形が正しくありません。')
+                return redirect(back)
+            if not mail.can_send_link(subscription):
+                messages.error(request, '確認のメールは送ったばかりです。少し時間をおいてください。')
+                return redirect(back)
+
+        if topics != subscription.training_topics:
+            # 選び直したら、選んだ小分類の最初から
+            subscription.training_index = subscription.training_offset = 0
+        subscription.marathon = marathon
+        subscription.training = training
+        subscription.training_topics = topics
+
+        if subscription.email:
+            subscription.save()
+            messages.success(request, '問題メールの送り方を変えました。')
+            return redirect(back)
+
+        subscription.pending_email = email
+        subscription.link_sent_at = timezone.now()
+        subscription.save()
+        mail.send_confirmation(subscription)
+        messages.success(
+            request,
+            '確認のメールを送りました。メールのリンクを開いて「受け取る」を押すと登録されます。',
+        )
+        return redirect(back)
+
+
+@method_decorator(login_not_required, name='dispatch')
+class MailConfirmView(generic.View):
+    """確認のメールのリンク。開いただけでは登録せず、「受け取る」を押して登録する。
+
+    メールソフトや迷惑メールの検査がリンクを先に開くことがあるため。
+    別の端末で開くこともあるので、入っている ID は見ない。
+    """
+
+    template_name = 'fe/mail_link.html'
+
+    def get(self, request, token):
+        try:
+            subscription = mail.read_confirm_token(token)
+        except mail.LinkInvalid:
+            return render(request, self.template_name, {'invalid': True, 'kind': 'confirm'})
+        return render(request, self.template_name, {'kind': 'confirm', 'subscription': subscription})
+
+    def post(self, request, token):
+        try:
+            subscription = mail.read_confirm_token(token)
+        except mail.LinkInvalid:
+            return render(request, self.template_name, {'invalid': True, 'kind': 'confirm'})
+        mail.confirm(subscription)
+        return render(request, self.template_name, {'done': True, 'kind': 'confirm', 'subscription': subscription})
+
+
+@method_decorator(login_not_required, name='dispatch')
+class MailStopView(generic.View):
+    """解除のリンク。開いただけでは解除せず、「配信を止める」を押して解除する。"""
+
+    template_name = 'fe/mail_link.html'
+
+    def get(self, request, token):
+        try:
+            subscription = mail.read_stop_token(token)
+        except mail.LinkInvalid:
+            return render(request, self.template_name, {'invalid': True, 'kind': 'stop'})
+        return render(request, self.template_name, {'kind': 'stop', 'subscription': subscription})
+
+    def post(self, request, token):
+        try:
+            subscription = mail.read_stop_token(token)
+        except mail.LinkInvalid:
+            return render(request, self.template_name, {'invalid': True, 'kind': 'stop'})
+        mail.stop(subscription)
+        return render(request, self.template_name, {'done': True, 'kind': 'stop', 'subscription': subscription})
+
+
+@method_decorator(login_not_required, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
+class SendMailsView(generic.View):
+    """問題メールの送信を、GitHub Actions の定期実行から起こす入口。
+
+    Azure App Service には cron が無いため、毎日0時に POST で叩かせる。
+    ログインの代わりに共有トークン（settings.FE_MAIL_TOKEN）で確かめる。
+    countdown の SendRemindersView と同じ形。
+    """
+
+    def post(self, request):
+        expected = settings.FE_MAIL_TOKEN
+        if not expected:
+            logger.error('FE_MAIL_TOKEN が未設定のため、問題メールを送れません。')
+            return JsonResponse({'detail': '問題メール用のトークンが未設定です。'}, status=503)
+        provided = request.headers.get('X-Fe-Mail-Token', '')
+        if not hmac.compare_digest(provided, expected):
+            logger.warning('問題メールの送信が、不正なトークンで試みられました。')
+            return JsonResponse({'detail': '認証できません。'}, status=403)
+        result = mail.send_daily()
+        logger.info('問題メールを送りました（%s）', result)
+        return JsonResponse(result)
