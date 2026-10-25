@@ -335,6 +335,8 @@ class ClubChatTests(TestCase):
         done = self.client.get(reverse('home:join_apply_done'))
         self.assertContains(done, 'お知らせを見逃さないために')
         self.assertContains(done, '「Google Classroom」と「Google Chat」のアプリ')
+        # 私用のアカウントでは見えないので、大学のアカウントでと明示する
+        self.assertContains(done, '大学のアカウントでログインする')
         self.assertContains(done, 'Chat のお知らせのスペースの通知')
         # 招待を使っていなくても（手作業で案内する人にも）出す。Chat の通知はスペースがあるときだけ
         with self.settings(**NO_INVITE):
