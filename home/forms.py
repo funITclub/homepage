@@ -61,13 +61,13 @@ class JoinForm(forms.Form):
                     settings.JOIN_ALLOWED_EMAIL_DOMAIN))
         return email
 
-    def send_email(self, classroom=None, chat_failed=False):
+    def send_email(self, classroom=None, chat_added=False, chat_failed=False):
         """申込者への自動返信を送る。手作業が要るときは事務局への通知も1本の接続でまとめて送る。
 
         classroom はクラブのクラスへの招待の結果（google.INVITED / google.MEMBER / 'failed' /
         None＝招待していない）。INVITED のときは申込者には送らない（Google の招待メールだけが届く）。
-        MEMBER は事務局に知らせない。chat_failed はお知らせの Chat スペースに追加できなかったこと
-        で、そのときは事務局に知らせる。
+        MEMBER は事務局に知らせない。chat_added はお知らせの Chat スペースに追加したことで、
+        控えにも書く。chat_failed は追加できなかったことで、そのときは事務局に知らせる。
         """
         email = self.cleaned_data['email']
         summary = f'メールアドレス: {email}'
@@ -100,7 +100,8 @@ class JoinForm(forms.Form):
             subject=f'[{settings.SITE_NAME}] 参加申し込みを受け付けました',
             body=(
                 f'{settings.SITE_NAME} への参加申し込みをありがとうございます。\n'
-                + _next_step(classroom, summary, contact) +
+                + _next_step(classroom, summary, contact)
+                + (_CHAT_ADDED if chat_added else '') +
                 '■ このメールに心当たりがない場合\n'
                 '第三者があなたのメールアドレスを入力した可能性があります。\n'
                 'このメールを破棄していただければ、手続きは進みません。\n'
@@ -134,6 +135,14 @@ class JoinForm(forms.Form):
             to=notify_to,
             reply_to=[email],
         )
+
+
+#: 控えのメールに書く、お知らせの Chat スペースのこと（追加できたときだけ。完了ページと同じ文面）
+_CHAT_ADDED = (
+    '■ Google Chat のお知らせ\n'
+    '大学のアカウントで Google Chat を開くと、クラブのお知らせのスペースのメンバーになっています。\n'
+    '運営や各 WG、メンバーからのお知らせは、ここに投稿されます。\n\n'
+)
 
 
 def _next_step(classroom, summary, contact):

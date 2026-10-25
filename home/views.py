@@ -259,10 +259,12 @@ class JoinApplyView(NavMixin, FormView):
                 classroom = 'failed'
                 logger.error('参加申し込み: クラブのクラスに招待できませんでした', exc_info=True)
 
+        chat_added = False   # お知らせの Chat スペースに追加した（控えのメールを送るときはそれも書く）
         chat_failed = False  # お知らせの Chat スペースに追加できなかった（手作業で追加する）
         if can_add_to_club_chat():
             try:
                 google.add_to_chat_space(club_chat_space(), form.cleaned_data['email'])
+                chat_added = True
                 logger.info('参加申し込み: お知らせの Chat スペースに追加しました')
             except ServiceError:
                 chat_failed = True
@@ -272,7 +274,7 @@ class JoinApplyView(NavMixin, FormView):
             # 招待できたときは申込者には何も送らない。Google の招待メール（クラスの「参加」ボタン付き）だけが届く。
             # Chat に追加できなかったときは、事務局にだけ知らせる
             if classroom != google.INVITED or chat_failed:
-                form.send_email(classroom=classroom, chat_failed=chat_failed)
+                form.send_email(classroom=classroom, chat_added=chat_added, chat_failed=chat_failed)
         except (smtplib.SMTPException, OSError, BadHeaderError):
             # SMTP の設定漏れや送信障害で 500 にせず、フォームに戻して知らせる。
             # BadHeaderError はヘッダに改行を入れられたときに出る（Django が
