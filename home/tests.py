@@ -303,6 +303,15 @@ class ClubChatTests(TestCase):
         chat.assert_called_once()
         [auto_reply] = mail.outbox
         self.assertIn('すでに', auto_reply.body)
+        # 控えを送るときは、お知らせのスペースに入ったことも書く
+        self.assertIn('お知らせのスペースのメンバーになっています', auto_reply.body)
+
+    def test_reply_does_not_claim_the_space_when_not_added(self):
+        from wgjoin.http import ServiceError
+        with self.assertLogs('home', level='ERROR'):
+            self.post(invite=google.MEMBER, side_effect=ServiceError('403'))
+        auto_reply = [m for m in mail.outbox if m.to == [self.EMAIL]][0]
+        self.assertNotIn('お知らせのスペースのメンバー', auto_reply.body)
 
     def test_failure_tells_only_the_staff(self):
         from wgjoin.http import ServiceError
