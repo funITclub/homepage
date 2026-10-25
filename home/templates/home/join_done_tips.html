@@ -1,0 +1,33 @@
+{% comment %}
+申し込みの完了ページ（join_done.html）の下に出す、アプリと通知のおすすめ。
+通信教育課程なので、連絡はほぼ Classroom と Chat だけ。気づけるように受け取り方を勧めておく。
+{% endcomment %}
+<div class="notice">
+    <p class="notice-title">お知らせを見逃さないために（おすすめ）</p>
+    <ol class="done-steps">
+        <li>
+            <span class="done-step-title">スマートフォンにアプリを入れる</span>
+            「Google Classroom」と「Google Chat」のアプリを入れ、<strong>大学のアカウント</strong>で
+            ログインします。私用の Google アカウントも使っている場合は、アプリの右上のアイコンから
+            大学のアカウントを追加して切り替えます。
+        </li>
+        <li>
+            <span class="done-step-title">アプリの通知を許可する</span>
+            スマートフォンの設定で、Classroom と Chat の通知をオンにします。
+            初めて開いたときに通知の許可を聞かれたら「許可」を選びます。
+        </li>
+        <li>
+            <span class="done-step-title">Classroom の通知をオンのままにする</span>
+            Classroom のアプリの「設定」→「通知」で、クラブのクラスの通知をオンにしておきます。
+            課題や資料、クラスへの投稿が届きます。
+        </li>
+        {% if club_chat %}
+        <li>
+            <span class="done-step-title">お知らせのスペースは「すべて通知」にする</span>
+            Chat でクラブのお知らせのスペースを開き、スペース名 →「通知」で、すべての投稿を
+            通知する設定にします。運営・各 WG・メンバーからのお知らせが届きます。
+            WG に参加したら、WG のスペースも同じようにしておくと便利です。
+        </li>
+        {% endif %}
+    </ol>
+</div>

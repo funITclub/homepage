@@ -107,6 +107,8 @@
 
         {% endif %}
 
+        {% include "home/join_done_tips.html" %}
+
         <div class="done-actions">
             <a class="btn btn-lg" href="{% url 'home:index' %}">TOPへ戻る</a>
             <a class="btn btn-ghost" href="{% url 'home:wg_list' %}">WG一覧を見る</a>

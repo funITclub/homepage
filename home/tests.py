@@ -330,6 +330,18 @@ class ClubChatTests(TestCase):
         self.assertContains(self.client.get(self.url), 'お知らせの Google Chat')
         self.assertContains(self.client.get(reverse('home:join_apply_done')), 'お知らせの Chat を確認する')
 
+    def test_done_page_recommends_apps_and_notifications(self):
+        """連絡はほぼ Classroom と Chat だけなので、アプリと通知の設定を勧める。"""
+        done = self.client.get(reverse('home:join_apply_done'))
+        self.assertContains(done, 'お知らせを見逃さないために')
+        self.assertContains(done, '「Google Classroom」と「Google Chat」のアプリ')
+        self.assertContains(done, 'すべて通知')
+        # 招待を使っていなくても（手作業で案内する人にも）出す。Chat の行はスペースがあるときだけ
+        with self.settings(**NO_INVITE):
+            done = self.client.get(reverse('home:join_apply_done'))
+            self.assertContains(done, 'お知らせを見逃さないために')
+            self.assertNotContains(done, 'すべて通知')
+
     def test_not_added_without_the_space(self):
         with self.settings(CLUB_CHAT_SPACE=''):
             chat = self.post()
