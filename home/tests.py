@@ -328,7 +328,7 @@ class ClubChatTests(TestCase):
 
     def test_pages_say_the_address_is_added_to_the_space(self):
         self.assertContains(self.client.get(self.url), 'お知らせの Google Chat')
-        self.assertContains(self.client.get(reverse('home:join_apply_done')), 'お知らせの Chat を確認する')
+        self.assertContains(self.client.get(reverse('home:join_apply_done')), 'Google Chat でお知らせを見る')
 
     def test_done_page_recommends_apps_and_notifications(self):
         """連絡はほぼ Classroom と Chat だけなので、アプリと通知の設定を勧める。"""
@@ -349,7 +349,7 @@ class ClubChatTests(TestCase):
             chat = self.post()
             chat.assert_not_called()
             self.assertNotContains(self.client.get(self.url), 'お知らせの Google Chat')
-            self.assertNotContains(self.client.get(reverse('home:join_apply_done')), 'お知らせの Chat')
+            self.assertNotContains(self.client.get(reverse('home:join_apply_done')), 'Google Chat でお知らせを見る')
 
 
 @override_settings(**NO_INVITE)
