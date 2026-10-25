@@ -21,11 +21,12 @@ from wgjoin import google
 
 from .models import BlockedIp
 
-# 手元の .env に Google の設定が入っていても、テストでは本物のクラスに招待しない
-NO_INVITE = dict(CLUB_CLASSROOM_COURSE='')
+# 手元の .env に Google の設定が入っていても、テストでは本物のクラスに招待しない（Chat にも追加しない）
+NO_INVITE = dict(CLUB_CLASSROOM_COURSE='', CLUB_CHAT_SPACE='')
 INVITE = dict(
-    CLUB_CLASSROOM_COURSE='987654321098', GOOGLE_OAUTH_CLIENT_ID='google-client',
+    CLUB_CLASSROOM_COURSE='987654321098', CLUB_CHAT_SPACE='', GOOGLE_OAUTH_CLIENT_ID='google-client',
     GOOGLE_OAUTH_CLIENT_SECRET='google-secret', GOOGLE_OAUTH_REFRESH_TOKEN='staff-refresh')
+CLUB_CHAT = dict(INVITE, CLUB_CHAT_SPACE='https://chat.google.com/room/AAQAjW7PaRU?cls=7')
 
 
 @override_settings(**NO_INVITE)
@@ -268,6 +269,73 @@ class ClassroomInviteTests(TestCase):
             invite.assert_not_called()
             self.assertIn('自動の招待は使っていません', mail.outbox[0].body)
             self.assertNotContains(self.client.get(self.url), 'クラスへの招待を送るために使います')
+
+
+@override_settings(**CLUB_CHAT)
+class ClubChatTests(TestCase):
+    """申し込みの時点で、運営の権限でクラブのお知らせの Chat スペースに追加する。"""
+
+    EMAIL = 'bu0000000000@bukkyo-u.ac.jp'
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('home:join_apply')
+
+    def post(self, invite=google.INVITED, **chat):
+        with mock.patch.object(google, 'invite_to_club', return_value=invite), \
+                mock.patch.object(google, 'add_to_chat_space', **chat) as chat_mock:
+            response = self.client.post(self.url, {'email': self.EMAIL})
+        self.assertRedirects(response, reverse('home:join_apply_done'))
+        return chat_mock
+
+    def test_adds_the_applicant_to_the_club_space(self):
+        with self.assertLogs('home', level='INFO') as logs:
+            chat = self.post()
+        # URL で設定しても spaces/<ID> にして渡す
+        chat.assert_called_once_with('spaces/AAQAjW7PaRU', self.EMAIL)
+        # 追加できたら何も送らない（招待できたときと同じ）
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertIn('Chat スペースに追加しました', '\n'.join(logs.output))
+        self.assertNotIn('bu0000000000', '\n'.join(logs.output))
+
+    def test_someone_already_in_the_class_is_added_too(self):
+        chat = self.post(invite=google.MEMBER)
+        chat.assert_called_once()
+        [auto_reply] = mail.outbox
+        self.assertIn('すでに', auto_reply.body)
+
+    def test_failure_tells_only_the_staff(self):
+        from wgjoin.http import ServiceError
+        with self.assertLogs('home', level='ERROR') as logs:
+            self.post(side_effect=ServiceError('403'))
+        # 招待はできているので、申込者には送らない。手作業が要るので事務局にだけ知らせる
+        [notification] = mail.outbox
+        self.assertEqual(notification.to, [settings.JOIN_NOTIFY_EMAIL])
+        self.assertIn(self.EMAIL, notification.body)
+        self.assertIn('Chat スペースに追加できませんでした', notification.body)
+        self.assertNotIn('Classroom', notification.body)
+        self.assertIn('追加できませんでした', '\n'.join(logs.output))
+        self.assertNotIn('bu0000000000', '\n'.join(logs.output))
+
+    def test_both_failures_go_into_one_notification(self):
+        from wgjoin.http import ServiceError
+        with self.assertLogs('home', level='ERROR'):
+            self.post(invite='failed', side_effect=ServiceError('403'))
+        notification, auto_reply = mail.outbox
+        self.assertIn('手作業で招待してください', notification.body)
+        self.assertIn('手作業で追加してください', notification.body)
+        self.assertIn('7日以内', auto_reply.body)
+
+    def test_pages_say_the_address_is_added_to_the_space(self):
+        self.assertContains(self.client.get(self.url), 'お知らせの Google Chat')
+        self.assertContains(self.client.get(reverse('home:join_apply_done')), 'お知らせの Chat を確認する')
+
+    def test_not_added_without_the_space(self):
+        with self.settings(CLUB_CHAT_SPACE=''):
+            chat = self.post()
+            chat.assert_not_called()
+            self.assertNotContains(self.client.get(self.url), 'お知らせの Google Chat')
+            self.assertNotContains(self.client.get(reverse('home:join_apply_done')), 'お知らせの Chat')
 
 
 @override_settings(**NO_INVITE)

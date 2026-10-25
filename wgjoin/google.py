@@ -4,9 +4,10 @@
 #
 #   名簿     … クラブの Classroom のクラスの名簿で、あるアドレスの人がメンバーかを確かめる。
 #              参加の申し込み（/join/apply/）では、まだいない人をクラスに招待する
-#   Chat     … WG の Chat スペースに本人を追加する（WG に Chat スペースが登録されているとき）
+#   Chat     … WG の Chat スペースに本人を追加する（WG に Chat スペースが登録されているとき）。
+#              参加の申し込みでは、クラブのお知らせのスペースに追加する（CLUB_CHAT_SPACE があるとき）
 #
-# 運営（クラスの先生で、各 WG のスペースのメンバー）が一度だけ
+# 運営（クラスの先生で、お知らせと各 WG のスペースのメンバー）が一度だけ
 # `manage.py wgjoin_google_authorize` で許可し、そのリフレッシュトークンを
 # GOOGLE_OAUTH_REFRESH_TOKEN に置く（本番は Key Vault）。頼む権限は
 # 「名簿を管理する」（classroom.rosters。見る・招待する）と「Chat のメンバーを管理する」（chat.memberships）。
@@ -81,7 +82,7 @@ def invite_to_club(email, club_course_id):
 
 
 def add_to_chat_space(space, email):
-    """WG の Chat スペース（spaces/<ID>）に追加する。もういる人はそのまま。"""
+    """Chat スペース（spaces/<ID>。WG のスペースかクラブのお知らせ）に追加する。もういる人はそのまま。"""
     status, body = call('POST', f'{CHAT_API}/{space}/members',
                         headers={'Authorization': f'Bearer {_access_token()}'},
                         json_body={'member': {'name': f'users/{email}', 'type': 'HUMAN'}})
