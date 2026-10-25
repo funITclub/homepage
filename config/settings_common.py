@@ -250,6 +250,8 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # どれかが欠けていれば「WG に参加」を出さない（wgjoin.config.is_enabled）。
 #
 #   CLUB_CLASSROOM_COURSE      … クラブの Classroom のクラス（URL か ID）。ここにいる人をメンバーとみなす
+#   CLUB_CHAT_SPACE            … 任意。クラブのお知らせの Chat スペース（URL か spaces/<ID>）。
+#                                参加の申し込みの時点で申込者を追加する（home/views.py）。空なら追加しない
 #   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET
 #                              … Google Cloud の OAuth クライアント（デスクトップ アプリ）
 #   GOOGLE_OAUTH_REFRESH_TOKEN … クラスの先生（運営）が名簿の管理と Chat のメンバーの管理を許可したもの
@@ -261,6 +263,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 #                                Projects）を読む。トークンはその WG の読み取りだけに絞って取る
 GITHUB_ORG = os.getenv('GITHUB_ORG', 'funITclub')
 CLUB_CLASSROOM_COURSE = os.getenv('CLUB_CLASSROOM_COURSE', '')
+CLUB_CHAT_SPACE = os.getenv('CLUB_CHAT_SPACE', '')
 GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '')
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '')
 GOOGLE_OAUTH_REFRESH_TOKEN = os.getenv('GOOGLE_OAUTH_REFRESH_TOKEN', '')

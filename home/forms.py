@@ -34,6 +34,9 @@ CLASSROOM_NOTES = {
     None: '自動の招待は使っていません。手作業で招待してください',
 }
 
+#: お知らせの Chat スペースに自動で追加できなかったとき、事務局への通知に書く
+CHAT_FAILED_NOTE = 'お知らせの Chat スペースに追加できませんでした。手作業で追加してください'
+
 
 class JoinForm(forms.Form):
     """参加の申し込み。申込者への自動返信を送る（クラスに招待できなかったときは事務局にも）。"""
@@ -58,11 +61,13 @@ class JoinForm(forms.Form):
                     settings.JOIN_ALLOWED_EMAIL_DOMAIN))
         return email
 
-    def send_email(self, classroom=None):
+    def send_email(self, classroom=None, chat_failed=False):
         """申込者への自動返信を送る。手作業が要るときは事務局への通知も1本の接続でまとめて送る。
 
-        classroom はクラブのクラスへの招待の結果（google.MEMBER / 'failed' / None＝招待していない）。
-        招待できたとき（google.INVITED）は呼ばない。MEMBER は事務局に知らせない。
+        classroom はクラブのクラスへの招待の結果（google.INVITED / google.MEMBER / 'failed' /
+        None＝招待していない）。INVITED のときは申込者には送らない（Google の招待メールだけが届く）。
+        MEMBER は事務局に知らせない。chat_failed はお知らせの Chat スペースに追加できなかったこと
+        で、そのときは事務局に知らせる。
         """
         email = self.cleaned_data['email']
         summary = f'メールアドレス: {email}'
@@ -74,9 +79,18 @@ class JoinForm(forms.Form):
         contact = public_contact_email()
 
         messages = []
+        notes = []
         if classroom in CLASSROOM_NOTES:
+            notes.append(f'Classroom　　 : {CLASSROOM_NOTES[classroom]}')
+        if chat_failed:
+            notes.append(f'Chat　　　　　: {CHAT_FAILED_NOTE}')
+        if notes:
             # 事務局あて。そのまま返信すれば申込者に届くよう Reply-To を申込者にする。
-            messages.append(self._notification(email, summary, classroom, from_email, notify_to))
+            messages.append(self._notification(email, summary, notes, from_email, notify_to))
+
+        if classroom == google.INVITED:
+            get_connection().send_messages(messages)
+            return
 
         # 申込者あての控え。問い合わせ先は事務局アドレス。
         # 申し込みフォームは入力されたアドレスの持ち主を確認していないので、
@@ -105,13 +119,13 @@ class JoinForm(forms.Form):
         connection.send_messages(messages)
 
     @staticmethod
-    def _notification(email, summary, classroom, from_email, notify_to):
+    def _notification(email, summary, notes, from_email, notify_to):
         return EmailMessage(
-            subject=f'[{settings.SITE_NAME}] 参加申し込み（手作業での招待が必要）',
+            subject=f'[{settings.SITE_NAME}] 参加申し込み（手作業が必要）',
             body=(
                 '公開サイトの参加フォームから申し込みがありました。\n\n'
                 f'{summary}\n'
-                f'Classroom　　 : {CLASSROOM_NOTES[classroom]}\n\n'
+                + ''.join(f'{note}\n' for note in notes) + '\n'
                 '--\n'
                 'このメールは公開サイト（/join/apply/）から自動送信しています。\n'
                 'このまま返信すると申込者に届きます。\n'

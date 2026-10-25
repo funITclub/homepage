@@ -5,12 +5,17 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 
-from .links import decode_course_id
+from .links import decode_chat_space, decode_course_id
 
 
 def club_course_id():
     """クラブの Classroom のクラスの ID。ここにいる人をメンバーとみなす。"""
     return decode_course_id(settings.CLUB_CLASSROOM_COURSE)
+
+
+def club_chat_space():
+    """クラブのお知らせの Chat スペース（spaces/<ID>）。参加の申し込みで申込者を追加する。"""
+    return decode_chat_space(settings.CLUB_CHAT_SPACE)
 
 
 def club_classroom_url():
@@ -42,6 +47,16 @@ def can_invite_to_club():
     """参加の申し込みで、クラブのクラスに招待できるだけの設定がそろっているか。"""
     return all([
         club_course_id(),
+        settings.GOOGLE_OAUTH_CLIENT_ID,
+        settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        settings.GOOGLE_OAUTH_REFRESH_TOKEN,
+    ])
+
+
+def can_add_to_club_chat():
+    """参加の申し込みで、クラブのお知らせの Chat スペースに追加できるだけの設定がそろっているか。"""
+    return all([
+        club_chat_space(),
         settings.GOOGLE_OAUTH_CLIENT_ID,
         settings.GOOGLE_OAUTH_CLIENT_SECRET,
         settings.GOOGLE_OAUTH_REFRESH_TOKEN,

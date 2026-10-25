@@ -26,7 +26,7 @@ from django.views.generic import FormView, TemplateView
 from catalog.models import Wg, Work
 from news.models import News
 from wgjoin import google
-from wgjoin.config import can_invite_to_club, club_course_id
+from wgjoin.config import can_add_to_club_chat, can_invite_to_club, club_chat_space, club_course_id
 from wgjoin.config import is_enabled as wgjoin_enabled
 from wgjoin.http import ServiceError
 
@@ -228,6 +228,10 @@ class JoinApplyView(NavMixin, FormView):
     招待できたときはサイトからはメールを送らない（Google の招待メールだけが届く）。
     もうクラスにいるときは本人にだけ知らせる。招待できなかったときは事務局に知らせ
     （ERROR）、これまでどおり手作業で案内する。
+
+    クラブのお知らせの Chat スペースが設定されていれば（wgjoin.config.can_add_to_club_chat）、
+    同じく運営の権限で申込者をそのスペースに追加する。招待とは別に試し、追加できなかったときだけ
+    事務局に知らせる（ERROR）。
     """
 
     template_name = 'home/join_apply.html'
@@ -240,6 +244,7 @@ class JoinApplyView(NavMixin, FormView):
         context = super().get_context_data(**kwargs)
         # 「お預かりする情報について」に、アドレスを招待にも使うことを書くため
         context['classroom_invite'] = can_invite_to_club()
+        context['club_chat'] = can_add_to_club_chat()
         return context
 
     def form_valid(self, form):
@@ -254,10 +259,20 @@ class JoinApplyView(NavMixin, FormView):
                 classroom = 'failed'
                 logger.error('参加申し込み: クラブのクラスに招待できませんでした', exc_info=True)
 
+        chat_failed = False  # お知らせの Chat スペースに追加できなかった（手作業で追加する）
+        if can_add_to_club_chat():
+            try:
+                google.add_to_chat_space(club_chat_space(), form.cleaned_data['email'])
+                logger.info('参加申し込み: お知らせの Chat スペースに追加しました')
+            except ServiceError:
+                chat_failed = True
+                logger.error('参加申し込み: お知らせの Chat スペースに追加できませんでした', exc_info=True)
+
         try:
-            # 招待できたときは何も送らない。Google の招待メール（クラスの「参加」ボタン付き）だけが届く
-            if classroom != google.INVITED:
-                form.send_email(classroom=classroom)
+            # 招待できたときは申込者には何も送らない。Google の招待メール（クラスの「参加」ボタン付き）だけが届く。
+            # Chat に追加できなかったときは、事務局にだけ知らせる
+            if classroom != google.INVITED or chat_failed:
+                form.send_email(classroom=classroom, chat_failed=chat_failed)
         except (smtplib.SMTPException, OSError, BadHeaderError):
             # SMTP の設定漏れや送信障害で 500 にせず、フォームに戻して知らせる。
             # BadHeaderError はヘッダに改行を入れられたときに出る（Django が
@@ -297,6 +312,7 @@ class JoinDoneView(NavMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         # 申し込みごとの結果（招待できたか・もうメンバーか）は画面に出さない。メールで本人にだけ伝える
         context['classroom_invite'] = can_invite_to_club()
+        context['club_chat'] = can_add_to_club_chat()
         return context
 
 

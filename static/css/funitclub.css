@@ -1134,6 +1134,16 @@ a:hover {
     font-weight: 700;
 }
 
+/* 紺の掲示（.notice）の中に置いた手順。白いカード向けの色のままだと読めない */
+.notice .done-steps {
+    font-size: .9rem;
+    color: #FFFFFF;
+}
+
+.notice .done-step-title {
+    color: #FFFFFF;
+}
+
 .done-mono {
     font-family: var(--mono);
     word-break: break-all;

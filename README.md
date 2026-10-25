@@ -5,7 +5,7 @@
 - **公開ページは認証なし**（会員登録・allauth は入っていない）
 - **編集画面（`/edit/`）だけログイン必須**。公開サイトとは別レイアウトで、相互にリンクしない
 - 掲載内容（お知らせ・WG紹介・成果物紹介）はモデル化済みで、編集画面から編集する
-- **参加の申し込みフォーム（`/join/apply/`）**。大学のメールアドレス（`@bukkyo-u.ac.jp`）のみ受け付ける。申し込みの時点でクラブの Classroom のクラスに招待する
+- **参加の申し込みフォーム（`/join/apply/`）**。大学のメールアドレス（`@bukkyo-u.ac.jp`）のみ受け付ける。申し込みの時点でクラブの Classroom のクラスに招待し、お知らせの Chat スペースに追加する
 - **サブアプリ**。公表した成果物は `works/`（countdown・fe）、WG が作っている途中のアプリと活動ページは、デプロイのときに WG のリポジトリから `wg/` に取り込む（「[サブアプリ](#サブアプリworkswg)」）。URL 未設定のリンクは「作成中」ページ（`/coming-soon/`）へ流す
 - **FE 基本情報技術者試験 対策（`/fe/`）**。ログインなしで誰でも使える公開アプリ。成績はアプリの中の ID ごとに持つ（ID を登録しなくても使える）。問題集の管理（`/fe/manage/`）だけは編集画面のログインが要る。詳しくは [works/fe/README.md](works/fe/README.md)
 - **WG への参加（`/wg/<id>/join/`）**。クラブのメンバー（Classroom のクラブのクラスにいる人）だけが、大学のアドレスの確認を経て、自分で WG の Chat スペースと GitHub の WG のチームに入れる。会員の情報はサイトに持たない
@@ -78,7 +78,8 @@ docs/                  補足資料（開発の手順・技術設計・セキュ
 参加ページ（`/join/`）は活動の案内だけを載せ、**申し込みフォームは別ページ**に置く。ログイン不要。
 入力は大学のメールアドレスだけで（`@bukkyo-u.ac.jp` 以外は弾く。活動ツールが大学の Google Workspace
 前提のため）、申し込みは DB に残らない。設定がそろっていれば、申し込みの時点でクラブの Classroom の
-クラスに招待する（運営の承認は挟まない）。招待できたときはサイトからはメールを送らず、Google の
+クラスに招待し、お知らせの Chat スペースに追加する（運営の承認は挟まない。スペースは `CLUB_CHAT_SPACE` が
+入っているときだけ）。招待できたときはサイトからはメールを送らず、Google の
 招待メールだけが届く。事務局に知らせるのは手作業が要るとき（招待できなかったとき）だけ。
 
 仕組み（招待の結果ごとの振る舞い・メールの経路・連続送信の検知と IP の遮断）は
@@ -368,6 +369,7 @@ Azure App Service（`funITclub`）のアプリケーション設定。hirahira-r
 | `JOIN_NOTIFY_EMAIL` | 設定済み | 管理者テーブルが空のときの予備の宛先（通知用） |
 | `PUBLIC_CONTACT_EMAIL` | 未設定（既定） | 任意。同じく予備の公開問い合わせ先。既定は `contact@funitclub.org` |
 | `CLUB_CLASSROOM_COURSE` | 設定済み | クラブの Classroom のクラス。ここにいる人をメンバーとみなす |
+| `CLUB_CHAT_SPACE` | 設定済み（2026-10-25） | 任意。クラブのお知らせの Chat スペースの URL。参加の申し込みで申込者を追加する（[deploy.txt](deploy.txt) の「クラブのお知らせの Chat スペース」） |
 | `GOOGLE_OAUTH_CLIENT_ID` | 設定済み | Google の OAuth クライアント |
 | `GOOGLE_OAUTH_CLIENT_SECRET` / `GOOGLE_OAUTH_REFRESH_TOKEN` | Key Vault | OAuth クライアントのシークレットと、運営（クラスの先生）の許可 |
 | `GITHUB_APP_ID` / `GITHUB_APP_CLIENT_ID` | 設定済み | GitHub App（funitclub-wg-join）。WG への参加と、WG の活動ページのチケットの読み取り |
