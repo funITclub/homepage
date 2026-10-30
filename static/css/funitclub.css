@@ -280,6 +280,17 @@ a:hover {
     max-width: 34em;
 }
 
+.hero-link {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    margin-top: 18px;
+    color: var(--accent);
+    font-size: .95rem;
+    font-weight: 700;
+}
+
 .stats {
     display: grid;
     gap: 12px;
