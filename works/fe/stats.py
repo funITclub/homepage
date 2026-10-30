@@ -310,7 +310,7 @@ def site_summary():
     """
     registered = CategoryProgress.objects.filter(learner__code__isnull=False)
     per_category = {
-        row['category']: row
+        row['category']: dict(row)
         for row in registered.values('category').annotate(
             total=Sum('answered'), correct=Sum('correct'),
         )

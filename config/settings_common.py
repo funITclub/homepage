@@ -138,7 +138,7 @@ GATE_BACK = subapps.gate_back(BASE_DIR)
 # 通行証の要らない入口。それぞれ別の鍵（メールの署名付きリンク・呼び出しトークン・
 # 編集画面のログイン）で守られているところだけを並べる。ここは守りを緩めるための
 # 一覧ではないので、増やすときは「別の鍵があるか」を確かめること。
-GATE_EXEMPT = ['/countdown/notify/', '/fe/manage/', '/fe/mail/confirm/', '/fe/mail/stop/', '/fe/tasks/']
+GATE_EXEMPT = ['/countdown/notify/', '/fe/console/', '/fe/mail/confirm/', '/fe/mail/stop/', '/fe/tasks/']
 # 一覧を開いてからアプリに入るまでの猶予
 GATE_MAX_AGE = 10 * 60
 
