@@ -17,6 +17,7 @@
     --navy-2: #003060;
     --accent: #5BB8FF;
     --accent-ink: #0E6BA8;   /* 白カード上のアクセント文字 */
+    --peach: #FFDBBF;        /* TOP の「公開中」 */
     --card: #FFFFFF;
     --ink: #001E3C;
     --ink-2: #1A4A70;
@@ -293,6 +294,8 @@ a:hover {
 
 .hero-link .badge {
     font-size: .85rem;
+    border-color: var(--peach);
+    color: var(--peach);
     animation: hero-link-blink 1.6s ease-in-out infinite;
 }
 
