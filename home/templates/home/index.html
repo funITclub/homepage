@@ -21,17 +21,17 @@
 
         {# 件数は編集画面で登録した公開中のWG・成果物に連動する。 #}
         <div class="stats">
-            <div class="stat">
+            <div class="stat card-with-link">
                 <div class="stat-num">{{ active_wg_count|stringformat:"02d" }}</div>
-                <div class="stat-label">活動中のWG</div>
+                <div class="stat-label"><a class="card-link" href="{% url 'home:wg_list' %}">活動中のWG</a></div>
             </div>
-            <div class="stat">
+            <div class="stat card-with-link">
                 <div class="stat-num">{{ work_count|stringformat:"02d" }}</div>
-                <div class="stat-label">公開済み成果物</div>
+                <div class="stat-label"><a class="card-link" href="{% url 'home:work_list' %}">公開済み成果物</a></div>
             </div>
-            <div class="stat">
-                <div class="stat-num">CC BY</div>
-                <div class="stat-label">成果物ライセンス</div>
+            <div class="stat card-with-link">
+                <div class="stat-num">CC BY <span class="stat-num-version">4.0</span></div>
+                <div class="stat-label"><a class="card-link" href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noopener noreferrer license">サイトライセンス</a></div>
             </div>
         </div>
     </section>

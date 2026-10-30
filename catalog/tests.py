@@ -64,6 +64,10 @@ class CatalogEditorTests(TestCase):
         self.assertContains(page, 'テストWG')
         self.assertContains(page, 'WG-09')
 
+    def test_forms_show_license_note(self):
+        for name in ('wg_create', 'work_create'):
+            self.assertContains(self.client.get(reverse(f'edit:catalog:{name}')), 'CC BY 4.0 で公開されます')
+
     def test_draft_wg_is_hidden_from_public_page(self):
         self.client.post(reverse('edit:catalog:wg_create'), {
             'code': 'WG-10',
@@ -79,7 +83,6 @@ class CatalogEditorTests(TestCase):
             'category': 'Web App',
             'title': 'テスト成果物',
             'description': '説明文',
-            'license': 'MIT',
             'url': 'https://example.com/',
             'sort_order': 0,
             'is_published': 'on',

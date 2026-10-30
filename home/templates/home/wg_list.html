@@ -14,26 +14,27 @@
         <div class="grid-3">
 
             {% for wg in wg_list %}
-            <div class="card wg-card">
+            <div class="card wg-card card-with-link">
                 <div class="wg-status">
                     <span class="dot{% if not wg.is_active %} dot-idle{% endif %}"></span>{{ wg.get_status_display }}
                 </div>
                 <div class="wg-id">{{ wg.code }}</div>
                 <h2>{{ wg.name }}</h2>
                 <p class="wg-desc">{{ wg.description|linebreaksbr }}</p>
+                {# カード全体の行き先は card-link を付けたボタン。活動中は Webアプリ、準備中は参加の手続き。 #}
                 <div class="wg-actions">
                     {% if wg.is_active %}
                     {# どれも別タブで開く。URL が未設定なら「作成中」ページ（閉じるボタンで一覧に戻る）。 #}
-                    <a class="btn btn-primary" href="{% if wg.app_url %}{{ wg.app_url|gate_link }}{% else %}{% url 'home:coming_soon' %}?from=wg{% endif %}" target="_blank" rel="noopener noreferrer" aria-label="Webアプリを見る（別タブで開きます）"><i class="fas fa-play me-1"></i>Webアプリを見る</a>
+                    <a class="btn btn-primary card-link" href="{% if wg.app_url %}{{ wg.app_url|gate_link }}{% else %}{% url 'home:coming_soon' %}?from=wg{% endif %}" target="_blank" rel="noopener noreferrer" aria-label="Webアプリを見る（別タブで開きます）"><i class="fas fa-play me-1"></i>Webアプリを見る</a>
                     {% if wg.link_label %}
                     <a class="btn btn-ghost" href="{% if wg.link_url %}{{ wg.link_url|gate_link }}{% else %}{% url 'home:coming_soon' %}?from=wg{% endif %}" target="_blank" rel="noopener noreferrer" aria-label="{{ wg.link_label }}（別タブで開きます）">{{ wg.link_label }}</a>
                     {% endif %}
                     {% endif %}
                     {# WG に参加：メンバーかどうかは参加の手続きの中で確かめる（wgjoin）。 #}
                     {% if wg_join_enabled and wg.accepts_join %}
-                    <a class="btn btn-ghost" href="{% url 'wgjoin:start' wg.pk %}">WG に参加</a>
+                    <a class="btn btn-ghost{% if not wg.is_active %} card-link{% endif %}" href="{% url 'wgjoin:start' wg.pk %}">WG に参加</a>
                     {% elif not wg.is_active %}
-                    <a class="btn btn-ghost" href="{% url 'home:join' %}">参加する</a>
+                    <a class="btn btn-ghost card-link" href="{% url 'home:join' %}">参加する</a>
                     {% endif %}
                 </div>
             </div>
