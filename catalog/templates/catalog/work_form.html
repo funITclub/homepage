@@ -38,6 +38,8 @@
                 </div>
                 {% endfor %}
 
+                {% include "edit/_license_note.html" %}
+
                 <div class="form-actions">
                     <button class="btn btn-lg" type="submit">{{ submit_label }}</button>
                     <a class="btn btn-ghost" href="{% url 'edit:catalog:work_list' %}">キャンセル</a>

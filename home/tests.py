@@ -644,6 +644,31 @@ class ExternalLinkTests(TestCase):
         self.assertIn('href="https://example.com/repo" target="_blank" rel="noopener noreferrer"', html)
         self.assertIn('?from=wg" target="_blank" rel="noopener noreferrer"', html)
 
+    def test_whole_card_links_to_main_destination(self):
+        """カード全体の行き先：活動中はWebアプリ、準備中は参加、成果物は公開先。"""
+        Wg.objects.create(code='WG-01', name='活動中', description='説明',
+                          app_url='https://example.com/app',
+                          link_label='GitHub', link_url='https://example.com/repo')
+        Wg.objects.create(code='WG-02', name='準備中', description='説明', status=Wg.IDLE)
+        Work.objects.create(category='Web App', title='成果物', description='説明',
+                            url='https://example.com/work')
+
+        wg_html = self.client.get(reverse('home:wg_list')).content.decode()
+        work_html = self.client.get(reverse('home:work_list')).content.decode()
+
+        self.assertIn('card-link" href="https://example.com/app"', wg_html)
+        self.assertNotIn('card-link" href="https://example.com/repo"', wg_html)
+        self.assertIn(f'card-link" href="{reverse("home:join")}"', wg_html)
+        self.assertIn('card-link" href="https://example.com/work"', work_html)
+
+    def test_top_stats_link_to_their_pages(self):
+        """TOP の活動サマリは、カード全体からそれぞれのページへ移動できる。"""
+        html = self.client.get(reverse('home:index')).content.decode()
+
+        self.assertIn(f'card-link" href="{reverse("home:wg_list")}"', html)
+        self.assertIn(f'card-link" href="{reverse("home:work_list")}"', html)
+        self.assertIn('card-link" href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank"', html)
+
     def test_work_link(self):
         Work.objects.create(category='Web App', title='外部あり', description='説明',
                             url='https://example.com/work')
@@ -660,6 +685,16 @@ class ExternalLinkTests(TestCase):
 
         self.assertRegex(html, r'href="/fe/\?from=[^"]+" target="_blank" rel="noopener noreferrer"')
         self.assertIn('基本情報技術者試験の問題集', html)
+
+    def test_site_license_is_shown(self):
+        """サイトのライセンスは TOP の活動サマリとフッターに出し、フッターの案内は別タブで開く。"""
+        html = self.client.get(reverse('home:index')).content.decode()
+
+        self.assertIn('CC BY <span class="stat-num-version">4.0</span>', html)
+        self.assertIn('サイトライセンス', html)
+        self.assertNotIn('成果物ライセンス', html)
+        self.assertIn('IPA の問題、第三者の素材、クラブのロゴは対象外です。', html)
+        self.assertRegex(html, r'href="https://creativecommons\.org/licenses/by/4\.0/deed\.ja" target="_blank"')
 
 
 class GuideTests(TestCase):

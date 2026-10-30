@@ -126,12 +126,6 @@ class Work(models.Model):
         max_length=300,
         help_text='カードの本文。2〜3行くらい。',
     )
-    license = models.CharField(
-        'ライセンス',
-        max_length=20,
-        blank=True,
-        help_text='カード右下のラベル（例: MIT / CC BY）。空欄なら出しません。',
-    )
     url = models.URLField(
         '公開先の URL',
         blank=True,

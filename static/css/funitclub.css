@@ -175,6 +175,27 @@ a:hover {
     padding: 24px;
 }
 
+/* カード全体をリンクにする。.card-link の ::after をカードいっぱいに広げ、
+ * ほかのボタンはその上に出して、それぞれの行き先のまま押せるようにする。 */
+.card-with-link {
+    position: relative;
+}
+
+.card-with-link:hover {
+    outline: 2px solid var(--accent);
+}
+
+.card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+}
+
+.card-with-link .btn:not(.card-link) {
+    position: relative;
+    z-index: 1;
+}
+
 .grid-3 {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -334,6 +355,16 @@ a:hover {
     font-weight: 700;
     line-height: 1.25;
     color: var(--accent-ink);
+    word-spacing: -.3em;
+}
+
+.stat-num-version {
+    font-size: .6em;
+}
+
+.stat-label a {
+    color: inherit;
+    text-decoration: none;
 }
 
 .stat-label {
@@ -1374,6 +1405,10 @@ a:hover {
     font-size: .84rem;
     line-height: 1.8;
     color: var(--muted);
+}
+
+.footer-license {
+    flex-basis: 100%;
 }
 
 /* ---------- レスポンシブ ---------- */

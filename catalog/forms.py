@@ -49,12 +49,11 @@ class WorkForm(forms.ModelForm):
     class Meta:
         model = Work
         fields = [
-            'category', 'title', 'description', 'license',
+            'category', 'title', 'description',
             'url', 'sort_order', 'is_published',
         ]
         widgets = {
             'category': forms.TextInput(attrs={'placeholder': '例: Web App'}),
             'title': forms.TextInput(attrs={'placeholder': '例: 花の種類分類API'}),
             'description': forms.Textarea(attrs={'rows': 3}),
-            'license': forms.TextInput(attrs={'placeholder': '例: CC BY'}),
         }

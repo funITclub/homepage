@@ -36,7 +36,6 @@
                             <th>順</th>
                             <th>種別</th>
                             <th>題名</th>
-                            <th>ライセンス</th>
                             <th>掲載</th>
                             <th></th>
                         </tr>
@@ -47,9 +46,6 @@
                             <td class="editor-date">{{ work.sort_order }}</td>
                             <td class="editor-date">{{ work.category }}</td>
                             <td>{{ work.title }}</td>
-                            <td>
-                                {% if work.license %}<span class="badge badge-ink">{{ work.license }}</span>{% endif %}
-                            </td>
                             <td class="editor-state">
                                 {% if work.is_published %}公開{% else %}下書き{% endif %}
                             </td>
