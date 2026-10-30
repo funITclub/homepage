@@ -659,7 +659,7 @@ class ExternalLinkTests(TestCase):
         html = self.client.get(reverse('home:index')).content.decode()
 
         self.assertRegex(html, r'href="/fe/\?from=[^"]+" target="_blank" rel="noopener noreferrer"')
-        self.assertIn('基本情報技術者試験の問題集', html)
+        self.assertIn('IPA基本情報技術者試験の問題集', html)
 
 
 class GuideTests(TestCase):
