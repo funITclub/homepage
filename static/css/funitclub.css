@@ -293,6 +293,20 @@ a:hover {
 
 .hero-link .badge {
     font-size: .85rem;
+    animation: hero-link-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes hero-link-blink {
+    50% {
+        opacity: .3;
+    }
+}
+
+/* 動きを減らす設定の人には点滅させない */
+@media (prefers-reduced-motion: reduce) {
+    .hero-link .badge {
+        animation: none;
+    }
 }
 
 /* 狭い画面で折り返すときも、矢印だけが次の行に落ちないようにする */
