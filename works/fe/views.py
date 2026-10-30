@@ -3,19 +3,20 @@
 出題は 1 問 1 答。GET で 1 問出し，POST で採点してその場で解説を出す。
 出題する問題の選定は fe.selection，成績の集計は fe.stats に分けてある。
 
-成績は Learner（本アプリの中の ID）ごとに持つ。/fe/ で ID を入力すると
-セッションが覚え、以後の画面はその ID の分を出す。ダッシュボードだけは
-/fe/<ID>/ に置き、ほかの ID のものは開けない（404）。問題と技術解説は
-全 ID で共有する。
+成績は Learner（本アプリの中の ID）ごとに持つ。/fe/ を開くと ID なしの記録を
+作ってセッションが覚える。ID を持っている人の入口は /fe/mypage/ で、
+ID で入るとそこがダッシュボードになる（ID は URL に出さない）。問題と技術解説は全 ID で共有し、
+取り込みなどの管理は /fe/console/ でスタッフだけができる。学習の画面には
+管理のページがあることを出さない。
 
 hirahira_room の fe アプリからの移植。あちらは全画面がログイン必須だが、
 こちらは誰でも使える公開アプリなので、LoginRequiredMiddleware の対象から
-login_not_required で外している。例外は問題集の管理（/fe/manage/）で、
-ID には合言葉がなく、公開の場では管理用の ID を言い当てれば誰でも入れてしまう。
-そこだけは編集画面（/edit/）へのスタッフ権限のあるアカウントでのログインも求める
-（AdminRequiredMixin）。
+login_not_required で外している。例外は問題集の管理（/fe/console/）で、
+編集画面（/edit/）へのスタッフ権限のあるアカウントでのログインを求める
+（StaffRequiredMixin）。
 """
 
+import datetime
 import logging
 
 import hmac
@@ -24,6 +25,7 @@ import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
@@ -42,10 +44,11 @@ from .forms import LearnerForm, PassReportForm, QuestionUploadForm
 from .importer import (ImportError_, needs_confirmation, parse,
                        preview, sync, validate)
 from .learning import current_item, focus_category, grade, note_menu, start_round
-from . import mail, speech
+from . import mail, speech, x_post
 from .models import (Attempt, Category, CategoryProgress, Learner, LearningNote,
                      LearningRound, MailSubscription, PassReport, Question,
-                     QuestionTemplate, StudySession)
+                     QuestionTemplate, StudySession, XPost)
+from .pageviews import CountPageViewMixin, summary as page_view_summary
 from .selection import pick_question
 from .stats import (categories_for, category_options, category_stats, daily_counts,
                     field_stats, overall_stats, record_progress, site_summary,
@@ -155,43 +158,40 @@ class LearnerRequiredMixin:
         """入っている ID でこの画面を使えるか。使えなければ例外を投げる。"""
 
 
-class AdminRequiredMixin(LearnerRequiredMixin):
-    """問題集を管理する画面。管理用の ID で、スタッフ権限のあるアカウントでなければ 403。
+class StaffRequiredMixin(LoginRequiredMixin):
+    """問題集を管理する画面（/fe/console/）。スタッフ権限のあるアカウントでログインしていなければ開けない。
 
-    ログインしていなければ LoginRequiredMiddleware が /edit/login/ へ送る。
-    ID には合言葉がないので、ID だけでは通さない。ログインしているだけでも通さず、
-    スタッフ権限（is_staff）を条件にする。いまアカウントは createsuperuser でしか
-    作れないので全員がスタッフだが、WG に編集用のアカウントを配るようになっても
-    問題集までは開かないようにしておく。
+    ログインしていなければログイン画面へ送り、ログインしていてもスタッフでなければ 403。
+    アカウントの新規作成は止めたが、以前に作られたものが残っているため、
+    ログインだけでは「本人である」ことの証明にならない。スタッフ権限（is_staff）は
+    Django の管理画面でしか付けられないので、それを条件にする。学習用の ID は問わない。
     """
 
     def dispatch(self, request, *args, **kwargs):
-        # 親の dispatch に付いた login_not_required を引き継がないよう、定義し直す。
-        # as_view() は cls.dispatch の属性を写すので、ここで切れる。
-        return super().dispatch(request, *args, **kwargs)
-
-    def check_learner(self, learner):
-        if not learner.is_admin:
-            raise PermissionDenied('問題集を管理できるのは管理用の ID だけです。')
-        if not self.request.user.is_staff:
+        if request.user.is_authenticated and not request.user.is_staff:
             raise PermissionDenied(
                 '問題集を管理できるのは、スタッフ権限のあるアカウントだけです。'
             )
+        return super().dispatch(request, *args, **kwargs)
 
 
 def dashboard_url(learner):
-    """ダッシュボードの場所。履歴を残さない利用は URL に出さず、入口がそのまま画面になる。"""
+    """ダッシュボードの場所。ID なしは /fe/、ID ありは /fe/mypage/。どちらも URL に ID は出さない。"""
     if learner.is_temporary:
         return reverse('fe:index')
-    return reverse('fe:dashboard', args=[learner.code])
+    return reverse('fe:mypage')
 
 
 @method_decorator(login_not_required, name='dispatch')
-class EnterView(generic.FormView):
-    """ID で入る、または新しく作る。
+class MyPageView(CountPageViewMixin, generic.FormView):
+    """ID ありの入口（/fe/mypage/）。URL に ID は出さない。
 
-    すでに入っていても開ける。別の ID を入力すれば、その ID に切り替わる。
+    ID で入っていれば、ここがその ID のダッシュボードになる。入っていなければ、
+    ID で入る・新しく作るための入力欄を出す。?switch を付けると、入っていても
+    入力欄を出し、別の ID に切り替えられる。
     """
+
+    page_name = 'mypage'
 
     template_name = 'fe/enter.html'
     form_class = LearnerForm
@@ -199,6 +199,14 @@ class EnterView(generic.FormView):
     def dispatch(self, request, *args, **kwargs):
         # 入ったら、ブラウザを閉じたら消える Cookie を置く。入口（IndexView）も同じ
         return remember_entry(request, super().dispatch(request, *args, **kwargs))
+
+    def get(self, request, *args, **kwargs):
+        learner = current_learner(request)
+        if learner is not None and not learner.is_temporary and 'switch' not in request.GET:
+            touch(learner)
+            request.fe_learner = learner
+            return DashboardView.render_for(request, learner)
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -224,46 +232,68 @@ class EnterView(generic.FormView):
         return redirect(dashboard_url(learner))
 
 
-class IndexView(EnterView):
+@method_decorator(login_not_required, name='dispatch')
+class IndexView(CountPageViewMixin, generic.View):
     """アプリの入口。
 
-    まだ始めていなければ、履歴を残すかどうかを選ぶ画面を出す。
-    ID で入っていれば /fe/<ID>/ へ送り、履歴を残さない利用なら
-    この場所がそのままダッシュボードになる。
+    ID は求めない。まだ始めていなければ、履歴を残さない記録をその場で作り、
+    この場所をそのままダッシュボードにする。ID で入っていれば /fe/mypage/ へ送る
+    （ID は URL に出さない）。
+    記録を残したくなったら、ダッシュボードの案内から ID を作る（MyPageView）。
     """
 
-    template_name = 'fe/start.html'
+    page_name = 'index'
 
     def get(self, request, *args, **kwargs):
         learner = current_learner(request)
         if learner is None:
-            return super().get(request, *args, **kwargs)
-        if learner.is_temporary:
-            touch(learner)
-            request.fe_learner = learner
-            return DashboardView.render_for(request, learner)
-        return redirect(dashboard_url(learner))
+            learner = start_temporary(request)
+        elif not learner.is_temporary:
+            return redirect(dashboard_url(learner))
+        touch(learner)
+        request.fe_learner = learner
+        # 入ったら、ブラウザを閉じたら消える Cookie を置く（MyPageView と同じ）
+        return remember_entry(request, DashboardView.render_for(request, learner))
 
-    def post(self, request, *args, **kwargs):
-        """「履歴を残さずに始める」。ID の登録は EnterView 側で扱う。"""
-        if request.POST.get('action') == 'temporary':
-            start_temporary(request)
-            return redirect('fe:index')
-        return super().post(request, *args, **kwargs)
+
+@method_decorator(login_not_required, name='dispatch')
+class GuideView(CountPageViewMixin, generic.TemplateView):
+    """このアプリについて。ダッシュボードから外した説明をまとめる。
+
+    始めていなくても読める。入っていれば、ヘッダーにその記録を使う。
+    """
+
+    page_name = 'guide'
+
+    template_name = 'fe/guide.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        learner = current_learner(self.request)
+        if learner is not None:
+            self.request.fe_learner = learner
+        context['learner'] = learner
+        context['exam'] = EXAM
+        context['question_total'] = Question.objects.active().filter(
+            template__isnull=True
+        ).count()
+        context['template_total'] = QuestionTemplate.objects.filter(is_active=True).count()
+        return context
 
 
 class DashboardView(LearnerRequiredMixin, generic.TemplateView):
-    """ダッシュボード（マイページ）。今の実力と，次に何をやるべきかを一目で分かるようにする。
+    """ダッシュボード（マイページ）。問題を解き始めることを最優先にする。
+    自分の成績と苦手分野は StatsView で見る。
 
-    URL の ID は、いま入っている ID のときだけ開ける。ほかの ID なら 404。
-    履歴を残さない利用には URL がないので、IndexView から render_for で描く。
+    自分の URL は持たない。ID なしは IndexView（/fe/）、ID ありは MyPageView
+    （/fe/mypage/）から render_for で描く。
     """
 
     template_name = 'fe/index.html'
 
     @classmethod
     def render_for(cls, request, learner):
-        """URL を持たない利用のために、ダッシュボードをその場で描く。"""
+        """入口（/fe/・/fe/mypage/）で、ダッシュボードをその場で描く。"""
         view = cls()
         view.request = request
         view.learner = learner
@@ -271,34 +301,20 @@ class DashboardView(LearnerRequiredMixin, generic.TemplateView):
         view.args = ()
         return view.render_to_response(view.get_context_data())
 
-    def get(self, request, code, *args, **kwargs):
-        if code.lower() != self.learner.code:
-            raise Http404
-        return super().get(request, *args, **kwargs)
-
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         learner = self.learner
         context['learner'] = learner
 
-        rows = category_stats(learner)
-        context['overall'] = overall_stats(learner)
-        context['fields'] = field_stats(rows)
-        context['weak'] = weak_categories(rows, limit=5)
-        context['untouched'] = [r for r in rows if r['is_untouched'] and r['question_count']]
         context['study_session'] = _get_study_session(learner)
         # 出題設定のフォームを他の画面と共有しているので、分野の選択肢も渡す
         context['categories'] = category_options(
             learner, context['study_session'].mode
         )
-        context['daily'] = daily_counts(learner, days=14)
-        context['exam'] = EXAM
         context['question_total'] = Question.objects.active().filter(
             template__isnull=True
         ).count()
-        context['template_total'] = QuestionTemplate.objects.filter(is_active=True).count()
-        context['max_daily'] = max([d['total'] for d in context['daily']] + [1])
-        # 全 ID を合わせた集計と、自分の合格申告
+        # 全 ID を合わせた集計と、自分の合格申告。ダッシュボードの後半に出す
         context['summary'] = site_summary()
         context['my_report'] = PassReport.objects.filter(learner=learner).first()
         context['pass_form'] = PassReportForm()
@@ -344,8 +360,10 @@ class QuizSettingsView(LearnerRequiredMixin, generic.View):
         return redirect('fe:quiz')
 
 
-class QuizView(LearnerRequiredMixin, generic.View):
+class QuizView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
     """1 問 1 答の出題と採点。"""
+
+    page_name = 'quiz'
 
     template_name = 'fe/quiz.html'
 
@@ -458,8 +476,10 @@ class QuizView(LearnerRequiredMixin, generic.View):
         }
 
 
-class StatsView(LearnerRequiredMixin, generic.TemplateView):
+class StatsView(CountPageViewMixin, LearnerRequiredMixin, generic.TemplateView):
     """分野別の正答率の一覧。"""
+
+    page_name = 'stats'
 
     template_name = 'fe/stats.html'
 
@@ -475,6 +495,9 @@ class StatsView(LearnerRequiredMixin, generic.TemplateView):
         context['fields'] = field_stats(rows)
         context['overall'] = overall_stats(learner)
         context['weak'] = weak_categories(rows, limit=5)
+        # ダッシュボードから移した、直近14日の解答数
+        context['daily'] = daily_counts(learner, days=14)
+        context['max_daily'] = max([d['total'] for d in context['daily']] + [1])
         context['subject'] = subject
         context['subject_choices'] = Question.SUBJECT_CHOICES
         # 重点出題でどれだけ重みが乗っているかを見せる
@@ -520,8 +543,10 @@ class PassReportView(LearnerRequiredMixin, generic.View):
         return redirect(back)
 
 
-class HistoryView(LearnerRequiredMixin, generic.ListView):
+class HistoryView(CountPageViewMixin, LearnerRequiredMixin, generic.ListView):
     """解答履歴。まちがえた問題を見返すために使う。"""
+
+    page_name = 'history'
 
     template_name = 'fe/history.html'
     context_object_name = 'attempts'
@@ -552,10 +577,11 @@ class HistoryView(LearnerRequiredMixin, generic.ListView):
 # ================================================================ 問題の管理
 # 問題は全 ID で共有し、JSON の取り込みが唯一の作成・更新経路。
 # 画面に入力フォームを置かないので、手元の JSON と画面の内容がずれない。
-# 一覧・取り込みは、管理用の ID だけが使える。
+# 一覧・取り込みは、スタッフのログインだけで使える（StaffRequiredMixin）。
+# 学習の画面からはリンクしない。
 
 
-class ManageListView(AdminRequiredMixin, generic.ListView):
+class ManageListView(StaffRequiredMixin, generic.ListView):
     """共有の問題の一覧。中身の確認だけを行う。"""
 
     template_name = 'fe/manage_list.html'
@@ -594,7 +620,18 @@ class ManageListView(AdminRequiredMixin, generic.ListView):
         return context
 
 
-class QuestionUploadView(AdminRequiredMixin, generic.FormView):
+class PageViewListView(StaffRequiredMixin, generic.TemplateView):
+    """学習の画面のページビュー。直近30日の日別・画面別の件数（fe.pageviews）。"""
+
+    template_name = 'fe/manage_pageviews.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['views'] = page_view_summary(days=30)
+        return context
+
+
+class QuestionUploadView(StaffRequiredMixin, generic.FormView):
     """JSON を取り込んで、共有の問題集を差し替える。"""
 
     template_name = 'fe/manage_upload.html'
@@ -653,8 +690,10 @@ class QuestionUploadView(AdminRequiredMixin, generic.FormView):
         return super().post(request, *args, **kwargs)
 
 
-class LearnStartView(LearnerRequiredMixin, generic.View):
+class LearnStartView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
     """学習モードの入口。読む時間を決めてラウンドを始める。"""
+
+    page_name = 'learn_start'
 
     template_name = 'fe/learn_start.html'
 
@@ -663,9 +702,6 @@ class LearnStartView(LearnerRequiredMixin, generic.View):
         finished = LearningRound.objects.filter(
             learner=self.learner, phase=LearningRound.PHASE_DONE
         )
-        # 直前に学習した中分類を開いて見せる。学習した結果（学習回数）は小分類の行に
-        # 出るので、閉じたままだと、学習したことが一覧に反映されていないように見える。
-        # ダッシュボードで指定している分野は、おまかせの範囲になるだけで、開かない。
         last = (
             finished.filter(subject=session.subject, note__isnull=False)
             .select_related('note__category').first()
@@ -676,9 +712,30 @@ class LearnStartView(LearnerRequiredMixin, generic.View):
             'count': LearningRound.QUESTION_COUNT,
             'study_session': session,
             'groups': note_menu(self.learner, session.subject),
-            'opened': last.note.category if last else None,
+            'opened': self._opened_categories(session, last),
             'recent': finished[:5],
         })
+
+    @staticmethod
+    def _opened_categories(session, last):
+        """一覧で開いておく中分類。次の2つを、重ねずに両方開く。
+
+        ・ダッシュボードで指定した分野。おまかせはこの中から選ぶので、開いておくと
+          何が対象か分かる。開かないと、分野をどう選び直しても一覧の開く先が変わらず、
+          前に解き終えた中分類に固定されているように見えた。
+        ・最後に解き終えたラウンドの中分類。学習した結果（学習回数）は小分類の行に
+          出るので、閉じたままだと、学習したことが一覧に反映されていないように見える。
+
+        どちらか一方だけにすると、学習モードで指定とは別の分野を解き終えたときに、
+        ダッシュボードの指定と一覧の開く先がずれる。指定のほうを書き換えて合わせると、
+        おまかせや1問1答の出題範囲まで変わってしまうので、両方を開いて済ませる。
+        指定が今の科目のものでなければ（focus_category が None なら）使わない。
+        """
+        opened = []
+        for category in (focus_category(session), last.note.category if last else None):
+            if category is not None and category not in opened:
+                opened.append(category)
+        return opened
 
     def post(self, request, *args, **kwargs):
         raw = request.POST.get('minutes')
@@ -712,16 +769,15 @@ class LearnStartView(LearnerRequiredMixin, generic.View):
                     'ダッシュボードの分野の指定を変えてください。'.format(focus.name),
                 )
                 return redirect('fe:learn_start')
-            messages.error(request, '学習モードに使う技術解説が、まだ用意されていません。')
-            # 管理用の ID なら、そのまま取り込みへ案内する
-            if self.learner.is_admin:
-                return redirect('fe:manage_upload')
+            messages.error(request, '解説がありません。')
             return redirect('fe:learn_start')
         return redirect('fe:learn_read', pk=round_.pk)
 
 
-class LearnReadView(LearnerRequiredMixin, generic.View):
+class LearnReadView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
     """読む段階。設問ではなく、分野ごとにまとめた技術解説を出す。"""
+
+    page_name = 'learn_read'
 
     template_name = 'fe/learn_read.html'
 
@@ -820,8 +876,10 @@ class NoteAudioView(LearnerRequiredMixin, generic.View):
         return response
 
 
-class LearnQuizView(LearnerRequiredMixin, generic.View):
+class LearnQuizView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
     """解く段階。読んだ範囲をそのまま1問1答で出す。"""
+
+    page_name = 'learn_quiz'
 
     template_name = 'fe/learn_quiz.html'
 
@@ -915,8 +973,10 @@ class LearnAbandonView(LearnerRequiredMixin, generic.View):
         return redirect('fe:learn_start')
 
 
-class LearnResultView(LearnerRequiredMixin, generic.DetailView):
+class LearnResultView(CountPageViewMixin, LearnerRequiredMixin, generic.DetailView):
     """ラウンドの結果。解いた問題を、正解したものも含めて全問読み返せるようにする。"""
+
+    page_name = 'learn_result'
 
     template_name = 'fe/learn_result.html'
     context_object_name = 'round'
@@ -1095,4 +1155,116 @@ class SendMailsView(generic.View):
             return JsonResponse({'detail': '認証できません。'}, status=403)
         result = mail.send_daily()
         logger.info('問題メールを送りました（%s）', result)
+        return JsonResponse(result)
+
+
+# X の解答ページで答えた投稿の code を覚える Cookie。同じブラウザの2回目以降は数えない。
+X_ANSWERED_COOKIE = 'fe_x_answered'
+X_ANSWERED_SALT = 'fe.x_answered'
+# 覚えておく投稿の数。投稿は FE_X_KEEP_DAYS 日で消えるので、その間の分が入れば足りる
+X_ANSWERED_LIMIT = 120
+
+
+@method_decorator(login_not_required, name='dispatch')
+class XAnswerView(generic.View):
+    """X に投稿した問題の解答ページ。ID なし・ログインなしで、誰でも開ける。
+
+    GET で問題と選択肢を出し、POST で採点して正誤・解説・出典・fe への案内を出す。
+    中身は投稿のときに写した XPost から描く。期限を過ぎた投稿と存在しない code には、
+    同じ案内ページを出す。
+
+    答えは誰のものかを残さず、全 ID を合わせた集計（OpenProgress）にだけ足す。
+    """
+
+    template_name = 'fe/x_answer.html'
+
+    def dispatch(self, request, code, *args, **kwargs):
+        self.post_obj = XPost.objects.filter(code=code).select_related('category').first()
+        if self.post_obj is None or not x_post.is_open(self.post_obj):
+            return render(request, self.template_name, self.base_context(None), status=404)
+        return super().dispatch(request, code, *args, **kwargs)
+
+    def base_context(self, post):
+        return {
+            'post': post,
+            'fe_url': settings.SITE_URL.rstrip('/') + reverse('fe:index'),
+            'citation': x_post.citation(post.source) if post else '',
+        }
+
+    def get(self, request, code):
+        return render(request, self.template_name, self.base_context(self.post_obj))
+
+    def post(self, request, code):
+        post = self.post_obj
+        context = self.base_context(post)
+        selected = request.POST.get('choice', '')
+        if not selected.isdigit() or int(selected) >= len(post.choices):
+            context['error'] = '選択肢を選んでください。'
+            return render(request, self.template_name, context)
+        selected = int(selected)
+
+        answered = request.get_signed_cookie(
+            X_ANSWERED_COOKIE, default='', salt=X_ANSWERED_SALT,
+        ).split()
+        if post.code in answered:
+            is_correct = selected == post.answer_index
+        else:
+            is_correct = x_post.record_answer(post, selected)
+            answered = (answered + [post.code])[-X_ANSWERED_LIMIT:]
+
+        context.update({
+            'answered': True,
+            'selected': selected,
+            'selected_label': Question.choice_label(selected),
+            'is_correct': is_correct,
+        })
+        response = render(request, self.template_name, context)
+        response.set_signed_cookie(
+            X_ANSWERED_COOKIE, ' '.join(answered), salt=X_ANSWERED_SALT,
+            max_age=settings.FE_X_KEEP_DAYS * 24 * 60 * 60,
+            secure=request.is_secure(), httponly=True, samesite='Lax',
+        )
+        return response
+
+
+@method_decorator(login_not_required, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
+class PostXView(generic.View):
+    """X への投稿を、Azure Logic Apps の定期実行から起こす入口（朝・昼・夜）。
+
+    共有トークン（settings.FE_X_TOKEN）で確かめ、時間帯（slot）と予定の日付（date、
+    YYYY-MM-DD。省略可）を受け取る。日付は今日の前後1日だけ受け付ける。
+    期限を過ぎた投稿の削除も、ここで一緒に行う。SendMailsView と同じ形。
+    """
+
+    def post(self, request):
+        expected = settings.FE_X_TOKEN
+        if not expected:
+            logger.error('FE_X_TOKEN が未設定のため、X に投稿できません。')
+            return JsonResponse({'detail': 'X 投稿用のトークンが未設定です。'}, status=503)
+        provided = request.headers.get('X-Fe-X-Token', '')
+        if not hmac.compare_digest(provided, expected):
+            logger.warning('X への投稿が、不正なトークンで試みられました。')
+            return JsonResponse({'detail': '認証できません。'}, status=403)
+        slot = request.POST.get('slot') or request.GET.get('slot', '')
+        if slot not in dict(XPost.SLOT_CHOICES):
+            return JsonResponse({'detail': '時間帯（slot）が正しくありません。'}, status=400)
+        date_text = request.POST.get('date') or request.GET.get('date', '')
+        date = None
+        if date_text:
+            try:
+                date = datetime.date.fromisoformat(date_text)
+            except ValueError:
+                return JsonResponse({'detail': '日付（date）が正しくありません。'}, status=400)
+            if abs((date - timezone.localdate()).days) > 1:
+                return JsonResponse({'detail': '日付（date）が今日から離れすぎています。'}, status=400)
+
+        purged = x_post.purge_old()
+        try:
+            result = x_post.post_slot(slot, today=date)
+        except x_post.PostError as e:
+            logger.error('X への投稿に失敗しました（%s）: %s', slot, e)
+            return JsonResponse({'detail': 'X への投稿に失敗しました。', 'error': str(e)}, status=502)
+        result['purged'] = purged
+        logger.info('X への投稿（%s）: %s', slot, result)
         return JsonResponse(result)
