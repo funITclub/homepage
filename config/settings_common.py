@@ -294,21 +294,6 @@ FE_MAIL_CONFIRM_MAX_AGE = 60 * 60
 # 確認・解除のメールを、同じ ID から続けて送らせない間隔（秒）
 FE_MAIL_LINK_INTERVAL = 5 * 60
 
-# ---- FE 対策アプリの X 投稿（works/fe/x_post.py） ----
-# hirahira_room から取り込んだ仕組み。funitclub では投稿しない（トークンを入れないので
-# /fe/tasks/post-x/ は 503 を返し、FE_X_DRY_RUN も True のまま）。
-# 解答ページのリンクの頭は上の SITE_URL を使う。
-FE_X_TOKEN = os.getenv('FE_X_TOKEN', '')
-# X API のキー（OAuth 1.0a のユーザーコンテキスト）
-X_API_KEY = os.getenv('X_API_KEY', '')
-X_API_SECRET = os.getenv('X_API_SECRET', '')
-X_ACCESS_TOKEN = os.getenv('X_ACCESS_TOKEN', '')
-X_ACCESS_SECRET = os.getenv('X_ACCESS_SECRET', '')
-# True なら X に投稿せず、文面をログに出すだけにする。
-FE_X_DRY_RUN = os.getenv('FE_X_DRY_RUN', 'True') == 'True'
-# 解答ページを出しておく日数。過ぎたら投稿の記録を行ごと消し、案内ページにする。
-FE_X_KEEP_DAYS = 30
-
 # 確認のメールのリンクの有効期限（秒）。
 WG_JOIN_LINK_MAX_AGE = 60 * 60
 

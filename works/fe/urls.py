@@ -36,9 +36,6 @@ urlpatterns = [
     path('mail/stop/<str:token>/', views.MailStopView.as_view(), name='mail_stop'),
     path('tasks/send-mails/', views.SendMailsView.as_view(), name='send_mails'),
 
-    # X への投稿（朝・昼・夜に1問）と、投稿ごとの解答ページ（ID なしで誰でも開ける）
-    path('tasks/post-x/', views.PostXView.as_view(), name='post_x'),
-    path('x/<str:code>/', views.XAnswerView.as_view(), name='x_answer'),
 
     # 問題の管理（全 ID で共有する問題集。学習の画面とは別ページで、スタッフのログインが要る。
     # 登録は JSON の一括差し替えで行う）

@@ -28,7 +28,6 @@ hirahira_room の `fe` アプリからの移植。あちらは全画面がログ
 | `selection.py` | 出題する1問の選定（重点出題のロジック） |
 | `stats.py` | 理解度の記録（`record_progress`）と集計 |
 | `views.py` | ダッシュボード／演習／分野別正答率／履歴／問題の取り込み |
-| `x_post.py` | X への1日3回の投稿と、投稿ごとの解答ページ（`/fe/x/<記号>/`）。hirahira_room から取り込んだが、funitclub では投稿しない（`FE_X_TOKEN` を入れていないので `/fe/tasks/post-x/` は 503） |
 | `pageviews.py` | 学習の画面のページビューを、日付・画面・ID の有無ごとの件数だけで数える。IP アドレス・ID・ブラウザの情報は残さない。`/fe/console/pageviews/` で見る |
 | `mail.py` | 毎日0時の問題メール（マラソン・特訓）。登録は確認メール経由、解除はメールのリンクから。GitHub Actions の `fe-mails.yml` が `/fe/tasks/send-mails/` を叩いて送る |
 
