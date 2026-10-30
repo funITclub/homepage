@@ -17,6 +17,7 @@
     --navy-2: #003060;
     --accent: #5BB8FF;
     --accent-ink: #0E6BA8;   /* 白カード上のアクセント文字 */
+    --peach: #FFDBBF;        /* TOP の「公開中」 */
     --card: #FFFFFF;
     --ink: #001E3C;
     --ink-2: #1A4A70;
@@ -278,6 +279,42 @@ a:hover {
     font-size: .95rem;
     line-height: 2;
     max-width: 34em;
+}
+
+.hero-link {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    margin-top: 20px;
+    color: var(--accent);
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.hero-link .badge {
+    font-size: .85rem;
+    border-color: var(--peach);
+    color: var(--peach);
+    animation: hero-link-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes hero-link-blink {
+    50% {
+        opacity: .3;
+    }
+}
+
+/* 動きを減らす設定の人には点滅させない */
+@media (prefers-reduced-motion: reduce) {
+    .hero-link .badge {
+        animation: none;
+    }
+}
+
+/* 狭い画面で折り返すときも、矢印だけが次の行に落ちないようにする */
+.hero-link-text {
+    white-space: nowrap;
 }
 
 .stats {
@@ -1395,5 +1432,9 @@ a:hover {
 
     .hero h1 {
         font-size: 1.8rem;
+    }
+
+    .hero-link {
+        font-size: 1rem;
     }
 }

@@ -654,6 +654,13 @@ class ExternalLinkTests(TestCase):
         self.assertIn('href="https://example.com/work" target="_blank" rel="noopener noreferrer"', html)
         self.assertIn('?from=works" target="_blank" rel="noopener noreferrer"', html)
 
+    def test_top_links_to_fe_app(self):
+        """TOP の「公開中」のリンクは、通行証付きで別タブで開く（成果物一覧へ送り返されない）。"""
+        html = self.client.get(reverse('home:index')).content.decode()
+
+        self.assertRegex(html, r'href="/fe/\?from=[^"]+" target="_blank" rel="noopener noreferrer"')
+        self.assertIn('基本情報技術者試験の問題集', html)
+
 
 class GuideTests(TestCase):
     """WG 立ち上げガイド（/guide/）。参加の完了画面とメールからの案内先。"""
