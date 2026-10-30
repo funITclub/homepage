@@ -50,7 +50,7 @@ class WorkForm(forms.ModelForm):
         model = Work
         fields = [
             'category', 'title', 'description', 'license',
-            'url', 'sort_order', 'is_published',
+            'url', 'is_featured', 'sort_order', 'is_published',
         ]
         widgets = {
             'category': forms.TextInput(attrs={'placeholder': '例: Web App'}),

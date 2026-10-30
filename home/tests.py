@@ -655,6 +655,42 @@ class ExternalLinkTests(TestCase):
         self.assertIn('?from=works" target="_blank" rel="noopener noreferrer"', html)
 
 
+class TopFeaturedWorksTests(TestCase):
+    """TOP の「成果物」。「TOP に載せる」を入れた公開中のものだけを出す。"""
+
+    def test_only_published_featured_works(self):
+        Work.objects.create(category='Web App', title='載せる', description='説明',
+                            url='https://example.com/work', is_featured=True)
+        Work.objects.create(category='Web App', title='一覧だけ', description='説明')
+        Work.objects.create(category='Web App', title='下書き', description='説明',
+                            is_featured=True, is_published=False)
+
+        html = self.client.get(reverse('home:index')).content.decode()
+
+        self.assertIn('// 成果物', html)
+        self.assertIn('載せる', html)
+        self.assertNotIn('一覧だけ', html)
+        self.assertNotIn('下書き', html)
+        self.assertIn('href="https://example.com/work" target="_blank" rel="noopener noreferrer"', html)
+
+    def test_section_hidden_without_featured_works(self):
+        Work.objects.create(category='Web App', title='一覧だけ', description='説明')
+
+        html = self.client.get(reverse('home:index')).content.decode()
+
+        self.assertNotIn('// 成果物', html)
+
+    def test_gated_app_link_has_pass(self):
+        """通行証の要るアプリも、TOP から入れる（成果物一覧へ送り返されない）。"""
+        Work.objects.create(category='Web App', title='問題集', description='説明',
+                            url='https://funitclub.org/fe/', is_featured=True)
+
+        with self.settings(GATE_BACK={'/fe/': 'home:work_list'}):
+            html = self.client.get(reverse('home:index')).content.decode()
+
+        self.assertIn('href="https://funitclub.org/fe/?from=', html)
+
+
 class GuideTests(TestCase):
     """WG 立ち上げガイド（/guide/）。参加の完了画面とメールからの案内先。"""
 

@@ -32,6 +32,22 @@
         </div>
     </section>
 
+    {# 編集画面で「TOP に載せる」を入れた成果物。1件もなければ欄ごと出さない。 #}
+    {% if featured_works %}
+    <section class="section">
+        <div class="section-head">
+            <p class="section-label">// 成果物</p>
+            <a class="section-more" href="{% url 'home:work_list' %}">すべて見る<i class="fas fa-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="grid-3">
+            {% for work in featured_works %}
+            {% include "home/_work_card.html" %}
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     <section class="section">
         <div class="section-head">
             <p class="section-label">// お知らせ</p>

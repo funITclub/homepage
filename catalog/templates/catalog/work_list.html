@@ -20,7 +20,8 @@
 
         <p class="editor-note">
             公開サイトの「成果物」に出るカードです。公開中の件数が
-            TOP の「公開済み成果物」に入ります。
+            TOP の「公開済み成果物」に入ります。「TOP に載せる」を入れたものは、
+            TOP の「成果物」にも同じカードを出します。
         </p>
 
         <div class="editor-toolbar">
@@ -51,7 +52,7 @@
                                 {% if work.license %}<span class="badge badge-ink">{{ work.license }}</span>{% endif %}
                             </td>
                             <td class="editor-state">
-                                {% if work.is_published %}公開{% else %}下書き{% endif %}
+                                {% if work.is_published %}公開{% else %}下書き{% endif %}{% if work.is_featured %}・TOP{% endif %}
                             </td>
                             <td class="editor-actions">
                                 <a href="{% url 'edit:catalog:work_update' work.pk %}"><i class="fas fa-pen me-1"></i>編集</a>

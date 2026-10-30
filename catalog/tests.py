@@ -90,6 +90,19 @@ class CatalogEditorTests(TestCase):
         self.assertContains(page, 'テスト成果物')
         self.assertContains(page, 'https://example.com/')
 
+    def test_featured_work_shows_on_top(self):
+        self.client.post(reverse('edit:catalog:work_create'), {
+            'category': 'Web App',
+            'title': 'TOP の成果物',
+            'description': '説明文',
+            'is_featured': 'on',
+            'sort_order': 0,
+            'is_published': 'on',
+        })
+
+        self.assertContains(self.client.get(reverse('home:index')), 'TOP の成果物')
+        self.assertContains(self.client.get(reverse('edit:catalog:work_list')), '公開・TOP')
+
     def test_registered_url_opens_in_new_tab(self):
         """編集画面から登録した URL は、公開ページで別タブとして出る。
 

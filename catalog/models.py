@@ -137,6 +137,11 @@ class Work(models.Model):
         blank=True,
         help_text='空欄なら「作成中」ページに繋ぎます。',
     )
+    is_featured = models.BooleanField(
+        'TOP に載せる',
+        default=False,
+        help_text='入れると TOP の「成果物」にもカードを出します。公開中のものだけ。',
+    )
     sort_order = models.IntegerField(
         '表示順',
         default=0,

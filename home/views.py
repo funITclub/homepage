@@ -130,9 +130,10 @@ class NavMixin:
 
 @method_decorator(login_not_required, name='dispatch')
 class IndexView(NavMixin, TemplateView):
-    """TOP。ヒーロー・活動サマリ・お知らせ。
+    """TOP。ヒーロー・活動サマリ・成果物・お知らせ。
 
     活動サマリの件数は、公開中のWG（活動中のみ）と成果物の登録数に連動する。
+    成果物は編集画面で「TOP に載せる」を入れたものだけを出す。
     お知らせは新しい news_limit 件だけを出し、残りは NewsListView に送る。
     """
 
@@ -147,6 +148,7 @@ class IndexView(NavMixin, TemplateView):
         context['news_list'] = News.objects.published()[:self.news_limit]
         context['active_wg_count'] = Wg.objects.published().filter(status=Wg.ACTIVE).count()
         context['work_count'] = Work.objects.published().count()
+        context['featured_works'] = Work.objects.published().filter(is_featured=True)
         return context
 
 

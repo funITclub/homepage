@@ -18,7 +18,7 @@ class WgAdmin(admin.ModelAdmin):
 
 @admin.register(Work)
 class WorkAdmin(admin.ModelAdmin):
-    list_display = ('sort_order', 'category', 'title', 'license', 'is_published', 'updated_at')
-    list_filter = ('is_published', 'category')
+    list_display = ('sort_order', 'category', 'title', 'license', 'is_featured', 'is_published', 'updated_at')
+    list_filter = ('is_published', 'is_featured', 'category')
     search_fields = ('title', 'category', 'description')
     readonly_fields = ('created_at', 'updated_at')
