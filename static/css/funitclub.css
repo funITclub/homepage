@@ -285,10 +285,19 @@ a:hover {
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 10px;
-    margin-top: 18px;
+    margin-top: 20px;
     color: var(--accent);
-    font-size: .95rem;
+    font-size: 1.25rem;
     font-weight: 700;
+}
+
+.hero-link .badge {
+    font-size: .85rem;
+}
+
+/* 狭い画面で折り返すときも、矢印だけが次の行に落ちないようにする */
+.hero-link-text {
+    white-space: nowrap;
 }
 
 .stats {
@@ -1406,5 +1415,9 @@ a:hover {
 
     .hero h1 {
         font-size: 1.8rem;
+    }
+
+    .hero-link {
+        font-size: 1rem;
     }
 }
