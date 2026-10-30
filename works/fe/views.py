@@ -6,14 +6,14 @@
 成績は Learner（本アプリの中の ID）ごとに持つ。/fe/ を開くと ID なしの記録を
 作ってセッションが覚える。ID を持っている人の入口は /fe/mypage/ で、
 ID で入るとそこがダッシュボードになる（ID は URL に出さない）。問題と技術解説は全 ID で共有し、
-取り込みなどの管理は /fe/console/ でスタッフだけができる。学習の画面には
+取り込みなどの管理は /fe/console/ で、編集画面にログインした人だけができる。学習の画面には
 管理のページがあることを出さない。
 
 hirahira_room の fe アプリからの移植。あちらは全画面がログイン必須だが、
 こちらは誰でも使える公開アプリなので、LoginRequiredMiddleware の対象から
 login_not_required で外している。例外は問題集の管理（/fe/console/）で、
-編集画面（/edit/）へのスタッフ権限のあるアカウントでのログインを求める
-（StaffRequiredMixin）。
+編集画面（/edit/）と同じログインを求める（LoginRequiredMixin）。スタッフ権限は
+問わない。共用の編集アカウントには /admin/ に入れる権限を持たせないため。
 """
 
 import datetime
@@ -156,23 +156,6 @@ class LearnerRequiredMixin:
 
     def check_learner(self, learner):
         """入っている ID でこの画面を使えるか。使えなければ例外を投げる。"""
-
-
-class StaffRequiredMixin(LoginRequiredMixin):
-    """問題集を管理する画面（/fe/console/）。スタッフ権限のあるアカウントでログインしていなければ開けない。
-
-    ログインしていなければログイン画面へ送り、ログインしていてもスタッフでなければ 403。
-    アカウントの新規作成は止めたが、以前に作られたものが残っているため、
-    ログインだけでは「本人である」ことの証明にならない。スタッフ権限（is_staff）は
-    Django の管理画面でしか付けられないので、それを条件にする。学習用の ID は問わない。
-    """
-
-    def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and not request.user.is_staff:
-            raise PermissionDenied(
-                '問題集を管理できるのは、スタッフ権限のあるアカウントだけです。'
-            )
-        return super().dispatch(request, *args, **kwargs)
 
 
 def dashboard_url(learner):
@@ -577,11 +560,11 @@ class HistoryView(CountPageViewMixin, LearnerRequiredMixin, generic.ListView):
 # ================================================================ 問題の管理
 # 問題は全 ID で共有し、JSON の取り込みが唯一の作成・更新経路。
 # 画面に入力フォームを置かないので、手元の JSON と画面の内容がずれない。
-# 一覧・取り込みは、スタッフのログインだけで使える（StaffRequiredMixin）。
+# 一覧・取り込みは、編集画面のログインだけで使える。学習用の ID は問わない。
 # 学習の画面からはリンクしない。
 
 
-class ManageListView(StaffRequiredMixin, generic.ListView):
+class ManageListView(LoginRequiredMixin, generic.ListView):
     """共有の問題の一覧。中身の確認だけを行う。"""
 
     template_name = 'fe/manage_list.html'
@@ -620,7 +603,7 @@ class ManageListView(StaffRequiredMixin, generic.ListView):
         return context
 
 
-class PageViewListView(StaffRequiredMixin, generic.TemplateView):
+class PageViewListView(LoginRequiredMixin, generic.TemplateView):
     """学習の画面のページビュー。直近30日の日別・画面別の件数（fe.pageviews）。"""
 
     template_name = 'fe/manage_pageviews.html'
@@ -631,7 +614,7 @@ class PageViewListView(StaffRequiredMixin, generic.TemplateView):
         return context
 
 
-class QuestionUploadView(StaffRequiredMixin, generic.FormView):
+class QuestionUploadView(LoginRequiredMixin, generic.FormView):
     """JSON を取り込んで、共有の問題集を差し替える。"""
 
     template_name = 'fe/manage_upload.html'

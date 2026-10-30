@@ -81,11 +81,9 @@ def enter(client, learner):
     put_learner(client, learner.pk)
 
 
-def login_staff(client):
-    """問題の管理（/fe/console/）を開けるよう、スタッフのアカウントでログインする。ID は問わない。"""
-    account, _ = get_user_model().objects.get_or_create(
-        username='editor', defaults={'is_staff': True},
-    )
+def login_editor(client):
+    """問題の管理（/fe/console/）を開けるよう、編集画面のアカウントでログインする。ID は問わない。"""
+    account, _ = get_user_model().objects.get_or_create(username='editor')
     client.force_login(account)
 
 
@@ -620,7 +618,7 @@ class ViewTests(TestCase):
 
     def test_import_screen_states_what_cannot_be_rendered(self):
         """取り込み画面では、作る側が踏む制約も併せて示す。"""
-        login_staff(self.client)
+        login_editor(self.client)
         html = self.client.get(reverse('fe:manage_upload')).content.decode('utf-8')
         self.assertIn('このアプリで出せない問題', html)
         for word in ('図は公開問題を転記するときだけ使えます', '上付き', '組合せを1つの選択肢'):
@@ -1199,13 +1197,13 @@ class LearnerIdTests(TestCase):
         build_questions()
         enter(self.client, make_learner('boss'))
         self.assertNotContains(self.client.get(reverse('fe:stats')), reverse('fe:manage_list'))
-        login_staff(self.client)
+        login_editor(self.client)
         self.assertEqual(reverse('fe:manage_list'), '/fe/console/questions/')
         self.assertEqual(reverse('fe:manage_upload'), '/fe/console/upload/')
         self.assertRedirects(self.client.get('/fe/console/'), reverse('fe:manage_list'))
 
     def test_learning_pages_do_not_reveal_the_console(self):
-        """スタッフでログインしていても、学習の画面には管理のページがあることを出さない。"""
+        """ログインしていても、学習の画面には管理のページがあることを出さない。"""
         build_questions()
         learner = make_learner('hider')
         enter(self.client, learner)
@@ -1229,7 +1227,7 @@ class ManageTests(TestCase):
         cls.other = make_learner('stranger')
 
     def setUp(self):
-        login_staff(self.client)
+        login_editor(self.client)
 
     def _upload(self, n=3, prefix='問題'):
         """取り込みは JSON ファイルだけなので、テストもファイルで投げる。"""
@@ -1510,7 +1508,7 @@ class ImportNotesTests(TestCase):
 
     def test_both_files_can_be_uploaded_at_once(self):
         """問題と解説を別々の欄で選んで、1回で取り込める。"""
-        login_staff(self.client)
+        login_editor(self.client)
         questions = json.dumps({'questions': [
             {'category': 11, 'stem': 'まとめて取り込む問題',
              'choices': ['a', 'b', 'c', 'd'], 'answer': 0},
@@ -1529,7 +1527,7 @@ class ImportNotesTests(TestCase):
         """解説の欄だけ選んでも取り込める。問題には触らない。"""
         build_questions(per_category=1)
         before = Question.objects.count()
-        login_staff(self.client)
+        login_editor(self.client)
         notes = json.dumps({'notes': build_notes()}, ensure_ascii=False)
 
         response = self.client.post(reverse('fe:manage_upload'), {
@@ -1541,7 +1539,7 @@ class ImportNotesTests(TestCase):
 
     def test_upload_needs_at_least_one_file(self):
         """どの欄も選ばずに送ったら、理由を添えて止める。"""
-        login_staff(self.client)
+        login_editor(self.client)
         response = self.client.post(reverse('fe:manage_upload'), {})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '取り込むファイルを1つ以上選んでください')
@@ -1550,7 +1548,7 @@ class ImportNotesTests(TestCase):
         """欄と中身の側・科目が合わないファイルは、取り込む前に止める。"""
         build_questions(per_category=1)
         before = Question.objects.count()
-        login_staff(self.client)
+        login_editor(self.client)
         a_questions = json.dumps({'questions': [
             {'category': 11, 'subject': 'A', 'stem': 'x', 'choices': ['a', 'b'], 'answer': 0},
         ]}, ensure_ascii=False).encode('utf-8')
@@ -1607,7 +1605,7 @@ class ImportNotesTests(TestCase):
 
     def test_four_files_can_be_uploaded_at_once(self):
         """4つの欄をまとめて選んで、1回で取り込める。"""
-        login_staff(self.client)
+        login_editor(self.client)
         b = Category.objects.filter(subject='B').first()
         files = {
             'questions_a_file': {'questions': [
@@ -1669,7 +1667,7 @@ class ImportNotesTests(TestCase):
     def test_upload_screen_stops_before_a_large_removal(self):
         """画面でも、削除が多いファイルは一度で取り込まれない。"""
         build_questions(per_category=1)
-        login_staff(self.client)
+        login_editor(self.client)
         before = Question.objects.count()
         kept = Question.objects.filter(template__isnull=True).first()
         payload = json.dumps({'questions': [{
@@ -1789,7 +1787,7 @@ class LearningModeTests(TestCase):
             )
 
     def test_a_round_needs_a_note(self):
-        """解説が無ければ始められず、「解説がありません。」とだけ出す。スタッフでも同じ。"""
+        """解説が無ければ始められず、「解説がありません。」とだけ出す。ログインしていても同じ。"""
         build_questions()
         enter(self.client, make_learner('curator'))
         response = self.client.post(reverse('fe:learn_start'), {'minutes': 5}, follow=True)
@@ -2595,7 +2593,7 @@ class ExamDefinitionTests(TestCase):
         self.assertLess(weight[14], weight[11])
 
     def test_upload_screen_shows_the_materials(self):
-        login_staff(self.client)
+        login_editor(self.client)
         response = self.client.get(reverse('fe:manage_upload'))
         self.assertEqual(response.status_code, 200)
         for material in EXAM['materials']:
@@ -2611,8 +2609,8 @@ class ExamDefinitionTests(TestCase):
         self.assertContains(response, '問題集はまだ用意されていません')
 
 
-class ManageNeedsStaffTests(TestCase):
-    """問題の管理は、スタッフ権限のあるアカウントでのログインだけが要る。学習用の ID は問わない。"""
+class ManageNeedsLoginTests(TestCase):
+    """問題の管理は、編集画面のログインだけが要る。スタッフ権限も学習用の ID も問わない。"""
 
     PAGES = ('fe:manage_list', 'fe:manage_upload')
 
@@ -2620,10 +2618,8 @@ class ManageNeedsStaffTests(TestCase):
     def setUpTestData(cls):
         seed_masters()
 
-    def _login_as(self, username, is_staff):
-        account = get_user_model().objects.create_user(
-            username=username, password='pass12345', is_staff=is_staff,
-        )
+    def _login_as(self, username):
+        account = get_user_model().objects.create_user(username=username, password='pass12345')
         self.client.force_login(account)
 
     def test_learning_pages_do_not_reveal_the_console(self):
@@ -2640,21 +2636,19 @@ class ManageNeedsStaffTests(TestCase):
                 self.assertNotIn('問題の管理', html)
                 self.assertNotIn('取り込', html)
 
-    def test_a_staff_account_can_manage_without_any_id(self):
-        self._login_as('noid', is_staff=True)
+    def test_an_ordinary_account_can_manage_without_any_id(self):
+        """スタッフ権限のない共用の編集アカウントで使える。"""
+        self._login_as('shared')
         for name in self.PAGES:
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 200)
 
-    def test_an_ordinary_account_cannot_manage(self):
-        """スタッフでないアカウントでは開けない。"""
-        self._login_as('visitor', is_staff=False)
-        for name in self.PAGES:
-            with self.subTest(page=name):
-                self.assertEqual(self.client.get(reverse(name)).status_code, 403)
-        self.assertEqual(
-            self.client.post(reverse('fe:manage_upload'), {}).status_code, 403
-        )
+    def test_an_ordinary_account_stays_out_of_admin(self):
+        """問題の管理を使えても、/admin/ には入れない。"""
+        self._login_as('shared')
+        response = self.client.get('/admin/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/login/', response['Location'])
 
 
 
@@ -3259,7 +3253,7 @@ class PageViewTests(TestCase):
 
     def test_console_is_not_counted_and_shows_the_table(self):
         self.client.get(reverse('fe:guide'), HTTP_USER_AGENT=self.BROWSER)
-        login_staff(self.client)
+        login_editor(self.client)
         response = self.client.get(reverse('fe:manage_pageviews'), HTTP_USER_AGENT=self.BROWSER)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['views']['grand_total'], 1)
@@ -3267,8 +3261,8 @@ class PageViewTests(TestCase):
         self.assertContains(response, 'このアプリについて')
         self.assertEqual(PageViewCount.objects.count(), 1)
 
-    def test_console_needs_a_staff_login(self):
+    def test_console_needs_a_login(self):
         self.assertEqual(self.client.get(reverse('fe:manage_pageviews')).status_code, 302)
         account = get_user_model().objects.create_user(username='plain', password='pass12345')
         self.client.force_login(account)
-        self.assertEqual(self.client.get(reverse('fe:manage_pageviews')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('fe:manage_pageviews')).status_code, 200)

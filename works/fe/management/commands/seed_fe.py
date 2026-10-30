@@ -47,5 +47,5 @@ class Command(BaseCommand):
 
         self.stdout.write(
             '\n問題は同梱していません。{}の資料をもとに作った JSON を、\n'
-            'スタッフのアカウントでログインし、/fe/console/ の「JSONを取り込む」から取り込んでください。'.format(EXAM['name'])
+            '編集画面にログインし、/fe/console/ の「JSONを取り込む」から取り込んでください。'.format(EXAM['name'])
         )

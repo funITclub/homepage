@@ -37,7 +37,7 @@ urlpatterns = [
     path('tasks/send-mails/', views.SendMailsView.as_view(), name='send_mails'),
 
 
-    # 問題の管理（全 ID で共有する問題集。学習の画面とは別ページで、スタッフのログインが要る。
+    # 問題の管理（全 ID で共有する問題集。学習の画面とは別ページで、編集画面のログインが要る。
     # 登録は JSON の一括差し替えで行う）
     path('console/', RedirectView.as_view(pattern_name='fe:manage_list'), name='console'),
     path('console/questions/', views.ManageListView.as_view(), name='manage_list'),
