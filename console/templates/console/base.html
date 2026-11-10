@@ -1,0 +1,48 @@
+{% load static %}{% comment %}
+運営コンソールの共通レイアウト。編集画面（edit/base.html）と同じ作りで、公開サイトとは行き来しない。
+{% endcomment %}<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{% block title %}コンソール — fun IT club{% endblock %}</title>
+    {% include "_assets.html" %}
+</head>
+<body>
+
+<header class="site-header">
+    <div class="container header-inner">
+        {% if user.is_authenticated %}
+        <a class="brand" href="{% url 'console:index' %}">fun IT club / console</a>
+        {% else %}
+        <span class="brand">fun IT club / console</span>
+        {% endif %}
+
+        {% if user.is_authenticated %}
+        <nav class="site-nav">
+            <a href="{% url 'console:pageviews' %}" {% if section == 'pageviews' %}class="is-active"{% endif %}>ページビュー</a>
+        </nav>
+
+        <form class="editor-signout" method="post" action="{% url 'console:logout' %}">
+            {% csrf_token %}
+            <span class="editor-user">{{ user.get_username }}</span>
+            <button class="editor-signout-btn" type="submit">ログアウト</button>
+        </form>
+        {% endif %}
+    </div>
+</header>
+
+<main>
+    {% block contents %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span>fun IT club — 運営コンソール</span>
+    </div>
+</footer>
+
+{% include "_scripts.html" %}
+</body>
+</html>

@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'news',        # お知らせ
     'catalog',     # WG紹介・成果物紹介
     'edit',        # 編集画面（ログイン・メニュー・共通レイアウト）
+    'console',     # 運営コンソール（ページビューなど、サイトの様子を見る。アカウントは edit と共通）
     'wgjoin',      # WG への参加（Classroom と GitHub への登録。会員の情報は持たない）
 ]
 
@@ -57,6 +58,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.LoginRequiredMiddleware',
     # サブアプリ（works/・wg/ 配下）を、ホームページの一覧から辿ったときだけ開けるようにする。
     'config.gate.GateMiddleware',
+    # 公開ページの表示回数を数える（console.PageView）。ログイン中かを見るので認証より後に置く。
+    'console.middleware.PageViewMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

@@ -26,6 +26,10 @@ urlpatterns = [
     # お知らせ・WG紹介・成果物紹介の編集はすべてこの下にある。
     path('edit/', include('edit.urls', namespace='edit')),
 
+    # 運営コンソール（ログイン必須）。サイトの様子（ページビュー数など）を見る。
+    # アカウントは /edit/ と共通。こちらも公開サイトからはリンクしない。
+    path('console/', include('console.urls', namespace='console')),
+
 ]
 
 # サブアプリ（works/ と wg/ の配下）は、置かれているものを自動で足す（config/subapps.py）。

@@ -71,6 +71,8 @@ docs/                  補足資料（開発の手順・技術設計・セキュ
 | `/edit/news/` | お知らせの編集 |
 | `/edit/wg/` | WG紹介の編集 |
 | `/edit/works/` | 成果物紹介の編集 |
+| `/console/` | 運営コンソール（サイトの様子を見る） |
+| `/console/pageviews/` | ページビュー数 |
 | `/admin/` | 管理画面（テーブルの中身を一覧・検索する。遮断IPの解除もここ） |
 
 ## 参加フォーム（`/join/apply/`）
@@ -199,6 +201,19 @@ python manage.py createsuperuser --settings=config.settings_dev
 
 > **SMTP のシークレットを更新したら `EMAIL_SECRET_EXPIRES_ON` も必ず直すこと。** 忘れると期限の通知が
 > 嘘になる。手順は deploy.txt の「メール送信」。
+
+## 運営コンソール（`/console/`）
+
+サイトの様子を見る画面。掲載内容を書き換える `/edit/` とは分けてある。**ログイン必須**で、
+**アカウントは `/edit/` と共通**（同じユーザー・同じパスワード、セッションも共通）。ログイン画面は
+`/console/login/`。レイアウトは `console/base.html` で、公開サイトとは相互にリンクしない。
+
+- ページビュー（`/console/pageviews/`）… 公開ページが表示された回数。期間（7・30・90・365 日）の合計、
+  日ごとの推移、ページごとの順位を出す。
+- 数えるのは `console.middleware.PageViewMiddleware`。GET で 200 を返した HTML だけを数え、
+  `/edit/`・`/console/`・`/admin/`・静的ファイル、ログイン中の運営、クローラー、ブラウザの先読みは除く。
+- 記録は日付・パス・回数だけ（`console.PageView`）。**IP や User-Agent は残さない。**
+- 画面を足すときは `console/urls.py` の `protected()` で包む（未ログインを `/console/login/` に回すため）。
 
 ## 管理画面（`/admin/`）
 
