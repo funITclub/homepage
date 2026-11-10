@@ -1,0 +1,27 @@
+{% extends "console/base.html" %}
+
+{% block contents %}
+<div class="container">
+    <section class="editor">
+
+        <div class="section-head">
+            <p class="section-label">// コンソール</p>
+        </div>
+
+        <p class="editor-note">
+            サイトの様子を見る画面です。掲載内容の編集は編集画面（/edit/）で行います。
+        </p>
+
+        <div class="grid-3">
+
+            <a class="card menu-card" href="{% url 'console:pageviews' %}">
+                <span class="menu-label">// ページビュー（今日）</span>
+                <span class="menu-count">{{ today_views }}</span>
+                <span class="menu-desc">公開ページが表示された回数。日ごとの推移とページごとの順位を見られます。</span>
+            </a>
+
+        </div>
+
+    </section>
+</div>
+{% endblock %}

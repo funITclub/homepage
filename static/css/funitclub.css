@@ -1473,3 +1473,69 @@ a:hover {
         font-size: 1rem;
     }
 }
+
+/* 運営コンソール（/console/）のページビュー */
+
+.pv-periods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 20px;
+}
+
+.pv-periods a {
+    font-family: var(--mono);
+    font-size: .8rem;
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    color: #FFFFFF;
+}
+
+.pv-periods a:hover {
+    text-decoration: none;
+    border-color: var(--accent);
+}
+
+.pv-periods a.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--navy);
+}
+
+.pv-summary {
+    margin-bottom: 32px;
+}
+
+.pv-heading {
+    font-family: var(--mono);
+    font-size: .9rem;
+    letter-spacing: .05em;
+    margin: 32px 0 12px;
+}
+
+.pv-path {
+    word-break: break-all;
+    white-space: normal;
+}
+
+.pv-path a {
+    color: var(--accent-ink);
+}
+
+.pv-num {
+    text-align: right;
+}
+
+.pv-bar-col {
+    width: 40%;
+}
+
+.pv-bar {
+    display: block;
+    height: 10px;
+    min-width: 1px;
+    margin-top: 6px;
+    background: var(--accent);
+    border-radius: 2px;
+}
