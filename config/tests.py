@@ -100,7 +100,6 @@ class GateTests(TestCase):
     def test_open_apps_need_no_pass(self):
         """GATE_OPEN のアプリ（FE 対策）は直に開け、一覧のリンクにも通行証を付けない。"""
         self.assertEqual(self.client.get('/fe/').status_code, 200)
-        self.assertEqual(self.client.get('/fe/guide/').status_code, 200)
         self.assertEqual(gate.link('https://funitclub.org/fe/', settings), 'https://funitclub.org/fe/')
 
     def test_mail_links_stay_open_without_a_pass(self):

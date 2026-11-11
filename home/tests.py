@@ -752,9 +752,9 @@ class SearchEngineTests(TestCase):
             self.assertIn(f'Disallow: {prefix}\n', body)
         # WG一覧そのものは巡回させる
         self.assertNotIn('Disallow: /wg/\n', body)
-        # FE 対策は入口とガイドだけを巡回させ、中の画面は外す
+        # FE 対策はダッシュボード（入口）だけを巡回させ、ほかは外す
         self.assertNotIn('/fe/', settings.GATE_BACK)
-        for line in ['Allow: /fe/$', 'Allow: /fe/guide/$', 'Disallow: /fe/']:
+        for line in ['Allow: /fe/$', 'Disallow: /fe/']:
             self.assertIn(f'{line}\n', body)
         self.assertIn('Sitemap: https://funitclub.org/sitemap.xml', body)
 
@@ -762,7 +762,7 @@ class SearchEngineTests(TestCase):
         response = self.client.get('/sitemap.xml')
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        for path in ['/', '/news/', '/wg/', '/works/', '/join/', '/fe/', '/fe/guide/']:
+        for path in ['/', '/news/', '/wg/', '/works/', '/join/', '/fe/']:
             self.assertIn(f'<loc>https://funitclub.org{path}</loc>', body)
         self.assertNotIn('/edit/', body)
 
@@ -771,8 +771,8 @@ class SearchEngineTests(TestCase):
         self.assertContains(response, '<link rel="canonical" href="https://funitclub.org/wg/">')
 
     def test_fe_has_canonical(self):
-        response = self.client.get('/fe/guide/', HTTP_HOST='funitclub.azurewebsites.net')
-        self.assertContains(response, '<link rel="canonical" href="https://funitclub.org/fe/guide/">')
+        response = self.client.get('/fe/', HTTP_HOST='funitclub.azurewebsites.net')
+        self.assertContains(response, '<link rel="canonical" href="https://funitclub.org/fe/">')
 
     def test_placeholder_pages_are_noindex(self):
         self.assertContains(self.client.get(reverse('home:coming_soon')),

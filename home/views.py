@@ -354,7 +354,7 @@ class ComingSoonView(NavMixin, TemplateView):
 #: サイトマップに載せるページ（URL名）。ナビにある公開ページと、直に開けるサブアプリ
 #: （settings.GATE_OPEN）の入口だけを並べる
 SITEMAP_PAGES = ['home:index', 'home:news_list', 'home:wg_list', 'home:work_list', 'home:join',
-                 'fe:index', 'fe:guide']
+                 'fe:index']
 
 
 @login_not_required
@@ -371,8 +371,8 @@ def robots_txt(request):
     ]
     # サブアプリは通行証が無いと一覧へ送り返すので、巡回させても中身は読めない
     lines += [f'Disallow: {prefix}' for prefix in sorted(settings.GATE_BACK)]
-    # 直に開けるサブアプリは、サイトマップに載せた入口だけを巡回させる。中の画面
-    # （出題・成績・メール・問題の管理）は使う人ごとのもので、検索に載せる中身ではない
+    # 直に開けるサブアプリは、サイトマップに載せた入口だけを巡回させる。ほかの画面
+    # （一問一答・学習・成績・メール・問題の管理）は始めた人向けで、直に開くと入口へ送られる
     pages = [reverse(name) for name in SITEMAP_PAGES]
     for prefix in sorted(settings.GATE_OPEN):
         lines += [f'Allow: {page}$' for page in pages if page.startswith(prefix)]
