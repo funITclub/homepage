@@ -349,9 +349,12 @@ class ComingSoonView(NavMixin, TemplateView):
 # ---- 検索エンジン向け ----------------------------------------------------
 # Google などに載せたいのは公開サイトの一覧ページだけ。編集画面・申し込みの途中・
 # サブアプリ（一覧から辿って入るもの。config/gate.py）は robots.txt で巡回から外す。
+# 例外は直に開けるサブアプリ（settings.GATE_OPEN）の入口で、これはサイトマップにも載せる。
 
-#: サイトマップに載せるページ（URL名）。ナビにある公開ページだけを並べる
-SITEMAP_PAGES = ['home:index', 'home:news_list', 'home:wg_list', 'home:work_list', 'home:join']
+#: サイトマップに載せるページ（URL名）。ナビにある公開ページと、直に開けるサブアプリ
+#: （settings.GATE_OPEN）の入口だけを並べる
+SITEMAP_PAGES = ['home:index', 'home:news_list', 'home:wg_list', 'home:work_list', 'home:join',
+                 'fe:index']
 
 
 @login_not_required
@@ -368,6 +371,12 @@ def robots_txt(request):
     ]
     # サブアプリは通行証が無いと一覧へ送り返すので、巡回させても中身は読めない
     lines += [f'Disallow: {prefix}' for prefix in sorted(settings.GATE_BACK)]
+    # 直に開けるサブアプリは、サイトマップに載せた入口だけを巡回させる。ほかの画面
+    # （一問一答・学習・成績・メール・問題の管理）は始めた人向けで、直に開くと入口へ送られる
+    pages = [reverse(name) for name in SITEMAP_PAGES]
+    for prefix in sorted(settings.GATE_OPEN):
+        lines += [f'Allow: {page}$' for page in pages if page.startswith(prefix)]
+        lines.append(f'Disallow: {prefix}')
     lines += ['', f'Sitemap: {settings.SITE_URL}{reverse("sitemap")}', '']
     return HttpResponse('\n'.join(lines), content_type='text/plain; charset=utf-8')
 

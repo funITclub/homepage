@@ -680,10 +680,10 @@ class ExternalLinkTests(TestCase):
         self.assertIn('?from=works" target="_blank" rel="noopener noreferrer"', html)
 
     def test_top_links_to_fe_app(self):
-        """TOP の「公開中」のリンクは、通行証付きで別タブで開く（成果物一覧へ送り返されない）。"""
+        """TOP の「公開中」のリンクは別タブで開く。FE 対策は直に開けるので通行証は付けない。"""
         html = self.client.get(reverse('home:index')).content.decode()
 
-        self.assertRegex(html, r'href="/fe/\?from=[^"]+" target="_blank" rel="noopener noreferrer"')
+        self.assertIn('href="/fe/" target="_blank" rel="noopener noreferrer"', html)
         self.assertIn('IPA基本情報技術者試験の問題集', html)
 
     def test_site_license_is_shown(self):
@@ -752,19 +752,27 @@ class SearchEngineTests(TestCase):
             self.assertIn(f'Disallow: {prefix}\n', body)
         # WG一覧そのものは巡回させる
         self.assertNotIn('Disallow: /wg/\n', body)
+        # FE 対策はダッシュボード（入口）だけを巡回させ、ほかは外す
+        self.assertNotIn('/fe/', settings.GATE_BACK)
+        for line in ['Allow: /fe/$', 'Disallow: /fe/']:
+            self.assertIn(f'{line}\n', body)
         self.assertIn('Sitemap: https://funitclub.org/sitemap.xml', body)
 
     def test_sitemap_lists_public_pages(self):
         response = self.client.get('/sitemap.xml')
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        for path in ['/', '/news/', '/wg/', '/works/', '/join/']:
+        for path in ['/', '/news/', '/wg/', '/works/', '/join/', '/fe/']:
             self.assertIn(f'<loc>https://funitclub.org{path}</loc>', body)
         self.assertNotIn('/edit/', body)
 
     def test_canonical_uses_site_url_whatever_host(self):
         response = self.client.get('/wg/', HTTP_HOST='funitclub.azurewebsites.net')
         self.assertContains(response, '<link rel="canonical" href="https://funitclub.org/wg/">')
+
+    def test_fe_has_canonical(self):
+        response = self.client.get('/fe/', HTTP_HOST='funitclub.azurewebsites.net')
+        self.assertContains(response, '<link rel="canonical" href="https://funitclub.org/fe/">')
 
     def test_placeholder_pages_are_noindex(self):
         self.assertContains(self.client.get(reverse('home:coming_soon')),

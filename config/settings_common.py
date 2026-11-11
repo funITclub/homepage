@@ -137,11 +137,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # 一覧のリンクに通行証を付け、URL を直に開いた人は一覧へ送り返す。
 # 左が通行証の要る URL（config/urls.py で割り当てたもの）、右が送り返す先。
 # 公表した成果物（works/ 配下）は成果物一覧へ、作っている途中（wg/ 配下）は WG一覧へ。
-GATE_BACK = subapps.gate_back(BASE_DIR)
+#
+# GATE_OPEN は導線から外し、URL を直に開けるようにするサブアプリ。検索エンジンから
+# 入ってきてほしいものだけを並べる。robots.txt ではサイトマップに載せた入口だけを
+# 巡回させる（home/views.py）。
+GATE_OPEN = ['/fe/']
+GATE_BACK = {url: back for url, back in subapps.gate_back(BASE_DIR).items()
+             if url not in GATE_OPEN}
 # 通行証の要らない入口。それぞれ別の鍵（メールの署名付きリンク・呼び出しトークン・
 # 編集画面のログイン）で守られているところだけを並べる。ここは守りを緩めるための
 # 一覧ではないので、増やすときは「別の鍵があるか」を確かめること。
-GATE_EXEMPT = ['/countdown/notify/', '/fe/console/', '/fe/mail/confirm/', '/fe/mail/stop/', '/fe/tasks/']
+GATE_EXEMPT = ['/countdown/notify/']
 # 一覧を開いてからアプリに入るまでの猶予
 GATE_MAX_AGE = 10 * 60
 
