@@ -94,8 +94,14 @@ class GateTests(TestCase):
             self.assertRedirects(self.client.get(f'/countdown/?{gate.PARAM}={token}'), self.list_url)
 
     def test_a_pass_is_only_for_its_own_app(self):
-        token = gate.make_token('/countdown/')
-        self.assertRedirects(self.client.get(f'/fe/?{gate.PARAM}={token}'), self.list_url)
+        token = gate.make_token('/protein/')
+        self.assertRedirects(self.client.get(f'/countdown/?{gate.PARAM}={token}'), self.list_url)
+
+    def test_open_apps_need_no_pass(self):
+        """GATE_OPEN のアプリ（FE 対策）は直に開け、一覧のリンクにも通行証を付けない。"""
+        self.assertEqual(self.client.get('/fe/').status_code, 200)
+        self.assertEqual(self.client.get('/fe/guide/').status_code, 200)
+        self.assertEqual(gate.link('https://funitclub.org/fe/', settings), 'https://funitclub.org/fe/')
 
     def test_mail_links_stay_open_without_a_pass(self):
         """別の鍵（メールの署名付きリンク）で守られている入口は素通し。"""
