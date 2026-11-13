@@ -39,13 +39,14 @@
             </div>
         </div>
 
-        <h2 class="pv-heading">WG と成果物</h2>
+        <h2 class="pv-heading">WG と成果物（{{ days }}日）</h2>
         <p class="editor-note">
+            {{ start|date:"Y-m-d" }} 〜 {{ end|date:"Y-m-d" }} の {{ days }}日分です。
             WG・成果物のアプリ（wg/・works/ に載っているもの）ごとに、その下のページの回数をまとめています。
             名前は WG一覧・成果物一覧に登録した URL から引いています。
         </p>
         {% for label, app_rows in app_groups %}
-        <h3 class="pv-subheading">{{ label }}</h3>
+        <h3 class="pv-subheading">{{ label }}・{{ days }}日</h3>
         <div class="card">
             {% include "console/_app_views.html" %}
         </div>

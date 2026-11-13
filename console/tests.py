@@ -192,6 +192,13 @@ class ViewsByAppTests(TestCase):
         apps = self.apps(days=90)
         self.assertEqual(apps['works'][0][:2], ('/countdown/', 50))
 
+    def test_tables_show_how_many_days(self):
+        response = self.client.get(reverse('console:pageviews'), {'days': 7})
+        self.assertContains(response, 'WG と成果物（7日）')
+        self.assertContains(response, 'WG（作っている途中）・7日')
+        self.assertContains(response, '成果物（公表したもの）・7日')
+        self.assertContains(response, '回数（7日）', count=2)
+
     def test_page_shows_app_names(self):
         response = self.client.get(reverse('console:pageviews'))
         self.assertContains(response, 'WG と成果物')
