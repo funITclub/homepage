@@ -97,8 +97,11 @@ class PageViewsView(ConsoleMixin, TemplateView):
     template_name = 'console/pageviews.html'
     section = 'pageviews'
 
-    #: 選べる期間（日数）。先頭が既定。
-    PERIODS = (30, 7, 90, 365)
+    #: 選べる期間（日数）。ボタンはこの順（少ない順）に並ぶ。
+    PERIODS = (7, 30, 90, 365)
+
+    #: 既定の期間（日数）
+    DEFAULT_DAYS = 30
 
     #: 順位表に出すページの数
     RANKING_LIMIT = 50
@@ -107,8 +110,8 @@ class PageViewsView(ConsoleMixin, TemplateView):
         try:
             days = int(self.request.GET.get('days', ''))
         except ValueError:
-            return self.PERIODS[0]
-        return days if days in self.PERIODS else self.PERIODS[0]
+            return self.DEFAULT_DAYS
+        return days if days in self.PERIODS else self.DEFAULT_DAYS
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

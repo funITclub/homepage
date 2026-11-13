@@ -123,6 +123,10 @@ class PageViewsPageTests(TestCase):
         context = self.client.get(reverse('console:pageviews'), {'days': 90}).context
         self.assertEqual(context['total'], 110)
 
+    def test_period_buttons_are_in_ascending_order(self):
+        context = self.client.get(reverse('console:pageviews')).context
+        self.assertEqual(list(context['periods']), [7, 30, 90, 365])
+
     def test_unknown_period_falls_back_to_default(self):
         context = self.client.get(reverse('console:pageviews'), {'days': 'abc'}).context
         self.assertEqual(context['days'], 30)
@@ -191,6 +195,13 @@ class ViewsByAppTests(TestCase):
     def test_period_applies(self):
         apps = self.apps(days=90)
         self.assertEqual(apps['works'][0][:2], ('/countdown/', 50))
+
+    def test_tables_show_how_many_days(self):
+        response = self.client.get(reverse('console:pageviews'), {'days': 7})
+        self.assertContains(response, 'WG と成果物（7日）')
+        self.assertContains(response, 'WG（作っている途中）・7日')
+        self.assertContains(response, '成果物（公表したもの）・7日')
+        self.assertContains(response, '回数（7日）', count=2)
 
     def test_page_shows_app_names(self):
         response = self.client.get(reverse('console:pageviews'))
