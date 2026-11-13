@@ -209,7 +209,11 @@ python manage.py createsuperuser --settings=config.settings_dev
 `/console/login/`。レイアウトは `console/base.html` で、公開サイトとは相互にリンクしない。
 
 - ページビュー（`/console/pageviews/`）… 公開ページが表示された回数。期間（7・30・90・365 日）の合計、
-  日ごとの推移、ページごとの順位を出す。
+  WG と成果物ごと、ページごとの順位、日ごとの推移を出す。
+- WG と成果物ごとの回数は、`wg/`・`works/` に載っているアプリ（`config/subapps.py`）の URL の下にある
+  ページの回数を足したもの。入れ子（`/welfare/` と `/welfare/activity/`）は長いほうに数える。
+  記録を別に持つのではなく、パスごとの記録を画面を開いたときにまとめている。
+  アプリの名前は、WG一覧・成果物一覧に登録した URL（`Wg.app_url`・`Wg.link_url`・`Work.url`）から引く。
 - 数えるのは `console.middleware.PageViewMiddleware`。GET で 200 を返した HTML だけを数え、
   `/edit/`・`/console/`・`/admin/`・静的ファイル、ログイン中の運営、クローラー、ブラウザの先読みは除く。
 - 記録は日付・パス・回数だけ（`console.PageView`）。**IP や User-Agent は残さない。**

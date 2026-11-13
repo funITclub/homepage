@@ -132,3 +132,68 @@ class PageViewsPageTests(TestCase):
     def test_index_shows_todays_views(self):
         response = self.client.get(reverse('console:index'))
         self.assertEqual(response.context['today_views'], 7)
+
+
+class ViewsByAppTests(TestCase):
+    """WG・成果物のアプリ（wg/・works/ の配下）ごとにまとめる。"""
+
+    APPS = [
+        ('wg', 'welfare', 'welfare'),
+        ('wg', 'welfare_activity', 'welfare/activity'),
+        ('wg', 'protein_activity', 'protein/activity'),
+        ('works', 'countdown', 'countdown'),
+        ('works', 'fe', 'fe'),
+    ]
+
+    def setUp(self):
+        from unittest import mock
+
+        from catalog.models import Wg, Work
+
+        patcher = mock.patch('console.views.installed_apps', return_value=self.APPS)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.client.force_login(User.objects.create_user('funitclub', password='x'))
+        today = timezone.localdate()
+        for path, count in [
+            ('/', 3),
+            ('/fe/', 10), ('/fe/quiz/', 5),
+            ('/welfare/', 2),
+            ('/welfare/activity/', 4), ('/welfare/activity/tickets/', 1),
+            ('/fe-other/', 7),  # /fe/ ではない
+        ]:
+            PageView.objects.create(date=today, path=path, count=count)
+        PageView.objects.create(date=today - timedelta(days=40), path='/countdown/', count=50)
+
+        Wg.objects.create(code='WG-05', name='福祉', description='x',
+                          app_url='https://example.com/welfare/activity/')
+        Work.objects.create(category='Web App', title='FE 対策', description='x',
+                            url='https://example.com/fe/')
+
+    def apps(self, **params):
+        context = self.client.get(reverse('console:pageviews'), params).context
+        return {folder: [(a['prefix'], a['n'], a['pages'], a['title']) for a in rows]
+                for folder, rows in context['apps'].items()}
+
+    def test_counts_are_grouped_per_app_and_nested_urls_go_to_the_longer_one(self):
+        apps = self.apps()
+        self.assertEqual(apps['wg'], [
+            ('/welfare/activity/', 5, 2, 'WG-05 福祉'),
+            ('/welfare/', 2, 1, 'WG-05 福祉'),  # 同じ WG のアプリ
+            ('/protein/activity/', 0, 0, ''),
+        ])
+        self.assertEqual(apps['works'], [
+            ('/fe/', 15, 2, 'FE 対策'),
+            ('/countdown/', 0, 0, ''),
+        ])
+
+    def test_period_applies(self):
+        apps = self.apps(days=90)
+        self.assertEqual(apps['works'][0][:2], ('/countdown/', 50))
+
+    def test_page_shows_app_names(self):
+        response = self.client.get(reverse('console:pageviews'))
+        self.assertContains(response, 'WG と成果物')
+        self.assertContains(response, 'FE 対策')
+        self.assertContains(response, 'protein_activity')

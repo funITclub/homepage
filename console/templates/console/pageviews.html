@@ -39,6 +39,18 @@
             </div>
         </div>
 
+        <h2 class="pv-heading">WG と成果物</h2>
+        <p class="editor-note">
+            WG・成果物のアプリ（wg/・works/ に載っているもの）ごとに、その下のページの回数をまとめています。
+            名前は WG一覧・成果物一覧に登録した URL から引いています。
+        </p>
+        {% for label, app_rows in app_groups %}
+        <h3 class="pv-subheading">{{ label }}</h3>
+        <div class="card">
+            {% include "console/_app_views.html" %}
+        </div>
+        {% endfor %}
+
         <h2 class="pv-heading">ページごと</h2>
         <div class="card">
             {% if ranking %}
