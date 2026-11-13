@@ -1514,6 +1514,12 @@ a:hover {
     margin: 32px 0 12px;
 }
 
+.pv-subheading {
+    font-size: .85rem;
+    font-weight: 600;
+    margin: 20px 0 8px;
+}
+
 .pv-path {
     word-break: break-all;
     white-space: normal;

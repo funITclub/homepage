@@ -1,0 +1,29 @@
+{% comment %}WG・成果物のアプリごとの回数の表。app_rows に views.views_by_app() の行を渡す。{% endcomment %}
+{% if app_rows %}
+<div class="editor-table-wrap">
+    <table class="editor-table">
+        <thead>
+            <tr>
+                <th>アプリ</th>
+                <th>URL</th>
+                <th class="pv-num">回数</th>
+                <th class="pv-num">ページ数</th>
+                <th class="pv-bar-col"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for app in app_rows %}
+            <tr>
+                <td>{{ app.title|default:app.name }}</td>
+                <td class="editor-date pv-path"><a href="{{ app.prefix }}" target="_blank" rel="noopener">{{ app.prefix }}</a></td>
+                <td class="editor-date pv-num">{{ app.n }}</td>
+                <td class="editor-date pv-num">{{ app.pages }}</td>
+                <td class="pv-bar-col"><span class="pv-bar" style="width: {{ app.percent }}%"></span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="editor-empty">いま載っているアプリはありません。</p>
+{% endif %}
