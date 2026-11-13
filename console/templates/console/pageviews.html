@@ -52,7 +52,10 @@
         </div>
         {% endfor %}
 
-        <h2 class="pv-heading">ページごと</h2>
+        <h2 class="pv-heading">ページごと（{{ days }}日）</h2>
+        <p class="editor-note">
+            {{ start|date:"Y-m-d" }} 〜 {{ end|date:"Y-m-d" }} の {{ days }}日分です。
+        </p>
         <div class="card">
             {% if ranking %}
             <div class="editor-table-wrap">
@@ -61,7 +64,7 @@
                         <tr>
                             <th>順</th>
                             <th>パス</th>
-                            <th class="pv-num">回数</th>
+                            <th class="pv-num">回数（{{ days }}日）</th>
                             <th class="pv-bar-col"></th>
                         </tr>
                     </thead>

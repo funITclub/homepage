@@ -201,7 +201,11 @@ class ViewsByAppTests(TestCase):
         self.assertContains(response, 'WG と成果物（7日）')
         self.assertContains(response, 'WG（作っている途中）・7日')
         self.assertContains(response, '成果物（公表したもの）・7日')
-        self.assertContains(response, '回数（7日）', count=2)
+        self.assertContains(response, '回数（7日）', count=3)  # WG・成果物・ページごと
+
+    def test_ranking_shows_how_many_days(self):
+        response = self.client.get(reverse('console:pageviews'), {'days': 90})
+        self.assertContains(response, 'ページごと（90日）')
 
     def test_page_shows_app_names(self):
         response = self.client.get(reverse('console:pageviews'))
