@@ -8,6 +8,7 @@
 # その ID の一覧で、ID を知っている人なら誰でも読み書きできる（合言葉はない）。
 # ID を使わない人には、誰でも読み書きできる共有ボード（/countdown/events/）がある。
 # どちらも同じビューで、URL に ID があるかどうかだけが違う。
+# 一覧は React の画面（AppView が入れ物を返し、データは countdown/api.py から読む）。
 #
 # メール通知は ID の一覧でだけ使える（countdown/notify.py）。
 
@@ -22,10 +23,9 @@ from django.core.mail import BadHeaderError
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import generic
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 
 from edit.models import public_contact_email
 from home.netutils import client_ip
@@ -107,63 +107,35 @@ class BoardMixin:
         return self.list_url
 
 
-class EventListView(BoardMixin, generic.ListView):
-    """登録された出来事・予定の一覧。未来はカウントダウン、過去はカウントアップ。"""
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+class AppView(BoardMixin, generic.TemplateView):
+    """一覧の画面（React）の入れ物。中身は React（frontend/countdown）が描く。
 
-    template_name = 'countdown/event_list.html'
-    context_object_name = 'events'
+    一覧・登録・編集・削除の URL はどれも同じ入れ物を返し、何を描くかは React が
+    アドレスを見て決める（登録・編集は一覧の上にパネルを開く。削除は一覧の「削除」ですぐ行い、
+    以前の削除確認の URL は一覧へ戻す）。データは React が API（countdown/api.py）から読む。
+
+    編集・削除の URL は、その置き場に無い番号なら 404 にする（ほかの ID のものを
+    番号で言い当てても開けない。画面のころと同じ）。
+    書き込みは API が受けるので、ここは GET だけ。CSRF の Cookie はここで配る。
+    """
+
+    template_name = 'countdown/app.html'
+    http_method_names = ['get', 'head']
     extra_context = {'nav': 'list'}
+
+    def get(self, request, *args, **kwargs):
+        if 'pk' in kwargs:
+            get_object_or_404(self.get_queryset(), pk=kwargs['pk'])
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        events = list(context['events'])
-        today = timezone.localdate()
-
-        # 予定（当日を含む未来）は近い順、出来事（過去）は新しい順に並べる
-        context['upcoming_events'] = sorted(
-            [e for e in events if e.date >= today], key=lambda e: e.date
-        )
-        context['past_events'] = sorted(
-            [e for e in events if e.date < today], key=lambda e: e.date, reverse=True
-        )
-        context['today'] = today
+        if kwargs.get('pk') is None and self.request.resolver_match.url_name.endswith('_create'):
+            context['nav'] = 'create'
+        # ID を作ったときなどの知らせは、React がトーストで出す
+        context['notices'] = [str(m) for m in messages.get_messages(self.request)]
         return context
-
-
-class EventCreateView(BoardMixin, generic.CreateView):
-    """出来事・予定を登録する。"""
-
-    form_class = CountEventForm
-    template_name = 'countdown/event_form.html'
-    extra_context = {'nav': 'create', 'heading': '出来事・予定を登録', 'submit_label': '登録する'}
-
-    def form_valid(self, form):
-        form.instance.board = self.board
-        messages.success(self.request, f'「{form.instance.name}」を登録しました。')
-        return super().form_valid(form)
-
-
-class EventUpdateView(BoardMixin, generic.UpdateView):
-    """出来事・予定を編集する。"""
-
-    form_class = CountEventForm
-    template_name = 'countdown/event_form.html'
-    extra_context = {'nav': 'list', 'heading': '出来事・予定を編集', 'submit_label': '保存する'}
-
-    def form_valid(self, form):
-        messages.success(self.request, f'「{form.instance.name}」を保存しました。')
-        return super().form_valid(form)
-
-
-class EventDeleteView(BoardMixin, generic.DeleteView):
-    """出来事・予定を削除する（確認ページを挟む）。"""
-
-    template_name = 'countdown/event_confirm_delete.html'
-    extra_context = {'nav': 'list'}
-
-    def form_valid(self, form):
-        messages.success(self.request, f'「{self.object.name}」を削除しました。')
-        return super().form_valid(form)
 
 
 class MailSettingsView(BoardMixin, generic.FormView):

@@ -12,7 +12,10 @@ hirahira_room の `countdown` アプリからの移植。あちらはユーザ�
 | ファイル | 役割 |
 |---|---|
 | `models.py` | `Board`（ID ごとの置き場・通知先）と `CountEvent`（出来事・予定）。日数の数え方もここ |
-| `views.py` | 紹介／ID で入る・作る／一覧・登録・編集・削除／通知先の設定／メールのリンク／定時送信の入口 |
+| `views.py` | 紹介／ID で入る・作る／一覧の画面の入れ物（`AppView`）／通知先の設定／メールのリンク／定時送信の入口 |
+| `api.py` | 一覧の画面（React）が呼ぶ API。一覧・登録・更新・削除 |
+| `templates/countdown/app.html` | 一覧の画面の入れ物。React に URL の頭と ID を `data-*` で渡す |
+| `static/countdown/app/` | 一覧の画面（React）をビルドしたもの。ソースは `frontend/countdown/` |
 | `forms.py` | ID の入力（入ると作るを分ける）・出来事の入力・通知先のアドレス |
 | `notify.py` | メール通知（確認・解除のリンク、毎日の送信、送りすぎの歯止め） |
 | `crypto.py` | 通知先のアドレスの暗号化 |
@@ -25,9 +28,10 @@ hirahira_room の `countdown` アプリからの移植。あちらはユーザ�
 |---|---|
 | `/countdown/` | 紹介 |
 | `/countdown/enter/` | ID で入る・新しく作る |
-| `/countdown/<ID>/` | その ID の一覧（登録・編集・削除は `create/`・`<番号>/update/`・`<番号>/delete/`） |
+| `/countdown/<ID>/` | その ID の一覧（React。登録・編集は `create/`・`<番号>/update/` でパネルを開く） |
+| `/countdown/<ID>/api/` | 一覧の画面が呼ぶ API（`api/<番号>/` で 1 件） |
 | `/countdown/<ID>/mail/` | その ID のメール通知の設定 |
-| `/countdown/events/` | ID を使わない共有ボード（誰でも読み書きできる） |
+| `/countdown/events/` | ID を使わない共有ボード（誰でも読み書きできる。URL の作りは ID の一覧と同じ） |
 | `/countdown/notify/confirm/<token>/` | 確認のメールのリンク（通知先の登録） |
 | `/countdown/notify/stop/<token>/` | 解除のリンク |
 | `/countdown/notify/run/` | 毎日 0 時の送信の入口（GitHub Actions から呼ぶ。POST だけ） |
@@ -112,6 +116,45 @@ App Service には常設のスケジューラがなく、DB は VNet の中に�
 
 設定の手順（合言葉を作って App Service と GitHub のシークレットに入れる）は
 [deploy.txt](../../deploy.txt) の「カウントダウンのメール通知」。
+
+## 画面の作り（React）
+
+一覧・登録・編集・削除は、hirahira_room の countdown と同じ React の画面（ソースは
+[frontend/countdown](../../frontend/countdown)）。
+
+### 見た目
+
+- 色は hirahira_room の countdown と同じダークの配色（`frontend/countdown/src/app.css` の `--cd-*`）。
+- その CSS を `base_app.html` が読むので、テンプレートの画面（紹介・ID で使う・メール通知・メールのリンク）も
+  同じ部品（`cd-*` と Bootstrap の `form-control`・`btn`）で描き、同じ見た目になる。
+  サイトの外枠（ヘッダー・フッター）は `base_app.html` のままで、地の色だけ合わせる。左上の表記は「fun IT club」。
+- 見出しの帯は置かない。メール通知の設定へは、ID の一覧のときだけヘッダーのナビから行く。
+- テンプレートの段落は1行で書く（段落の中で改行すると、日本語の途中に空白が入って見える）。
+
+### 一覧の画面
+
+- 一覧・登録・編集・削除の URL はどれも同じ入れ物（`AppView`）を返し、何を描くかは React がアドレスを見て決める。
+  登録・編集は一覧の上にパネルを開く。削除は確認を出さずにすぐ消し、トーストの「元に戻す」で取り消せる
+  （サーバーへ送るのは 6 秒後）。以前の削除確認の URL（`<番号>/delete/`）は一覧へ戻す。
+- データは API（`<一覧>/api/`）から JSON で読み書きする。入力の確かめは画面のころと同じ `CountEventForm`。
+  ほかの置き場の番号を指定しても 404。書き込みには CSRF トークンが要る（入れ物のページが Cookie で配る）。
+- 日数は画面が `derive.ts` で数える（「今日」は API が返すサーバーの日付）。数え方を変えるときは
+  `models.py` と `derive.ts`・`derive.test.ts` をいっしょに直す。
+- 共有ボードでは通知の欄とタブを出さない（入れ物のページが ID を渡さないため）。
+- 一覧からの導線（`config/gate.py`）の印が切れると API も転送されるので、画面は「開き直してください」と出す。
+
+### 画面を直すとき
+
+ビルドしたもの（`static/countdown/app/app.js`・`app.css`）もコミットする。デプロイでは Node を使わない。
+
+```bash
+cd frontend/countdown
+npm ci          # 初めてのとき・package-lock.json が変わったとき
+npm test        # 日数の計算（src/derive.ts）のテスト
+npm run build   # 型の確かめ → ビルド（works/countdown/static/countdown/app/ に出る）
+```
+
+作りながら確かめるときは `npm run dev`（保存するたびにビルドし直す）を動かしたまま、runserver で開く。
 
 ## テスト
 

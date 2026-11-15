@@ -1,0 +1,34 @@
+{% extends "countdown/base_app.html" %}
+{% load static %}
+{% comment %}
+一覧の画面（React）の入れ物。一覧・登録・編集のパネル・トーストは React が描く。
+ヘッダー・フッター（サイトの外枠）は base_app.html のものをそのまま使う。
+
+app.js と app.css は frontend/countdown を npm run build して作ったもの
+（static/countdown/app/ に出る。ビルドしたものもコミットする）。
+data-* で、React に URL の頭と置き場（ID）のことを渡す。URL を React の中に書き込まないため。
+通知先のアドレスは伏せたもの（a***@example.com）だけを渡す。
+{% endcomment %}
+
+{% block title %}一覧 — カウントアップ＆ダウン{% endblock %}
+
+{% block contents %}
+<div id="countdown-root"
+     data-base-path="{{ list_url }}"
+     data-api-url="{{ list_url }}api/"
+     data-enter-url="{% url 'countdown:enter' %}"
+     {% if board %}data-board="{{ board.code }}"
+     data-mail-url="{{ board.mail_url }}"
+     data-notify-to="{{ board.masked_email }}"{% endif %}>
+    <noscript>
+        <div class="container section">
+            <p>この画面を使うには JavaScript を有効にしてください。</p>
+        </div>
+    </noscript>
+</div>
+{{ notices|json_script:"countdown-notices" }}
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'countdown/app/app.js' %}"></script>
+{% endblock %}

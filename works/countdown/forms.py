@@ -19,6 +19,7 @@ class BoardForm(forms.Form):
         label='ID', max_length=30,
         widget=forms.TextInput(attrs={
             'autocomplete': 'username', 'autocapitalize': 'none', 'spellcheck': 'false',
+            'class': 'form-control',
         }),
         help_text='半角の英小文字・数字・「_」「-」で、3〜30文字。',
     )
@@ -52,7 +53,7 @@ class NotifyEmailForm(forms.Form):
 
     email = forms.EmailField(
         label='メールアドレス', max_length=254,
-        widget=forms.EmailInput(attrs={'autocomplete': 'email'}),
+        widget=forms.EmailInput(attrs={'autocomplete': 'email', 'class': 'form-control'}),
         help_text='このアドレスに確認のメールを送ります。メールのリンクを開くと登録されます。',
     )
 

@@ -11,17 +11,21 @@
     <title>{% block title %}カウントアップ＆ダウン{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23001E3C'/><text x='16' y='23' font-size='18' font-family='monospace' fill='%235BB8FF'>±</text></svg>">
     {% include "_assets.html" %}
+    {# どの画面も、一覧の画面（React）と同じ CSS で描く。ソースは frontend/countdown/src/app.css #}
+    <link rel="stylesheet" href="{% static 'countdown/app/app.css' %}">
+    {% block head %}{% endblock %}
 </head>
 <body>
 
 <header class="site-header">
     <div class="container header-inner">
-        <a class="brand" href="{% url 'countdown:index' %}">count up &amp; down</a>
+        <a class="brand" href="{% url 'countdown:index' %}">fun IT club</a>
         <nav class="site-nav">
             <a href="{% url 'countdown:index' %}" {% if nav == 'index' %}class="is-active"{% endif %}>このアプリについて</a>
             {% if list_url %}
             <a href="{{ list_url }}" {% if nav == 'list' %}class="is-active"{% endif %}>一覧</a>
             <a href="{{ create_url }}" {% if nav == 'create' %}class="is-active"{% endif %}>登録</a>
+            {% if board %}<a href="{{ board.mail_url }}" {% if nav == 'mail' %}class="is-active"{% endif %}>メール通知</a>{% endif %}
             <a href="{% url 'countdown:enter' %}">{% if board %}ID: {{ board.code }}（切り替える）{% else %}ID を使う{% endif %}</a>
             {% else %}
             <a href="{% url 'countdown:enter' %}" {% if nav == 'enter' %}class="is-active"{% endif %}>ID で使う</a>
@@ -44,5 +48,6 @@
 </footer>
 
 {% include "_scripts.html" %}
+{% block scripts %}{% endblock %}
 </body>
 </html>
