@@ -1,26 +1,41 @@
-/* countdown の一覧の画面の見た目（hirahira_room の countdown と同じ作り）。
-   土台は _assets.html の Bootstrap と funitclub.css（サイトの外枠・ネイビーの地）。
+/* countdown の一覧の画面の見た目（hirahira_room の countdown と同じ作り・同じ色）。
+   土台は _assets.html の Bootstrap と funitclub.css（サイトの外枠）。
    ここでは countdown にしか無いもの（リング・トースト・パネル・スケルトン・動き）と、色・余白を決める。
-   色は funitclub.css の変数（--navy・--accent など）に合わせ、すべて下の --cd-* から取る。 */
+   画面はいつもダークモード（OS の明るい・暗いの設定には合わせない）。色はすべて下の変数から取る。
+   色は hirahira_room の frontend/countdown/src/app.css と同じ値にしてある。 */
 
 :root {
-  --cd-accent: var(--accent, #5bb8ff);
-  --cd-accent-soft: rgb(91 184 255 / 0.14);
-  --cd-bg: var(--navy, #001e3c);
-  --cd-surface: var(--navy-2, #003060);
-  --cd-surface-2: #0b3d70;
-  --cd-text: #ffffff;
-  --cd-muted: #b4c6d8;
-  --cd-border: #1f4c78;
+  --cd-accent: #8fb3ec;
+  --cd-accent-soft: #1d2a3d;
+  --cd-bg: #111418;
+  --cd-surface: #1a1e24;
+  --cd-surface-2: #22272e;
+  --cd-text: #e6e8eb;
+  --cd-muted: #9aa3ad;
+  --cd-border: #2e343c;
   /* 急ぎぐあいの色。当日・7日以内・それより先・過ぎた */
-  --cd-today: var(--accent, #5bb8ff);
-  --cd-soon: #ffb36b;
-  --cd-later: var(--accent, #5bb8ff);
-  --cd-past: #8cd3a8;
+  --cd-today: #8fb3ec;
+  --cd-soon: #f0a050;
+  --cd-later: #8fb3ec;
+  --cd-past: #8cc29b;
   --cd-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
   --cd-shadow-lift: 0 4px 16px rgb(0 0 0 / 0.5);
   /* フォームの部品（日付の選択など）もブラウザの暗い見た目にする */
   color-scheme: dark;
+}
+
+/* countdown の一覧の画面だけで読む CSS なので、ページ全体の地とサイトの外枠も同じ色にする */
+body {
+  background: var(--cd-bg);
+}
+
+.site-header {
+  background: rgb(17 20 24 / 0.94);
+  border-bottom-color: var(--cd-border);
+}
+
+.site-footer {
+  border-top-color: var(--cd-border);
 }
 
 /* funitclub.css は .btn を block、.card を白地・余白 24px にしている。この画面では Bootstrap に近い形に戻す */
@@ -68,16 +83,15 @@
 
 .cd-app .btn-primary,
 .cd-sheet .btn-primary {
-  background: var(--cd-accent);
-  border-color: var(--cd-accent);
-  color: var(--cd-bg);
-  font-weight: 700;
+  background: #3d6fbf;
+  border-color: #3d6fbf;
+  color: #fff;
 }
 
 .cd-app .btn-outline-primary,
 .cd-sheet .btn-outline-primary {
   color: var(--cd-accent);
-  border-color: #2f6596;
+  border-color: #3b5378;
 }
 
 .cd-app .btn-outline-primary:hover {
@@ -104,8 +118,8 @@
 }
 
 .cd-sheet .form-check-input:checked {
-  background-color: var(--cd-accent);
-  border-color: var(--cd-accent);
+  background-color: #3d6fbf;
+  border-color: #3d6fbf;
 }
 
 .cd-app {
@@ -130,7 +144,8 @@
 }
 
 .cd-header {
-  padding-top: 1.75rem;
+  background-color: #1f3f70;
+  padding-bottom: 0.75rem;
 }
 
 .cd-header-inner {
@@ -139,28 +154,36 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.25rem;
   color: #fff;
 }
 
 .cd-title {
   margin: 0;
   font-size: 1.15rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .cd-today {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  color: var(--cd-muted);
+  font-size: 0.85rem;
+  opacity: 0.85;
 }
 
+/* 見出しの帯の中の、ID の一覧か共有ボードかの説明 */
 .cd-board-note {
-  margin-top: 0.25rem;
+  margin-top: 0;
   margin-bottom: 0;
   font-size: 0.82rem;
   line-height: 1.8;
-  color: var(--cd-muted);
+  color: #fff;
+  opacity: 0.85;
+}
+
+.cd-board-note a {
+  color: #fff;
+  text-decoration: underline;
 }
 
 .cd-body {
@@ -212,7 +235,6 @@
 }
 
 .cd-tab-count {
-  font-family: var(--mono);
   display: inline-block;
   min-width: 1.3em;
   margin-left: 0.25rem;
@@ -476,9 +498,8 @@
 }
 
 .cd-ring-days {
-  font-family: var(--mono);
   font-size: 1.2rem;
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
@@ -685,7 +706,6 @@
   }
 
   .cd-tab-count {
-  font-family: var(--mono);
     margin-left: 0.15rem;
     padding: 0 0.2rem;
   }
@@ -790,7 +810,7 @@
   overflow: hidden;
   border: 1px solid var(--cd-border);
   border-radius: 0.6rem;
-  background: #0b3d70;
+  background: #262b33;
   color: #f1f3f5;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
   pointer-events: auto;
@@ -802,7 +822,7 @@
 }
 
 .cd-toast-success .cd-toast-icon { color: #7bd88f; }
-.cd-toast-info .cd-toast-icon { color: var(--cd-accent); }
+.cd-toast-info .cd-toast-icon { color: #8fb3ec; }
 .cd-toast-danger .cd-toast-icon { color: #ff8a80; }
 
 .cd-toast-text {
@@ -814,7 +834,7 @@
   flex: 0 0 auto;
   border: 0;
   background: transparent;
-  color: var(--cd-accent);
+  color: #8fb3ec;
   font-weight: 700;
   font-size: 0.88rem;
   padding: 0.15rem 0.35rem;
