@@ -1,34 +1,28 @@
-{% autoescape off %}基本情報技術者試験 対策（{{ mode_label }}） {{ today|date:"Y年n月j日" }}
+{% autoescape off %}基本情報技術者試験 対策 {{ today.month }}/{{ today.day }}（{{ weekday }}）{{ hour }}時の問題
+IPA 公開問題から {{ rows|length }} 問
 
-{{ category.label }}{% if topic %}／{{ topic }}{% endif %}
-{{ progress }}
-
-解答と解説は、問題のあとにまとめてあります。
-図のある問題は、HTML 表示のメールソフトで図が出ます。
+各問の「この問題に答える」のリンクから答えると、正解と解説が出ます（リンクは {{ keep_days }} 日間開けます）。
+{{ record_note }}
 
 {% for row in rows %}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-問{{ row.number }}
+問{{ row.number }}　{{ row.question.category.label }}
 
 {{ row.question.stem }}
-{% if row.figures %}（図 {{ row.figures|length }} 点）
+{% if row.figure_count %}
+（この問題には図が {{ row.figure_count }} 点あります。図は「この問題に答える」のページで見られます）
 {% endif %}
-{% for choice in row.choices %}{{ choice.label }}　{% if choice.cid %}（図）{% endif %}{{ choice.text }}
+{% for choice in row.choices %}{{ choice.label }}　{% if choice.figure %}（図。答えるページで見られます）{% endif %}{{ choice.text }}
 {% endfor %}
+この問題に答える:
+{{ row.answer_url }}
+{% if row.citation %}{{ row.citation }}
+{% endif %}
 {% endfor %}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 解答と解説
-{% for row in rows %}
-問{{ row.number }}　正解 {{ row.question.answer_label }}{% if row.question.answer_text %}　{{ row.question.answer_text }}{% endif %}
-{% if row.question.explanation %}{{ row.question.explanation }}
-{% endif %}{% if row.question.source_text %}出典：{% if row.question.origin_label %}{{ row.question.origin_label }} {% endif %}{{ row.question.source_text }}
-{% endif %}{% endfor %}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ あなたの分野別正答率（ID: {{ learner.code }}、アプリで解いた分）
-{% for row in stats %}{% if row.category.id == category.id %}▶{% else %}　{% endif %}{{ row.category.label }}　{% if row.rate_percent is not None %}{{ row.rate_percent }}％（{{ row.correct }}/{{ row.total }}）{% else %}—{% endif %}
+{% if learner %}■ あなたの分野別正答率（科目A。ID: {{ learner.code }}、アプリとこのメールから答えた分）
+{% for row in stats %}　{{ row.category.label }}　{% if row.rate_percent is not None %}{{ row.rate_percent }}％（{{ row.correct }}/{{ row.total }}）{% else %}—{% endif %}
 {% endfor %}
-メールの問題はアプリの成績に記録されません。
-
-ダッシュボードを開く:
-{{ dashboard_url }}
+{% endif %}1問1答を解く:
+{{ quiz_url }}
 
 問題メールを止める:
 {{ stop_url }}

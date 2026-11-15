@@ -1,19 +1,43 @@
-# FE 対策アプリの問題メールを、毎日0時（日本時間）に送らせる。
+# FE 対策アプリの問題メールを、日本時間の9〜18時の毎時に送らせる（1通に3問）。
 #
-# countdown-notify.yml と同じ作り。ここでは送信のきっかけを送るだけで、実際に送るのは
-# サイト側（/fe/tasks/send-mails/ → works/fe/mail.py の send_daily）。
+# countdown-notify.yml と同じ作り。ここでは送信のきっかけ（時間帯つき）を送るだけで、実際に送るのは
+# サイト側（/fe/tasks/send-mails/ → works/fe/mail.py の send_slot）。
+#
+# 時間帯（h09〜h18）は、どの定期実行から起きたか（github.event.schedule）で決める。GitHub の定期実行は
+# 遅れて始まることがあるが、時刻を見て決めないので、遅れても別の時間帯にはならない。
+# 日付は送らない。サイト側が受け取った時刻から決める（日付をまたいで遅れて届いたら前の日の枠。slots.slot_date）。
+# hirahira_room は GitHub の定期実行が数時間遅れたことがあり、Azure Logic Apps から起こしている。
 #
 # 環境 production のシークレット FE_MAIL_TOKEN に、App Service のアプリケーション設定
 # FE_MAIL_TOKEN と同じ値を入れておく（deploy.txt の「FE 対策アプリの問題メール」）。
 #
-# 同じ日に何度呼んでも同じ送り方では1通しか送らないので、「Run workflow」で手で流し直してよい。
+# 同じ日の同じ時間帯には、同じ登録へ1通しか送らないので、「Run workflow」で時間帯を選んで流し直してよい。
 name: FE mails
 
 on:
   schedule:
-    # 15:00 UTC = 0:00 JST
-    - cron: '0 15 * * *'
+    # UTC の0〜9時 = 日本時間の9〜18時。1行が1つの時間帯
+    - cron: '0 0 * * *'
+    - cron: '0 1 * * *'
+    - cron: '0 2 * * *'
+    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
+    - cron: '0 5 * * *'
+    - cron: '0 6 * * *'
+    - cron: '0 7 * * *'
+    - cron: '0 8 * * *'
+    - cron: '0 9 * * *'
   workflow_dispatch:
+    inputs:
+      slot:
+        description: 時間帯
+        required: true
+        type: choice
+        options: [h09, h10, h11, h12, h13, h14, h15, h16, h17, h18]
+      date:
+        description: 枠の日付（YYYY-MM-DD。空なら今日。枠の時刻が12時間を超えて先なら前の日）
+        required: false
+        type: string
 
 permissions: {}
 
@@ -22,12 +46,29 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: 今日の分の問題メールを送らせる
+      - name: その時間帯の問題メールを送らせる
         env:
           FE_MAIL_TOKEN: ${{ secrets.FE_MAIL_TOKEN }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_SLOT: ${{ inputs.slot }}
+          INPUT_DATE: ${{ inputs.date }}
         run: |
+          set -euo pipefail
+          if [ -n "${SCHEDULE}" ]; then
+            # '0 3 * * *' の時（UTC）に9を足すと、日本時間の時間帯になる
+            utc_hour=$(echo "${SCHEDULE}" | awk '{print $2}')
+            SLOT=$(printf 'h%02d' $((utc_hour + 9)))
+            DATE=''
+          else
+            SLOT="${INPUT_SLOT}"
+            DATE="${INPUT_DATE}"
+          fi
+          echo "時間帯 ${SLOT} ${DATE}"
           # 図の多い問題を何通も送ると時間がかかるので、待ち時間は長めにする
           curl --fail-with-body --silent --show-error --max-time 600 \
             --retry 3 --retry-delay 30 --retry-all-errors \
             -X POST -H "X-Fe-Mail-Token: ${FE_MAIL_TOKEN}" \
+            --data-urlencode "slot=${SLOT}" \
+            --data-urlencode "date=${DATE}" \
             https://funitclub.org/fe/tasks/send-mails/
+          echo

@@ -1,0 +1,32 @@
+{% extends 'fe/base_app.html' %}
+{% load static %}
+{% comment %}
+学習の画面（React）の入れ物。中身は React が描く。hirahira_room の fe/app.html と同じ作り。
+ナビゲーションバーとフッター（IPA の出典と無断転載の断り）は fe/base_app.html のものをそのまま使う。
+
+app.js と app.css は frontend/fe を npm run build して作ったもの
+（static/fe/app/ に出る。ビルドしたものもコミットする）。
+data-* で、React に URL の頭を渡す。URL を React の中に書き込まないため。
+{% endcomment %}
+
+{% block title %}FE 基本情報対策 | fun IT club{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'fe/app/app.css' %}">
+{% endblock %}
+
+{% block contents %}
+<div id="fe-root"
+     data-base-path="{% url 'fe:index' %}"
+     data-api-url="{% url 'fe:index' %}api/">
+    <noscript>
+        <div class="container px-5 py-5">
+            <p>この画面を使うには JavaScript を有効にしてください。</p>
+        </div>
+    </noscript>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module" src="{% static 'fe/app/app.js' %}"></script>
+{% endblock %}

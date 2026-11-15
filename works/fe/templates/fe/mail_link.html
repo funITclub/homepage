@@ -31,7 +31,7 @@
                 {% if kind == 'confirm' %}
                 <p class="mb-2"><strong>登録しました。</strong></p>
                 <p class="small mb-0">
-                    ID「{{ subscription.learner.code }}」の問題メールが、毎日0時ごろに届きます。
+                    {% if subscription.learner %}ID「{{ subscription.learner.code }}」の{% endif %}問題メールが、毎日9時から18時まで毎時届きます。
                     止めるときは、メールの末尾のリンクから解除してください。
                 </p>
                 {% else %}
@@ -43,7 +43,7 @@
                     {% csrf_token %}
                     {% if kind == 'confirm' %}
                     <p>
-                        ID「<strong>{{ subscription.learner.code }}</strong>」の問題メールを、このアドレスで受け取りますか。
+                        {% if subscription.learner %}ID「<strong>{{ subscription.learner.code }}</strong>」の{% else %}基本情報の{% endif %}問題メールを、このアドレスで受け取りますか。
                     </p>
                     <p class="small text-muted">
                         登録したあとは、届いたメールのリンクからしか解除できません。
@@ -51,7 +51,7 @@
                     <button type="submit" class="btn btn-primary">受け取る</button>
                     {% else %}
                     <p>
-                        ID「<strong>{{ subscription.learner.code }}</strong>」の問題メールを止めますか。
+                        {% if subscription.learner %}ID「<strong>{{ subscription.learner.code }}</strong>」の{% else %}基本情報の{% endif %}問題メールを止めますか。
                         登録されているアドレスは消えます。
                     </p>
                     <button type="submit" class="btn btn-outline-danger">配信を止める</button>

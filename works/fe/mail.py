@@ -1,53 +1,62 @@
-"""毎日0時に届く問題メール。
+"""問題メール。9〜18時の毎時0分に、登録しているアドレスへ1通・3問ずつ届く。
 
-登録 … ダッシュボードから、ID ごとに1件。ID には合言葉がなく、ID を知っている人なら
+登録 … ダッシュボードから。ID で入っていれば その ID に1件、ID なしでも登録できる（learner なし）。
+       1つのアドレスで受け取れる登録は1つだけ（confirm が、同じアドレスのほかの登録を止める）。
+       ID には合言葉がなく、ID を知っている人なら
        誰でも操作できるので、入力されたアドレスに確認のメールを送り、そのリンクを
        開いて「受け取る」を押したアドレスだけを配信先にする。確認待ちのアドレスは、
        確認の期限を過ぎたら消す（purge_pending）。登録したあとは、画面から
        アドレスを変えられない（変えたいときは解除して登録し直す）。
-       送り方（マラソン・特訓・特訓の小分類）は画面から変えられる。
-解除 … 登録されたアドレスに届くメールのリンクからだけできる。リンクは毎回のメールに
-       付けるほか、画面から「解除用のメール」として配信先へ送れる。
-送信 … 1日1回。学習モードと同じく小分類を単位にし、1通に同じ小分類の問題を最大10問、
-       解答と解説、その ID の分野別正答率を付けて送る。
-       マラソン … 全問を、はじめから順番に。最後まで行ったら最初に戻る。
-       特訓     … 選んだ小分類を順に。小分類を送り切ったら次の小分類へ。
-       同じ日に2通送らないよう、送り方ごとに送った日を控える。
+解除 … 登録されたアドレスに届く問題メールの末尾のリンクからだけできる（ID のあり・なしとも。
+       画面からは解除しない）。
+送信 … GitHub Actions（.github/workflows/fe-mails.yml）が9〜18時の毎時に /fe/tasks/send-mails/ を
+       時間帯（h09〜h18）と日付つきで呼ぶ（send_slot）。問題は科目Aの IPA 公開問題から、
+       1問1答の「IPA公開問題からおまかせ」と同じ選び方（その ID の苦手を重く）で3問。
+       メールには問題と選択肢だけを載せ、1問ごとの解答ページ（/fe/m/<記号>/）で答えると、
+       その ID の解答履歴と分野別の理解度に記録する（MailQuestion・record_answer）。
+       ID なしの登録は、個人の記録には残さず、みんなの集計（OpenProgress）にだけ足す。
+       登録・日付・時間帯の組で、同じ枠には二重に送らない。
 
-公開問題の図は data URI で持っているが、多くのメールソフトは data URI の画像を
-出さないので、HTML メールの添付（インライン画像）にして本文から参照する。
+2026-11 までの「マラソン」「特訓」（毎日0時に1通・最大10問・解答つき）はやめた。
+
+メールはテキストだけ（HTML のメールにはしない）。図はテキストに載せられないので、
+図のある問題は解答ページで見てもらう。
 アドレスは DB に暗号化して持ち（fe.crypto）、ログに出さない。
 """
 
-import base64
-import binascii
 import datetime
 import hashlib
 import logging
-import re
+import random
+import secrets
 import smtplib
-from email.mime.image import MIMEImage
+import string
 
 from django.conf import settings
 from django.core import signing
-from django.core.mail import BadHeaderError, EmailMessage, EmailMultiAlternatives
-from django.db.models import Q
+from django.core.mail import BadHeaderError, EmailMessage
+from django.db import IntegrityError, transaction
+from django.db.models import F, Q
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from .data.categories import topic_rank
-from .models import Category, MailSubscription, Question
-from .stats import category_stats
+from .models import (Attempt, MailQuestion, MailSubscription, OpenProgress, Question, StudySession,
+                     SUBJECT_A)
+from .selection import pick_question
+from .stats import category_stats, record_progress
+from .slots import SLOT_HOURS, WEEKDAYS, citation, slot_date
 
 logger = logging.getLogger(__name__)
 
 CONFIRM_SALT = 'fe.mail.confirm'
 STOP_SALT = 'fe.mail.stop'
-# 1通に載せる問題の上限。学習モードの1ラウンドと同じ
-QUESTIONS_PER_MAIL = 10
-
-_DATA_URI = re.compile(r'^data:(image/(png|jpeg|gif));base64,(.+)$', re.S)
+# 1通に載せる問題の数
+QUESTIONS_PER_MAIL = 3
+# 同じ問題を続けて送らないよう、直近これだけの時間に送った問題は避ける（尽きたら避けない）
+RECENT_HOURS = 24
+CODE_LENGTH = 10
+CODE_ALPHABET = string.ascii_letters + string.digits
 
 
 class LinkInvalid(Exception):
@@ -63,7 +72,7 @@ def absolute(path):
 
 
 def can_send_link(subscription, now=None):
-    """確認・解除のメールを送ってよいか。続けて送らせない（settings.FE_MAIL_LINK_INTERVAL）。"""
+    """確認のメールを送ってよいか。続けて送らせない（settings.FE_MAIL_LINK_INTERVAL）。"""
     if subscription.link_sent_at is None:
         return True
     now = now or timezone.now()
@@ -93,9 +102,28 @@ def read_confirm_token(token):
     return subscription
 
 
+def same_address(email, exclude=None):
+    """そのアドレスで受け取っている登録。アドレスは暗号化して持っているので、読んで比べる
+    （登録は多くないので、すべて読んでも重くない）。"""
+    key = _address_key(email)
+    found = []
+    for subscription in MailSubscription.objects.exclude(email_enc=''):
+        if subscription.pk != (exclude.pk if exclude else None) and subscription.email \
+                and _address_key(subscription.email) == key:
+            found.append(subscription)
+    return found
+
+
 def confirm(subscription):
-    """確認待ちのアドレスを配信先にする。"""
-    subscription.email = subscription.pending_email
+    """確認待ちのアドレスを配信先にする。
+
+    1つのアドレスで受け取れる登録は1つだけ。同じアドレスで受け取っていたほかの登録
+    （別の ID や ID なし）は止める。アドレスの持ち主が確認のリンクを開いたので、新しい方を正とする。
+    """
+    email = subscription.pending_email
+    for other in same_address(email, exclude=subscription):
+        stop(other)
+    subscription.email = email
     subscription.pending_email = ''
     subscription.save(update_fields=['email_enc', 'pending_email_enc'])
 
@@ -108,11 +136,14 @@ def purge_pending(now=None):
     """
     now = now or timezone.now()
     limit = now - datetime.timedelta(seconds=settings.FE_MAIL_CONFIRM_MAX_AGE)
-    return (
+    purged = (
         MailSubscription.objects.exclude(pending_email_enc='')
         .filter(Q(link_sent_at__lt=limit) | Q(link_sent_at__isnull=True))
         .update(pending_email_enc='')
     )
+    # ID なしの登録は、アドレスが無くなったら（期限切れ・解除）残しておく理由がない
+    MailSubscription.objects.filter(learner__isnull=True, email_enc='', pending_email_enc='').delete()
+    return purged
 
 
 def make_stop_token(subscription):
@@ -150,6 +181,20 @@ def _footer():
     ).format(settings.SITE_NAME)
 
 
+def whose(subscription):
+    """文面の「の ID「○○」」。ID なしの登録なら空。"""
+    return 'の ID「{}」'.format(subscription.learner.code) if subscription.learner else ''
+
+
+def record_note(subscription):
+    """メールで答えた分がどこに記録されるか。"""
+    if subscription.learner:
+        return 'メールの「この問題に答える」から答えると、ID「{}」の成績に記録されます。'.format(
+            subscription.learner.code)
+    return ('ID なしで登録しているので、メールの「この問題に答える」から答えた分は、\n'
+            'みんなの集計にだけ数えます（個人の成績には残りません）。')
+
+
 def send_confirmation(subscription):
     """確認待ちのアドレスあて。リンクを開いて「受け取る」を押すと配信先になる。"""
     url = absolute(reverse('fe:mail_confirm', args=[make_confirm_token(subscription)]))
@@ -157,280 +202,239 @@ def send_confirmation(subscription):
     EmailMessage(
         subject='[{}] 基本情報の問題メールの確認'.format(settings.SITE_NAME),
         body=(
-            '基本情報技術者試験 対策の ID「{code}」で、このアドレスに問題メールを送る手続きがありました。\n\n'
+            '基本情報技術者試験 対策{whose}で、このアドレスに問題メールを送る手続きがありました。\n\n'
             '次のリンクを開いて「受け取る」を押すと、登録されます（{minutes}分以内）。\n'
             '{url}\n\n'
-            '登録すると、毎日0時ごろに問題（解答・解説付き）が届きます。\n\n'
+            '登録すると、毎日9時から18時まで毎時、IPA の公開問題が3問ずつ届きます。\n'
+            '{record}\n\n'
             '■ 解除について\n'
             '登録したあとは、このアドレスに届くメールのリンクからしか解除できません\n'
             '（画面からはアドレスの変更も解除もできません）。解除のリンクは毎回のメールに付いています。\n\n'
             '■ このメールに心当たりがない場合\n'
             '第三者があなたのメールアドレスを入力した可能性があります。\n'
             'このメールを破棄していただければ、登録されず、今後メールは届きません。\n\n'
-        ).format(code=subscription.learner.code, minutes=minutes, url=url) + _footer(),
+        ).format(whose=whose(subscription), record=record_note(subscription),
+                 minutes=minutes, url=url) + _footer(),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[subscription.pending_email],
     ).send()
 
 
-def send_stop_link(subscription):
-    """配信先あて。リンクを開いて「配信を止める」を押すと解除される。"""
-    url = absolute(reverse('fe:mail_stop', args=[make_stop_token(subscription)]))
-    EmailMessage(
-        subject='[{}] 基本情報の問題メールの解除'.format(settings.SITE_NAME),
-        body=(
-            '基本情報技術者試験 対策の ID「{code}」で、問題メールを解除する手続きがありました。\n\n'
-            '次のリンクを開いて「配信を止める」を押すと、配信が止まり、登録されているアドレスが消えます。\n'
-            '{url}\n\n'
-            '■ このメールに心当たりがない場合\n'
-            'この ID を知っている人が手続きをした可能性があります。\n'
-            'このメールを破棄していただければ、配信はそのまま続きます。\n\n'
-        ).format(code=subscription.learner.code, url=url) + _footer(),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[subscription.email],
-    ).send()
-
-
 # ---- 送る問題を選ぶ ----
 
-def _base_questions():
-    """メールで送る問題。数値を振り直す計算問題は、同じ問題が決まらないので除く。"""
-    return Question.objects.active().filter(template__isnull=True).select_related('category')
+def pick_questions(subscription, count=QUESTIONS_PER_MAIL):
+    """その ID に送る問題。科目Aの IPA 公開問題から、1問1答の「IPA公開問題からおまかせ」と
+    同じ選び方（selection.pick_question。苦手な分野を重く、未出題・前回まちがえた問題を先に）で選ぶ。
 
-
-def _order_key(question):
-    return (question.subject, question.category.code,
-            topic_rank(question.category.code, question.topic), question.id)
-
-
-def marathon_questions():
-    """マラソンで送る全問の並び。科目A→科目B、中分類の番号順、小分類はシラバスの順。"""
-    return sorted(_base_questions(), key=_order_key)
-
-
-def topic_choices():
-    """特訓で選べる小分類。中分類ごとにまとめ、小分類ごとの問数を添える。
-
-    [{'category': Category, 'topics': [{'topic', 'count', 'value'}, ...]}, ...]
-    value はフォームで送る値（「中分類番号|小分類」）。
+    出題設定は使わず（分野は指定しない）、その ID の設定も書き換えない。直近 RECENT_HOURS 時間に
+    メールで送った問題は避ける。避けると選べなくなったら、避けずに選ぶ。
+    ID なしの登録は、苦手が分からないので偏りを付けずに選ぶ。
     """
-    counts = {}
-    for question in _base_questions():
-        key = (question.category_id, question.topic)
-        counts[key] = counts.get(key, 0) + 1
-    groups = []
-    for category in Category.objects.order_by('subject', 'code'):
-        topics = sorted(
-            (topic for (category_id, topic) in counts if category_id == category.id),
-            key=lambda t: topic_rank(category.code, t),
-        )
-        if topics:
-            groups.append({'category': category, 'topics': [
-                {'topic': t, 'count': counts[(category.id, t)], 'value': topic_value(category.code, t)}
-                for t in topics
-            ]})
-    return groups
-
-
-def topic_value(code, topic):
-    return '{}|{}'.format(code, topic)
-
-
-def parse_topic_values(values):
-    """フォームの値を [[中分類番号, 小分類], ...] にする。いま選べないものは捨てる。"""
-    valid = {
-        t['value']: [group['category'].code, t['topic']]
-        for group in topic_choices() for t in group['topics']
-    }
+    learner = subscription.learner
+    since = timezone.now() - datetime.timedelta(hours=RECENT_HOURS)
+    recent = list(
+        MailQuestion.objects.filter(subscription=subscription, created_at__gte=since)
+        .values_list('question_id', flat=True)
+    )
+    if learner is None:
+        # ID なしは苦手が分からないので、偏りを付けずに選ぶ
+        pool = list(Question.objects.active().from_ipa().filter(subject=SUBJECT_A))
+        fresh = [q for q in pool if q.id not in recent]
+        return random.sample(fresh if len(fresh) >= count else pool, min(count, len(pool)))
+    session = StudySession(learner=learner, mode=StudySession.MODE_IPA, subject=SUBJECT_A)
     picked = []
-    for value in values:
-        if value in valid and valid[value] not in picked:
-            picked.append(valid[value])
+    for _ in range(count):
+        taken = [q.id for q in picked]
+        question, _reason = pick_question(learner, session, exclude_ids=recent + taken)
+        if question is None or question.id in taken or question.id in recent:
+            question, _reason = pick_question(learner, session, exclude_ids=taken)
+        if question is None or question.id in taken:
+            break
+        picked.append(question)
     return picked
 
 
-def next_marathon(subscription):
-    """マラソンで次に送る問題、送ったあとの (位置, 周回数)、進み具合の文言。
+def new_code():
+    while True:
+        code = ''.join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+        if not MailQuestion.objects.filter(code=code).exists():
+            return code
 
-    いまの位置から、同じ小分類が続くあいだを最大10問取る。最後まで行ったら最初に戻る。
-    問題が無ければ ([], None, '')。
+
+def answer_url(mail_question):
+    return absolute(reverse('fe:mail_answer', args=[mail_question.code]))
+
+
+def purge_old(now=None):
+    """送ってから FE_MAIL_KEEP_DAYS 日たった問題を、行ごと消す。消した件数を返す。"""
+    today = timezone.localdate(now or timezone.now())
+    limit = today - datetime.timedelta(days=settings.FE_MAIL_KEEP_DAYS)
+    deleted, _ = MailQuestion.objects.filter(date__lte=limit).delete()
+    return deleted
+
+
+def is_open(mail_question, now=None):
+    """解答ページを見せてよいか。消す前でも、期限を過ぎたら案内ページにする。"""
+    today = timezone.localdate(now or timezone.now())
+    return mail_question.date > today - datetime.timedelta(days=settings.FE_MAIL_KEEP_DAYS)
+
+
+def record_answer(mail_question, selected):
+    """解答ページで選んだ答えを、その ID の解答履歴と分野別の理解度に記録する。正誤を返す。
+
+    1問につき記録は1回だけ。答えたあとに開き直したり別の選択肢を押したりしても、
+    最初の答えのまま（二重に数えない）。ID が消えていれば行ごと消えているので、ここには来ない。
+    ID なしの登録なら、個人の記録には残さず、みんなの集計（OpenProgress）にだけ足す。
     """
-    questions = marathon_questions()
-    if not questions:
-        return [], None, ''
-    position, laps = subscription.marathon_position, subscription.marathon_laps
-    if position >= len(questions):
-        position, laps = 0, laps + 1
-    first = questions[position]
-    picked = []
-    for question in questions[position:position + QUESTIONS_PER_MAIL]:
-        if (question.category_id, question.topic) != (first.category_id, first.topic):
-            break
-        picked.append(question)
-    progress = '{}〜{}問目／全{}問'.format(position + 1, position + len(picked), len(questions))
-    if laps:
-        progress += '・{}周目'.format(laps + 1)
-    return picked, (position + len(picked), laps), progress
-
-
-def next_training(subscription):
-    """特訓で次に送る問題、送ったあとの (小分類の番号, 位置)、進み具合の文言。
-
-    選んだ小分類のうち、いま問題があるものを順に回る。1通に1つの小分類から最大10問。
-    小分類を送り切ったら次の小分類へ進み、最後まで行ったら最初に戻る。
-    送れなければ ([], None, '')。
-    """
-    by_topic = {}
-    for question in _base_questions():
-        by_topic.setdefault((question.category.code, question.topic), []).append(question)
-    topics = [
-        (code, topic) for code, topic in subscription.training_topics if (code, topic) in by_topic
-    ]
-    if not topics:
-        return [], None, ''
-    index = subscription.training_index % len(topics)
-    offset = subscription.training_offset
-    if offset >= len(by_topic[topics[index]]):
-        index, offset = (index + 1) % len(topics), 0
-    pool = sorted(by_topic[topics[index]], key=lambda q: q.id)
-    picked = pool[offset:offset + QUESTIONS_PER_MAIL]
-    progress = '{}〜{}問目／{}問'.format(offset + 1, offset + len(picked), len(pool))
-    after = offset + len(picked)
-    if after >= len(pool):
-        return picked, ((index + 1) % len(topics), 0), progress
-    return picked, (index, after), progress
+    if mail_question.selected_index is not None:
+        return mail_question.is_correct
+    question = mail_question.question
+    learner = mail_question.subscription.learner
+    is_correct = selected == question.answer_index
+    if learner is None:
+        # ID なしの登録。個人の記録には残さず、みんなの集計にだけ足す（X の解答ページと同じ）
+        with transaction.atomic():
+            updated = MailQuestion.objects.filter(
+                pk=mail_question.pk, selected_index__isnull=True,
+            ).update(selected_index=selected, is_correct=is_correct, answered_at=timezone.now())
+            if not updated:
+                mail_question.refresh_from_db()
+                return mail_question.is_correct
+            progress, _ = OpenProgress.objects.get_or_create(
+                category=question.category, subject=question.subject,
+            )
+            OpenProgress.objects.filter(pk=progress.pk).update(
+                answered=F('answered') + 1, correct=F('correct') + (1 if is_correct else 0),
+            )
+        mail_question.selected_index, mail_question.is_correct = selected, is_correct
+        return is_correct
+    with transaction.atomic():
+        updated = MailQuestion.objects.filter(
+            pk=mail_question.pk, selected_index__isnull=True,
+        ).update(selected_index=selected, is_correct=is_correct, answered_at=timezone.now())
+        if not updated:
+            # 同時に答えられた。先に記録した方に任せる
+            mail_question.refresh_from_db()
+            return mail_question.is_correct
+        Attempt.objects.create(
+            learner=learner, question=question, category=question.category,
+            selected_index=selected, is_correct=is_correct,
+        )
+        record_progress(learner, question, is_correct)
+    mail_question.selected_index, mail_question.is_correct = selected, is_correct
+    return is_correct
 
 
 # ---- 組み立てと送信 ----
 
-def _inline_image(src, cid):
-    """data URI をインライン画像の添付にする。読めなければ None。"""
-    match = _DATA_URI.match(src or '')
-    if not match:
-        return None
-    try:
-        data = base64.b64decode(match.group(3), validate=False)
-    except (binascii.Error, ValueError):
-        return None
-    image = MIMEImage(data, _subtype=match.group(2))
-    image.add_header('Content-ID', '<{}>'.format(cid))
-    image.add_header('Content-Disposition', 'inline', filename='{}.{}'.format(
-        cid.split('@')[0], 'jpg' if match.group(2) == 'jpeg' else match.group(2)))
-    return image
+def subject_line(today, slot):
+    return '[{}] 基本情報 {}/{}（{}）{}時の問題（{}問）'.format(
+        settings.SITE_NAME, today.month, today.day, WEEKDAYS[today.weekday()],
+        SLOT_HOURS[slot], QUESTIONS_PER_MAIL,
+    )
 
 
-def _rows(questions):
-    """テンプレートに渡す問題。図はインライン画像の参照（cid:）に置き換える。"""
-    rows, images = [], []
-    for number, question in enumerate(questions, start=1):
-        figures = []
-        for i, figure in enumerate(question.figures or []):
-            cid = 'q{}-f{}@fe.mail'.format(question.id, i)
-            image = _inline_image(figure.get('src'), cid)
-            if image is not None:
-                images.append(image)
-                figures.append({'cid': cid, 'alt': figure.get('alt', '')})
-        choices = []
-        for i, label, text in question.labeled_choices():
-            cid = None
-            src = question.choice_figure(i)
-            if src:
-                cid = 'q{}-c{}@fe.mail'.format(question.id, i)
-                image = _inline_image(src, cid)
-                if image is None:
-                    cid = None
-                else:
-                    images.append(image)
-            choices.append({'label': label, 'text': text, 'cid': cid})
-        rows.append({'number': number, 'question': question, 'figures': figures, 'choices': choices})
-    return rows, images
+def build_message(subscription, mail_questions, today, slot):
+    """1通ぶんのメール（テキストだけ）。問題と選択肢、1問ごとの解答ページへのリンク、自分の分野別正答率。
 
-
-def build_message(subscription, mode, questions, progress, today):
-    """1通ぶんのメール。mode は 'marathon' か 'training'。progress は件名と本文に出す進み具合。"""
+    HTML のメールにはしない（ユーザーの指示）。図はテキストに載せられないので、図のある問題には
+    「図は解答ページで見られる」と書き添える。解答ページには図をそのまま出している。
+    """
     learner = subscription.learner
-    first = questions[0]
-    rows, images = _rows(questions)
-    stats = [
-        row for row in category_stats(learner, subject=first.subject) if row['question_count']
-    ]
+    rows = []
+    for mail_question in mail_questions:
+        question = mail_question.question
+        rows.append({
+            'number': mail_question.number,
+            'question': question,
+            'figure_count': len(question.figures or []),
+            'choices': [
+                {'label': label, 'text': text, 'figure': bool(question.choice_figure(i))}
+                for i, label, text in question.labeled_choices()
+            ],
+            'answer_url': answer_url(mail_question),
+            # IPA の求める形の出典（X の投稿と同じ。「出典：令和7年度 基本情報技術者試験 科目A 問2」）
+            'citation': citation(question.source),
+        })
+    stats = (
+        [row for row in category_stats(learner, subject=SUBJECT_A) if row['question_count']]
+        if learner else []
+    )
     context = {
-        'mode_label': 'マラソン' if mode == 'marathon' else '特訓',
         'today': today,
-        'category': first.category,
-        'topic': first.topic,
-        'progress': progress,
+        'hour': SLOT_HOURS[slot],
+        'weekday': WEEKDAYS[today.weekday()],
         'rows': rows,
         'stats': stats,
         'learner': learner,
-        'dashboard_url': absolute(reverse('fe:mypage')),
+        'record_note': record_note(subscription),
+        # メールを読んだその流れで、すぐ解けるよう1問1答へ
+        'quiz_url': absolute(reverse('fe:quiz')),
         'stop_url': absolute(reverse('fe:mail_stop', args=[make_stop_token(subscription)])),
         'site_name': settings.SITE_NAME,
+        'keep_days': settings.FE_MAIL_KEEP_DAYS,
     }
-    subject = '[{}] 基本情報 {} {:%-m/%-d} {}（{}）'.format(
-        settings.SITE_NAME, context['mode_label'], today,
-        first.topic or first.category.name, progress,
-    )
-    message = EmailMultiAlternatives(
-        subject=subject,
+    return EmailMessage(
+        subject=subject_line(today, slot),
         body=render_to_string('fe/email/daily.txt', context),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[subscription.email],
     )
-    message.attach_alternative(render_to_string('fe/email/daily.html', context), 'text/html')
-    if images:
-        # 本文と画像をひとまとまりにして、本文から cid: で画像を参照できるようにする
-        message.mixed_subtype = 'related'
-        for image in images:
-            message.attach(image)
-    return message
 
 
-def _send(message, subscription, mode):
+def _send(message, subscription):
     try:
         message.send()
     except (smtplib.SMTPException, OSError, BadHeaderError) as e:
         # 例外の文言には宛先のアドレスが入ることがあるので、種類だけ残す
-        logger.error('問題メール（%s）を送れませんでした（ID %s、%s）',
-                     mode, subscription.learner.code, type(e).__name__)
+        logger.error('問題メールを送れませんでした（ID %s、%s）',
+                     subscription.learner.code if subscription.learner else 'なし', type(e).__name__)
         return False
     return True
 
 
-def send_daily(today=None):
-    """今日の分を送る。送り方ごとの通数を返す。何度呼んでも、同じ日に同じ送り方は1通だけ。
+def send_slot(slot, today=None):
+    """その日のその時間帯の分を送る。通数を返す。何度呼んでも、同じ枠には1通だけ。
 
-    1件の失敗でほかを止めない。失敗したものは位置も送った日も進めないので、
-    次に呼ばれたときに送り直す。
+    today はその枠の予定の日付。渡されなければ slots.slot_date で決める（遅れて届いた
+    呼び出しを前の日の枠とみなす決まりも同じ）。1件の失敗でほかを止めない。送れなかった
+    枠の問題は消すので、次に同じ枠で呼ばれたときに送り直す。
     """
-    today = today or timezone.localdate()
+    today = today or slot_date(slot)
     purge_pending()
-    result = {'marathon': 0, 'training': 0, 'failed': 0}
+    purged = purge_old()
+    result = {'sent': 0, 'already': 0, 'failed': 0, 'purged': purged}
     subscriptions = (
         MailSubscription.objects.exclude(email_enc='').select_related('learner')
-        .filter(learner__code__isnull=False)
+        # ID で登録したもの（ID が残っているもの）と、ID なしで登録したもの
+        .filter(Q(learner__isnull=True) | Q(learner__code__isnull=False))
     )
     for subscription in subscriptions:
         if not subscription.email:
             # 鍵が替わって読めなくなったもの。送れないので飛ばす
             continue
-        for mode, pick, sent_on, fields in (
-            ('marathon', next_marathon, subscription.marathon_sent_on,
-             ('marathon_position', 'marathon_laps', 'marathon_sent_on')),
-            ('training', next_training, subscription.training_sent_on,
-             ('training_index', 'training_offset', 'training_sent_on')),
-        ):
-            if not getattr(subscription, mode) or sent_on == today:
-                continue
-            questions, after, progress = pick(subscription)
-            if not questions:
-                continue
-            message = build_message(subscription, mode, questions, progress, today)
-            if not _send(message, subscription, mode):
-                result['failed'] += 1
-                continue
-            MailSubscription.objects.filter(pk=subscription.pk).update(
-                **dict(zip(fields, (*after, today)))
-            )
-            result[mode] += 1
+        if MailQuestion.objects.filter(subscription=subscription, date=today, slot=slot).exists():
+            result['already'] += 1
+            continue
+        questions = pick_questions(subscription)
+        if not questions:
+            continue
+        try:
+            with transaction.atomic():
+                rows = [
+                    MailQuestion.objects.create(
+                        subscription=subscription, question=question, date=today, slot=slot,
+                        number=number, code=new_code(),
+                    )
+                    for number, question in enumerate(questions, start=1)
+                ]
+        except IntegrityError:
+            # 同じ枠の呼び出しが重なった。先に作った方に任せる
+            result['already'] += 1
+            continue
+        if not _send(build_message(subscription, rows, today, slot), subscription):
+            MailQuestion.objects.filter(pk__in=[row.pk for row in rows]).delete()
+            result['failed'] += 1
+            continue
+        result['sent'] += 1
     return result

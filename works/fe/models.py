@@ -31,7 +31,7 @@ SUBJECT_CHOICES = [(SUBJECT_A, '科目A'), (SUBJECT_B, '科目B')]
 class Learner(models.Model):
     """成績を持つ単位。ID を登録した人と、登録せずに使う人の両方を表す。
 
-    ID を登録すると code が入り、成績が残る。ダッシュボードは /fe/mypage/ で開く（ID は URL に出さない）。
+    ID を登録すると code が入り、成績が残る。ID で入るのは /fe/id/、ダッシュボードは ID の有無にかかわらず /fe/（ID は URL に出さない）。
     編集画面のアカウントとは紐づけない。ID は本人が決め、入力した人を
     本人として扱う（合言葉などの確認はしない）。大文字小文字は区別せず、
     小文字にそろえて持つ。
@@ -661,7 +661,13 @@ class LearningItem(models.Model):
 
 
 class MailSubscription(models.Model):
-    """毎日0時に届く問題メールの登録。ID ごとに1件で、送り方は fe.mail が受け持つ。
+    """問題メールの登録。ID ごとに1件で、送り方は fe.mail が受け持つ。
+
+    9〜18時の毎時に3問ずつ届く（MailQuestion）。ID で入って登録すれば、解答ページで答えた分を
+    その ID の学習履歴に足す。ID なしで登録すれば（learner が None）、みんなの集計にだけ足す。
+    1つのアドレスで受け取れる登録は1つだけ（fe.mail.confirm が、同じアドレスのほかの登録を止める）。
+    以前のマラソン・特訓の欄（marathon・
+    training とその進み具合）は、2026-11 にやめた送り方の名残で、いまは使っていない。
 
     ID には合言葉がないので、アドレスは確認のメールのリンクを開いて「受け取る」を
     押したものだけを email に入れる。それまでは pending_email に置き、確認の期限
@@ -669,22 +675,22 @@ class MailSubscription(models.Model):
     画面からアドレスを変えられず、解除もメールのリンクからだけできる。
 
     アドレスは DB に暗号化して持つ（fe.crypto）。読み書きは email と pending_email を通す。
-
-    マラソンと特訓は並行して両方選べる。両方なら1日2通になる。
     """
 
+    # ID なしで登録したメールは None。答えは個人の記録に残さず、みんなの集計（OpenProgress）にだけ足す
     learner = models.OneToOneField(
         Learner, verbose_name='ID', on_delete=models.CASCADE,
-        related_name='mail_subscription',
+        related_name='mail_subscription', null=True, blank=True,
     )
     # 確認を済ませたアドレス（暗号化）。空なら未登録（または解除済み）
     email_enc = models.TextField(verbose_name='配信先（暗号化）', blank=True, editable=False)
     pending_email_enc = models.TextField(verbose_name='確認待ちのアドレス（暗号化）', blank=True, editable=False)
-    # 確認・解除のメールを続けて送らせないための控え。確認待ちのアドレスを置いた日時も兼ねる
+    # 確認のメールを続けて送らせないための控え。確認待ちのアドレスを置いた日時も兼ねる（解除用のメールはやめた）
     # （確認待ちがあるのは、確認のメールを送ってから「受け取る」が押されるまでの間だけ）
     link_sent_at = models.DateTimeField(verbose_name='確認・解除のメールを送った日時', null=True, blank=True)
 
-    # マラソン：全問を、はじめから順番に送る。位置は全問の並び（fe.mail.marathon_questions）の何番目か。
+    # 以下のマラソン・特訓の欄は 2026-11 にやめた送り方の名残（いまは読みも書きもしない）。
+    # マラソン：全問を、はじめから順番に送っていた。
     # 問題の取り込みで並びが変わっても、位置はそのまま使う。
     marathon = models.BooleanField(verbose_name='マラソン', default=False)
     marathon_position = models.PositiveIntegerField(verbose_name='マラソンの次の位置', default=0)
@@ -705,7 +711,7 @@ class MailSubscription(models.Model):
         verbose_name = verbose_name_plural = 'FE メール配信'
 
     def __str__(self):
-        return '{} {}'.format(self.learner, '登録済み' if self.email else '未登録')
+        return '{} {}'.format(self.learner or '（ID なし）', '登録済み' if self.email else '未登録')
 
     @property
     def email(self):
@@ -731,6 +737,55 @@ class MailSubscription(models.Model):
         return '{}***@{}'.format(local[:1], domain) if email else ''
 
 
+class MailQuestion(models.Model):
+    """問題メールで送った1問と、その解答ページ（/fe/m/<code>/）。fe.mail が受け持つ。
+
+    9〜18時の毎時に、登録1件につき1通・3問を送る（IPA 公開問題から「おまかせ」）。
+    メールには問題と選択肢だけを載せ、1問ごとの解答ページで答えると、その ID の
+    解答履歴と分野別の理解度に記録する（1問につき1回だけ）。
+    登録・日付・時間帯の組で、同じ枠には二重に送らない。送れなかった枠の行は消して、
+    次の呼び出しで送り直す。送ってから FE_MAIL_KEEP_DAYS 日たったら行ごと消す
+    （fe.mail.purge_old）。問題を取り込みで消したときも行ごと消え、ページは案内になる。
+    """
+
+    subscription = models.ForeignKey(
+        'MailSubscription', verbose_name='メール配信', on_delete=models.CASCADE,
+        related_name='questions',
+    )
+    question = models.ForeignKey(
+        Question, verbose_name='問題', on_delete=models.CASCADE, related_name='mail_questions',
+    )
+    date = models.DateField(verbose_name='日付')
+    # h09〜h18（fe.slots.HOURLY_SLOTS）
+    slot = models.CharField(verbose_name='時間帯', max_length=10)
+    number = models.PositiveSmallIntegerField(verbose_name='メールの中の番号（1始まり）')
+    # 解答ページの URL に使う記号。ほかの人のページをたどれないよう、ランダムにする
+    code = models.CharField(verbose_name='URL の記号', max_length=16, unique=True)
+    selected_index = models.PositiveSmallIntegerField(verbose_name='選んだ選択肢', null=True, blank=True)
+    is_correct = models.BooleanField(verbose_name='正誤', null=True, blank=True)
+    answered_at = models.DateTimeField(verbose_name='解答日時', null=True, blank=True)
+    created_at = models.DateTimeField(verbose_name='作成日時', auto_now_add=True)
+
+    class Meta:
+        db_table = 'funitclub_fe_mail_question'
+        verbose_name = verbose_name_plural = 'FE メールで送った問題'
+        ordering = ['-date', 'slot', 'number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['subscription', 'date', 'slot', 'number'], name='funitclub_fe_unique_mail_question',
+            ),
+        ]
+
+    def __str__(self):
+        return '{} {} 問{}'.format(self.date, self.slot, self.number)
+
+    @property
+    def selected_label(self):
+        if self.selected_index is None:
+            return ''
+        return Question.choice_label(self.selected_index)
+
+
 class PassReport(models.Model):
     """本番に合格したという本人の申告。集計ページの「合格者数」はこれを数える。
 
@@ -752,6 +807,33 @@ class PassReport(models.Model):
 
     def __str__(self):
         return '{} {}'.format(self.learner, self.passed_on)
+
+
+class OpenProgress(models.Model):
+    """ID なしで答えた解答の数え上げ。X の解答ページで答えた分がここに積もる。
+
+    誰の解答かは持たない。全 ID を合わせた集計（fe.stats.site_summary）の、
+    中分類ごとの解答数・正解数に足す。CategoryProgress と同じく問題とは
+    切り離して持つので、問題を取り込み直しても数字は消えない。
+    """
+
+    category = models.ForeignKey(
+        Category, verbose_name='中分類', on_delete=models.PROTECT, related_name='open_progress'
+    )
+    subject = models.CharField(verbose_name='科目', max_length=1, choices=SUBJECT_CHOICES)
+    answered = models.PositiveIntegerField(verbose_name='解答数', default=0)
+    correct = models.PositiveIntegerField(verbose_name='正解数', default=0)
+
+    class Meta:
+        db_table = 'funitclub_fe_open_progress'
+        verbose_name = verbose_name_plural = 'FE ID なしの解答数'
+        ordering = ['category__code']
+        constraints = [
+            models.UniqueConstraint(fields=['category', 'subject'], name='funitclub_fe_unique_open_progress'),
+        ]
+
+    def __str__(self):
+        return '{} {}/{}'.format(self.category.name, self.correct, self.answered)
 
 
 class PageViewCount(models.Model):

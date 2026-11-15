@@ -145,7 +145,7 @@ class PassReportForm(forms.Form):
 
 # 画面の名前と同じ ID は紛らわしいので作れないようにしておく
 # （ID は URL に出さないので、ぶつかりはしない）。
-RESERVED_CODES = {'quiz', 'learn', 'stats', 'history', 'pass', 'manage', 'enter', 'guide', 'console', 'mypage'}
+RESERVED_CODES = {'quiz', 'learn', 'stats', 'history', 'pass', 'manage', 'enter', 'guide', 'console', 'mypage', 'id'}
 
 
 class LearnerForm(forms.Form):

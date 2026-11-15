@@ -27,9 +27,33 @@ hirahira_room の `fe` アプリからの移植。あちらは全画面がログ
 | `generators.py` | 数値を振り直して作る計算問題のテンプレート |
 | `selection.py` | 出題する1問の選定（重点出題のロジック） |
 | `stats.py` | 理解度の記録（`record_progress`）と集計 |
-| `views.py` | ダッシュボード／演習／分野別正答率／履歴／問題の取り込み |
+| `api.py` | React の画面が呼ぶ API（ID・出題設定・1問1答・学習モード・正答率・履歴・合格の申告・問題メール・ページビュー）。Django REST framework で書く |
+| `views.py` | 学習の画面の入れ物（`AppView`）と、Django の画面のままのもの（問題の管理・メールのリンク・問題メールの解答ページ・定期実行の入口・読み上げ音声） |
 | `pageviews.py` | 学習の画面のページビューを、日付・画面・ID の有無ごとの件数だけで数える。IP アドレス・ID・ブラウザの情報は残さない。`/fe/console/pageviews/` で見る |
-| `mail.py` | 毎日0時の問題メール（マラソン・特訓）。登録は確認メール経由、解除はメールのリンクから。GitHub Actions の `fe-mails.yml` が `/fe/tasks/send-mails/` を叩いて送る |
+| `mail.py` | 問題メール（9〜18時の毎時に IPA 公開問題を3問。1問ごとの解答ページ `/fe/m/<記号>/` で答えると成績に記録）。登録は確認メール経由、解除はメールのリンクから。GitHub Actions の `fe-mails.yml` が `/fe/tasks/send-mails/` を叩いて送る |
+| `slots.py` | 問題メールの時間帯（h09〜h18）と出典の書き方。hirahira_room では X 投稿（`x_post.py`）と共有している部品で、funitclub は X 投稿を取り込まないので、問題メールが使う分だけを置く |
+
+## 画面の作り
+
+学習の画面（ダッシュボード・ID の入力・1問1答・学習モード・分野別正答率・履歴・このアプリについて）は
+**React**（hirahira_room の fe と同じ作り）。ソースは `frontend/fe`（Vite ＋ TypeScript ＋ React Router）、
+ビルドしたもの（`static/fe/app/app.js`・`app.css`）もコミットする。Django は入れ物のページ
+（`views.AppView`・`templates/fe/app.html`）と API（`api.py`）を出す。見た目も hirahira_room に合わせた（ダーク）。
+デプロイでは Node を使わない。
+
+```bash
+cd frontend/fe
+npm ci          # 初めてのとき・package-lock.json が変わったとき
+npm run build   # 型の確かめ → ビルド（works/fe/static/fe/app/ に出る）
+```
+
+- ログインは求めない。成績はセッションが覚えている記録（`Learner`）に持つ。記録が無いと API は 401 を返し、
+  React は入口（`/fe/`）を開き直す。入口が ID なしの記録を作る
+- ログインを求めないので、DRF の SessionAuthentication は使わず、`api.CsrfOnly` で誰に対しても
+  書き込みの CSRF トークンを確かめる
+- ページビューは、各画面が出たときに React が `api/pageview/` で知らせる（画面の切りかえは React の中で行うため）
+- 問題の管理（`/fe/console/`）・メールのリンク・問題メールの解答ページは Django の画面のまま
+- hirahira_room にある X 投稿（`/fe/x/`・`/fe/tasks/post-x/`）と構想ページ（`/fe/about/`）は取り込まない
 
 ## 初期セットアップ
 
@@ -44,10 +68,11 @@ python manage.py seed_fe --settings=config.settings_dev
 **問題は同梱していない。** 編集画面にログインし、
 `/fe/console/` の「JSONを取り込む」から取り込む。
 
-ログインは要らない（`LearnerRequiredMixin` が `login_not_required` で
+ログインは要らない（学習の画面と API は `login_not_required` で
 `LoginRequiredMiddleware` の対象から外している）。`/fe/` を開くと ID なしの記録ができ、
-そのまま使い始められる。記録を残したい人は、マイページ（`/fe/mypage/`）で
-本アプリの中の ID（`Learner`）を入力するか新しく作る。ID は URL に出さない。成績は**この ID ごと**に持つ。
+そのまま使い始められる。記録を残したい人は、ID の入力（`/fe/id/`）で
+本アプリの中の ID（`Learner`）を入力するか新しく作る。入ったあともダッシュボードは `/fe/` のままで、
+ID は URL に出さない（以前の `/fe/mypage/` は `/fe/` へ送る）。成績は**この ID ごと**に持つ。
 ID に合言葉はなく、入力した人を本人として扱う。
 
 入った ID は、**ブラウザを閉じたら抜ける**。セッションに加えて、期限の無い Cookie
@@ -179,7 +204,7 @@ ID ごとに積み上げている。問題を何度入れ替えても、各 ID �
 ダッシュボードの下のほうに、全 ID を合わせた数字を出す。ID ごとの成績や ID は出さない。
 
 解答の記録をこの集計と問題の改善、クラブの活動紹介に使うこと、運営が ID ごとの記録を
-見られることは、「このアプリについて」（`guide.html`）の「ID と記録」に書いてある。アプリが持つのは ID だけで人とは結びつかないので、「個人が分からない」ではなく
+見られることは、「このアプリについて」（`frontend/fe/src/GuidePage.tsx`）の「ID と記録」に書いてある。アプリが持つのは ID だけで人とは結びつかないので、「個人が分からない」ではなく
 「ID ごとの成績が分からない」と書く。
 
 | 項目 | 何から数えるか |
@@ -250,7 +275,7 @@ PostgreSQL サーバーにあり接続のユーザーも同じなので、デー
 ## テスト
 
 ```bash
-python manage.py test fe --settings=config.settings_dev
+python manage.py test works.fe --settings=config.settings_dev
 ```
 
 重点出題が実際に苦手分野へ寄るかどうかは統計的に検証している（`SelectionTests`）。
