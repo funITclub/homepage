@@ -117,10 +117,21 @@ App Service には常設のスケジューラがなく、DB は VNet の中に�
 設定の手順（合言葉を作って App Service と GitHub のシークレットに入れる）は
 [deploy.txt](../../deploy.txt) の「カウントダウンのメール通知」。
 
-## 一覧の画面（React）
+## 画面の作り（React）
 
 一覧・登録・編集・削除は、hirahira_room の countdown と同じ React の画面（ソースは
-[frontend/countdown](../../frontend/countdown)）。色も hirahira_room と同じ（ダークの地）。見出しの帯は置かず、メール通知の設定へはヘッダーのナビから行く。紹介・ID で使う・メール通知・メールのリンクの画面（テンプレート）も、`base_app.html` が同じ CSS を読み、同じ見た目にしている。この画面ではサイトの外枠（ヘッダー・フッター）の地も同じ色にする。
+[frontend/countdown](../../frontend/countdown)）。
+
+### 見た目
+
+- 色は hirahira_room の countdown と同じダークの配色（`frontend/countdown/src/app.css` の `--cd-*`）。
+- その CSS を `base_app.html` が読むので、テンプレートの画面（紹介・ID で使う・メール通知・メールのリンク）も
+  同じ部品（`cd-*` と Bootstrap の `form-control`・`btn`）で描き、同じ見た目になる。
+  サイトの外枠（ヘッダー・フッター）は `base_app.html` のままで、地の色だけ合わせる。左上の表記は「fun IT club」。
+- 見出しの帯は置かない。メール通知の設定へは、ID の一覧のときだけヘッダーのナビから行く。
+- テンプレートの段落は1行で書く（段落の中で改行すると、日本語の途中に空白が入って見える）。
+
+### 一覧の画面
 
 - 一覧・登録・編集・削除の URL はどれも同じ入れ物（`AppView`）を返し、何を描くかは React がアドレスを見て決める。
   登録・編集は一覧の上にパネルを開く。削除は確認を出さずにすぐ消し、トーストの「元に戻す」で取り消せる

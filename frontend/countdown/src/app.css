@@ -1,4 +1,5 @@
-/* countdown の一覧の画面の見た目（hirahira_room の countdown と同じ作り・同じ色）。
+/* countdown の画面の見た目（hirahira_room の countdown と同じ作り・同じ色）。
+   一覧の画面（React）だけでなく、テンプレートの画面（紹介・ID で使う・メール通知）も base_app.html がこれを読む。
    土台は _assets.html の Bootstrap と funitclub.css（サイトの外枠）。
    ここでは countdown にしか無いもの（リング・トースト・パネル・スケルトン・動き）と、色・余白を決める。
    画面はいつもダークモード（OS の明るい・暗いの設定には合わせない）。色はすべて下の変数から取る。
