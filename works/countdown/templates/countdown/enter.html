@@ -1,46 +1,42 @@
 {% extends "countdown/base_app.html" %}
+{% comment %}
+ID で入る・作る。一覧の画面（React）と同じ見た目の部品（cd-* と Bootstrap の form-control・btn）で描く。
+段落の中で改行すると、日本語の途中に空白が入って見えるので、段落は1行で書く。
+{% endcomment %}
 
 {% block title %}ID で使う — カウントアップ＆ダウン{% endblock %}
 
 {% block contents %}
-<div class="container">
-    <section class="editor editor-narrow">
+<div class="cd-app">
+    <div class="cd-main cd-body cd-narrow">
 
-        <div class="section-head">
-            <p class="section-label">// ID で使う</p>
-            <a class="section-more" href="{% url 'countdown:event_list' %}">ID なしで使う（共有ボード）<i class="fas fa-arrow-right ms-1"></i></a>
-        </div>
+        <h1 class="cd-page-title">ID で使う</h1>
+        <p class="cd-page-lead">ID ごとに、自分だけの一覧を持てます。初めてのときは ID を決めて「新しく作る」、2回目からは同じ ID で「この ID で入る」。</p>
 
-        <div class="card">
+        <div class="card cd-card cd-card--note cd-panel">
             <form method="post" novalidate>
                 {% csrf_token %}
 
-                <div class="form-row">
-                    <label for="{{ form.code.id_for_label }}">{{ form.code.label }}</label>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.code.id_for_label }}">{{ form.code.label }}</label>
                     {{ form.code }}
-                    <p class="form-help">{{ form.code.help_text }}</p>
-                    {% if form.code.errors %}
-                    <ul class="form-errors">
-                        {% for error in form.code.errors %}
-                        <li>{{ error }}</li>
-                        {% endfor %}
-                    </ul>
-                    {% endif %}
+                    <div class="cd-help">{{ form.code.help_text }}</div>
+                    {% for error in form.code.errors %}
+                    <div class="invalid-feedback d-block">{{ error }}</div>
+                    {% endfor %}
                 </div>
 
-                <div class="form-actions">
-                    <button class="btn btn-lg" type="submit" name="action" value="enter">この ID で入る</button>
-                    <button class="btn btn-ghost" type="submit" name="action" value="create">新しく作る</button>
+                <div class="cd-page-actions">
+                    <button class="btn btn-primary" type="submit" name="action" value="enter">この ID で入る</button>
+                    <button class="btn btn-outline-primary" type="submit" name="action" value="create">新しく作る</button>
                 </div>
             </form>
 
-            <p class="form-help cd-enter-note">
-                登録した出来事・予定は ID ごとに分かれます。ID に合言葉はありません。
-                ID を知っている人は誰でもその一覧を開いて編集できるので、人と同じ ID は使わないでください。
-                誰でも使える公開のアプリです。本名や学籍番号など、本人が分かるものは ID にしないでください。
-            </p>
+            <p class="cd-callout"><span class="me-1" aria-hidden="true"><i class="fas fa-exclamation-circle"></i></span>ID に合言葉はありません。ID を知っている人は誰でもその一覧を開いて編集できるので、人と同じ ID は使わないでください。誰でも使える公開のアプリです。本名や学籍番号など、本人が分かるものは ID にしないでください。</p>
         </div>
 
-    </section>
+        <p class="cd-page-link"><a href="{% url 'countdown:event_list' %}">ID なしで使う（共有ボード）<span class="ms-1" aria-hidden="true"><i class="fas fa-arrow-right"></i></span></a></p>
+
+    </div>
 </div>
 {% endblock %}

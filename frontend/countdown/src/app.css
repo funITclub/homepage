@@ -63,6 +63,8 @@ body {
 }
 
 /* Bootstrap の部品を、変数の色に合わせる */
+.cd-app .form-control,
+.cd-app .form-select,
 .cd-sheet .form-control,
 .cd-sheet .form-select {
   background-color: var(--cd-surface-2);
@@ -70,15 +72,18 @@ body {
   color: var(--cd-text);
 }
 
+.cd-app .form-control:focus,
 .cd-sheet .form-control:focus {
   background-color: var(--cd-surface-2);
   color: var(--cd-text);
 }
 
+.cd-app .form-control::placeholder,
 .cd-sheet .form-control::placeholder {
   color: var(--cd-muted);
 }
 
+.cd-app .form-label,
 .cd-sheet .form-label {
   margin-bottom: 0.25rem;
   font-size: 0.9rem;
@@ -108,6 +113,12 @@ body {
 .cd-sheet .btn-outline-secondary {
   color: var(--cd-muted);
   border-color: var(--cd-border);
+}
+
+.cd-app .btn-danger {
+  background: #b3261e;
+  border-color: #b3261e;
+  color: #fff;
 }
 
 .cd-app .btn-outline-secondary:hover,
@@ -311,6 +322,122 @@ body {
 
 .cd-about-text strong {
   color: var(--cd-text);
+}
+
+/* ---- テンプレートの画面（ID で使う・メール通知・メールのリンク。templates/countdown/*.html） ---- */
+
+.cd-narrow {
+  max-width: 36rem;
+}
+
+.cd-page-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.cd-page-sub {
+  margin-left: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--cd-muted);
+}
+
+.cd-page-lead {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.85;
+  color: var(--cd-muted);
+}
+
+.cd-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cd-page-link {
+  margin: 1rem 0 0;
+  font-size: 0.88rem;
+}
+
+.cd-page-back {
+  margin: 0 0 0.75rem;
+}
+
+.cd-app .cd-panel {
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.cd-status {
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+}
+
+.cd-panel-text {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  line-height: 1.85;
+  color: var(--cd-muted);
+}
+
+.cd-panel-text strong,
+.cd-callout strong {
+  color: var(--cd-text);
+}
+
+.cd-help {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--cd-muted);
+}
+
+.cd-panel > .cd-help {
+  margin-top: 0.75rem;
+}
+
+/* 注意書きの囲み */
+.cd-callout {
+  margin: 1rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--cd-soon);
+  border-radius: 0.4rem;
+  background: var(--cd-surface-2);
+  font-size: 0.82rem;
+  line-height: 1.8;
+  color: var(--cd-muted);
+}
+
+.cd-callout--lock {
+  border-left-color: var(--cd-past);
+}
+
+/* Django の知らせ（登録しました など）と、送れなかったときの知らせ */
+.cd-notice {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--cd-border);
+  border-left: 3px solid #7bd88f;
+  border-radius: 0.4rem;
+  background: var(--cd-surface);
+  font-size: 0.88rem;
+}
+
+.cd-notice .fas {
+  color: #7bd88f;
+}
+
+.cd-notice--danger {
+  border-left-color: #ff8a80;
+}
+
+.cd-notice--danger .fas,
+.cd-danger,
+.cd-app .invalid-feedback,
+.cd-sheet .invalid-feedback {
+  color: #ff8a80;
 }
 
 /* ---- カード ---- */

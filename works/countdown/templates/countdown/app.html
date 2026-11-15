@@ -12,10 +12,6 @@ data-* で、React に URL の頭と置き場（ID）のことを渡す。URL �
 
 {% block title %}一覧 — カウントアップ＆ダウン{% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="{% static 'countdown/app/app.css' %}">
-{% endblock %}
-
 {% block contents %}
 <div id="countdown-root"
      data-base-path="{{ list_url }}"

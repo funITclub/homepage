@@ -1223,55 +1223,8 @@ a:hover {
     gap: 12px;
 }
 
-/* ---------- サブアプリ：カウントアップ＆ダウン（/countdown/） ---------- */
-
-.cd-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 28px;
-}
-
-.cd-actions .btn {
-    display: inline-block;
-    min-width: 160px;
-}
-
-.cd-card-title {
-    margin: 0 0 12px;
-    color: var(--ink);
-    font-size: 1.1rem;
-    font-weight: 700;
-}
-
-.cd-card-desc {
-    margin: 0;
-    font-size: .86rem;
-    line-height: 1.95;
-    color: var(--ink-2);
-}
-
-.cd-mail-privacy {
-    margin: 12px 0 0;
-    padding: 10px 14px;
-    border-left: 3px solid var(--accent-ink);
-    background: rgba(14, 107, 168, .08);
-    font-size: .88rem;
-    line-height: 1.8;
-}
-
-.cd-mail-status {
-    margin: 16px 0 0;
-    font-size: .9rem;
-}
-
-.cd-mail-form {
-    margin-top: 12px;
-}
-
-.cd-enter-note {
-    margin-top: 20px;
-}
+/* サブアプリ：カウントアップ＆ダウン（/countdown/）の見た目は、どの画面も
+ * frontend/countdown/src/app.css（ビルドして works/countdown/static/countdown/app/app.css）にある。 */
 
 /* ---------- フッター ---------- */
 

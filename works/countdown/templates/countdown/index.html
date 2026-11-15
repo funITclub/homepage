@@ -2,16 +2,12 @@
 {% load static %}
 {% comment %}
 紹介ページ。一覧の画面（React）と同じ見た目にするため、一覧の画面の CSS
-（frontend/countdown をビルドした static/countdown/app/app.css）を読み、そのクラスを使う。
+（frontend/countdown をビルドした static/countdown/app/app.css。base_app.html が読む）のクラスを使う。
 紹介ページだけの部品（cd-hero・cd-about-*）も、その CSS（frontend/countdown/src/app.css）にある。
 段落の中で改行すると、日本語の途中に空白が入って見えるので、段落は1行で書く。
 {% endcomment %}
 
 {% block title %}カウントアップ＆ダウン — fun IT club{% endblock %}
-
-{% block head %}
-<link rel="stylesheet" href="{% static 'countdown/app/app.css' %}">
-{% endblock %}
 
 {% block contents %}
 <div class="cd-app">

@@ -1,98 +1,60 @@
 {% extends "countdown/base_app.html" %}
+{% comment %}
+その ID のメール通知の設定。一覧の画面（React）と同じ見た目の部品（cd-* と Bootstrap の form-control・btn）で描く。
+段落の中で改行すると、日本語の途中に空白が入って見えるので、段落は1行で書く。
+{% endcomment %}
 
 {% block title %}メール通知 — カウントアップ＆ダウン{% endblock %}
 
 {% block contents %}
-<div class="container">
-    <section class="editor editor-narrow">
+<div class="cd-app">
+    <div class="cd-main cd-body cd-narrow">
 
-        <div class="section-head">
-            <p class="section-label">// メール通知（ID: {{ board.code }}）</p>
-            <a class="section-more" href="{{ list_url }}"><i class="fas fa-arrow-left me-1"></i>一覧に戻る</a>
-        </div>
+        <p class="cd-page-link cd-page-back"><a href="{{ list_url }}"><span class="me-1" aria-hidden="true"><i class="fas fa-arrow-left"></i></span>一覧に戻る</a></p>
+        <h1 class="cd-page-title">メール通知 <span class="cd-page-sub">ID「{{ board.code }}」</span></h1>
+        <p class="cd-page-lead">「メールで知らせる」をオンにしたカウントダウンの残り日数を、当日まで毎日0時ごろに1通にまとめて送ります。オンにした予定がない日は送りません。メールアドレスの登録は任意です。</p>
 
-        {% if messages %}
-        <ul class="editor-messages">
-            {% for message in messages %}
-            <li>{{ message }}</li>
-            {% endfor %}
-        </ul>
+        {% for message in messages %}
+        <p class="cd-notice"><span class="me-2" aria-hidden="true"><i class="fas fa-check-circle"></i></span>{{ message }}</p>
+        {% endfor %}
+
+        {% if mail_error %}
+        <p class="cd-notice cd-notice--danger"><span class="me-2" aria-hidden="true"><i class="fas fa-exclamation-circle"></i></span>{{ mail_error }}</p>
         {% endif %}
 
-        <div class="card">
-            <p class="cd-card-desc">
-                「メールで知らせる」に印を付けたカウントダウンの残り日数を、当日まで毎日0時ごろに
-                1通にまとめて送ります。印の付いた予定がない日は送りません。
-                メールアドレスの登録は任意です。
-            </p>
-            <p class="cd-mail-privacy">
-                <i class="fas fa-lock me-1"></i>メールアドレスは<strong>暗号化して保存</strong>します。
-                管理画面にも表示されないので、管理者がアドレスを目にすることはありません。
-            </p>
-
-            {% if mail_error %}
-            <ul class="form-errors">
-                <li>{{ mail_error }}</li>
-            </ul>
-            {% endif %}
-
+        <div class="card cd-card cd-card--note cd-panel">
             {% if board.notify_email %}
-            <p class="cd-mail-status">
-                <i class="fas fa-bell me-1"></i>通知先: <strong>{{ board.masked_email }}</strong>
-            </p>
-            <p class="cd-card-desc">
-                通知先が登録されている間は、この画面からは変更も解除もできません。
-                解除できるのは、<strong>登録されたアドレスに届くメールのリンクから</strong>だけです
-                （毎回の通知メールにも付いています）。
-                アドレスを変えるときは、いちど解除してから登録し直してください。
-            </p>
+            <p class="cd-status"><span class="me-2 cd-accent" aria-hidden="true"><i class="fas fa-bell"></i></span>通知先：<strong>{{ board.masked_email }}</strong></p>
+            <p class="cd-panel-text">通知先が登録されている間は、この画面からは変更も解除もできません。解除できるのは、<strong>登録されたアドレスに届くメールのリンクから</strong>だけです（毎回の通知メールにも付いています）。アドレスを変えるときは、いちど解除してから登録し直してください。</p>
             <form method="post">
                 {% csrf_token %}
-                <div class="form-actions">
-                    <button class="btn" type="submit" name="action" value="stop">解除用のメールを送る</button>
+                <div class="cd-page-actions">
+                    <button class="btn btn-outline-secondary" type="submit" name="action" value="stop">解除用のメールを送る</button>
                 </div>
             </form>
             {% else %}
-            <p class="cd-mail-status"><i class="fas fa-bell-slash me-1"></i>通知先は登録されていません。</p>
+            <p class="cd-status"><span class="me-2 cd-muted" aria-hidden="true"><i class="fas fa-bell-slash"></i></span>通知先は登録されていません。</p>
+            <form method="post" novalidate>
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.email.id_for_label }}">通知先を登録する</label>
+                    {{ form.email }}
+                    <div class="cd-help">{{ form.email.help_text }}</div>
+                    {% for error in form.email.errors %}
+                    <div class="invalid-feedback d-block">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                <div class="cd-page-actions">
+                    <button class="btn btn-primary" type="submit">確認のメールを送る</button>
+                </div>
+            </form>
+            <p class="cd-callout"><span class="me-1" aria-hidden="true"><i class="fas fa-exclamation-circle"></i></span>登録したあとは、<strong>そのアドレスに届くメールのリンクからしか解除できません</strong>（この画面からは変更も解除もできません）。そのアドレスのメールを受け取れなくなったときは、{{ contact }} までお知らせください。</p>
+            <p class="cd-help">登録できるのは自分のメールアドレスだけです（届いた確認のメールのリンクを開いて登録します）。アドレスは通知を送るためだけに使い、解除すると消します。通知先は ID ごとに1つです（画面にはアドレスの一部だけを出します）。</p>
             {% endif %}
         </div>
 
-        {% if not board.notify_email %}
-        <div class="card cd-mail-form">
-            <form method="post" novalidate>
-                {% csrf_token %}
+        <p class="cd-callout cd-callout--lock"><span class="me-1" aria-hidden="true"><i class="fas fa-lock"></i></span>メールアドレスは<strong>暗号化して保存</strong>します。管理画面にも表示されないので、管理者がアドレスを目にすることはありません。</p>
 
-                <div class="form-row">
-                    <label for="{{ form.email.id_for_label }}">通知先を登録する</label>
-                    {{ form.email }}
-                    <p class="form-help">{{ form.email.help_text }}</p>
-                    {% if form.email.errors %}
-                    <ul class="form-errors">
-                        {% for error in form.email.errors %}
-                        <li>{{ error }}</li>
-                        {% endfor %}
-                    </ul>
-                    {% endif %}
-                </div>
-
-                <div class="form-actions">
-                    <button class="btn btn-lg" type="submit">確認のメールを送る</button>
-                </div>
-            </form>
-
-            <p class="cd-mail-privacy cd-enter-note">
-                <i class="fas fa-circle-exclamation me-1"></i>登録したあとは、<strong>そのアドレスに届くメールのリンクからしか解除できません</strong>
-                （この画面からは変更も解除もできません）。
-                そのアドレスのメールを受け取れなくなったときは、{{ contact }} までお知らせください。
-            </p>
-            <p class="form-help">
-                登録できるのは自分のメールアドレスだけです（届いた確認のメールのリンクを開いて登録します）。
-                アドレスは通知を送るためだけに使い、解除すると消します。通知先は ID ごとに1つです
-                （画面にはアドレスの一部だけを出します）。
-            </p>
-        </div>
-        {% endif %}
-
-    </section>
+    </div>
 </div>
 {% endblock %}
