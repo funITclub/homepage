@@ -1,4 +1,5 @@
 import base64
+import json
 import re
 from datetime import timedelta
 
@@ -59,8 +60,27 @@ class CountEventTests(TestCase):
             CountEvent(name='未来', date=self.today + timedelta(days=400)).years_passed, 0)
 
 
-class CountdownViewTests(TestCase):
-    """ログイン不要の公開ボードとして動く。"""
+def api_url(code=None, pk=None):
+    """API の URL。code が None なら共有ボードのもの。"""
+    if code is None:
+        return reverse('countdown:event_api_item', args=[pk]) if pk else reverse('countdown:event_api')
+    if pk:
+        return reverse('countdown:board_api_item', args=[code, pk])
+    return reverse('countdown:board_api', args=[code])
+
+
+class ApiClientMixin:
+    """React の画面と同じく、JSON で API を呼ぶ。"""
+
+    def api(self, method, url, data=None):
+        kwargs = {}
+        if data is not None:
+            kwargs = {'data': json.dumps(data), 'content_type': 'application/json'}
+        return getattr(self.client, method)(url, **kwargs)
+
+
+class CountdownViewTests(ApiClientMixin, TestCase):
+    """ログイン不要の公開ボードとして動く。一覧の画面は React の入れ物で、データは API から読む。"""
 
     def test_all_pages_open_without_login(self):
         event = CountEvent.objects.create(name='部会', date=timezone.localdate())
@@ -72,22 +92,52 @@ class CountdownViewTests(TestCase):
             reverse('countdown:event_create'),
             reverse('countdown:event_update', args=[event.pk]),
             reverse('countdown:event_delete', args=[event.pk]),
+            api_url(),
+            api_url(pk=event.pk),
         ]:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 200)
 
+    def test_app_page_hands_urls_to_react(self):
+        response = self.client.get(reverse('countdown:event_create'))
+        self.assertContains(response, 'id="countdown-root"')
+        self.assertContains(response, f'data-api-url="{api_url()}"')
+        self.assertContains(response, 'countdown/app/app.js')
+        # 書き込みの CSRF トークンは Cookie で渡す
+        self.assertIn('csrftoken', response.cookies)
+
     def test_create_without_login(self):
-        response = self.client.post(reverse('countdown:event_create'), {
+        response = self.api('post', api_url(), {
             'name': 'テスト予定',
             'date': (timezone.localdate() + timedelta(days=3)).isoformat(),
             'memo': 'メモ',
         })
-        self.assertRedirects(response, reverse('countdown:event_list'))
-        self.assertContains(self.client.get(reverse('countdown:event_list')), 'テスト予定')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['name'], 'テスト予定')
+        self.assertEqual(
+            [e['name'] for e in self.client.get(api_url()).json()['upcoming']], ['テスト予定'])
+
+    def test_create_reports_field_errors(self):
+        response = self.api('post', api_url(), {'name': '', 'date': ''})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('name', response.json())
+        self.assertIn('date', response.json())
+        self.assertEqual(CountEvent.objects.count(), 0)
+
+    def test_broken_body_is_rejected(self):
+        response = self.client.post(api_url(), data='{', content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_changes_only_given_fields(self):
+        event = CountEvent.objects.create(name='部会', date=timezone.localdate(), memo='メモ')
+        response = self.api('patch', api_url(pk=event.pk), {'name': '定例会'})
+        self.assertEqual(response.status_code, 200)
+        event.refresh_from_db()
+        self.assertEqual((event.name, event.memo), ('定例会', 'メモ'))
 
     def test_delete_without_login(self):
         event = CountEvent.objects.create(name='消す', date=timezone.localdate())
-        self.client.post(reverse('countdown:event_delete', args=[event.pk]))
+        self.assertEqual(self.api('delete', api_url(pk=event.pk)).status_code, 204)
         self.assertFalse(CountEvent.objects.filter(pk=event.pk).exists())
 
     def test_list_splits_upcoming_and_past(self):
@@ -96,9 +146,17 @@ class CountdownViewTests(TestCase):
         CountEvent.objects.create(name='過去', date=today - timedelta(days=1))
         CountEvent.objects.create(name='当日', date=today)
 
-        context = self.client.get(reverse('countdown:event_list')).context
-        self.assertEqual([e.name for e in context['upcoming_events']], ['当日', '未来'])
-        self.assertEqual([e.name for e in context['past_events']], ['過去'])
+        data = self.client.get(api_url()).json()
+        self.assertEqual(data['today'], today.isoformat())
+        self.assertEqual([e['name'] for e in data['upcoming']], ['当日', '未来'])
+        self.assertEqual([e['name'] for e in data['past']], ['過去'])
+
+    def test_writes_need_csrf_token(self):
+        client = self.client_class(enforce_csrf_checks=True)
+        response = client.post(api_url(), data=json.dumps({'name': 'x', 'date': '2030-01-01'}),
+                               content_type='application/json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(CountEvent.objects.count(), 0)
 
     def test_does_not_link_to_public_site(self):
         """公開サイトとは相互にリンクしない。"""
@@ -108,7 +166,7 @@ class CountdownViewTests(TestCase):
                 self.assertNotIn(f'href="{reverse(name)}"', html)
 
 
-class BoardTests(TestCase):
+class BoardTests(ApiClientMixin, TestCase):
     """ID ごとに分けて持つ。ID を使わない共有ボードとは混ざらない。"""
 
     def setUp(self):
@@ -122,8 +180,13 @@ class BoardTests(TestCase):
 
     def test_create_id(self):
         response = self.enter('Hanako', 'create')
-        self.assertRedirects(response, reverse('countdown:board_list', args=['hanako']))
+        self.assertRedirects(
+            response, reverse('countdown:board_list', args=['hanako']), fetch_redirect_response=False)
         self.assertTrue(Board.objects.filter(code='hanako').exists())
+        # 作ったことの知らせは、React がトーストで出せるよう入れ物のページに渡す
+        page = self.client.get(reverse('countdown:board_list', args=['hanako']))
+        self.assertContains(page, 'id="countdown-notices"')
+        self.assertIn('ID「hanako」を作りました', page.context['notices'][0])
 
     def test_create_rejects_taken_reserved_and_malformed(self):
         for code in ['taro', 'events', 'enter', 'notify', 'ab', '日本語']:
@@ -140,23 +203,28 @@ class BoardTests(TestCase):
         self.assertFalse(Board.objects.filter(code='typo').exists())
 
     def test_lists_are_separate(self):
-        board = self.client.get(reverse('countdown:board_list', args=['taro']))
-        self.assertContains(board, '自分の予定')
-        self.assertNotContains(board, '共有の予定')
+        def names(url):
+            data = self.client.get(url).json()
+            return [e['name'] for e in data['upcoming'] + data['past']]
 
-        shared = self.client.get(reverse('countdown:event_list'))
-        self.assertContains(shared, '共有の予定')
-        self.assertNotContains(shared, '自分の予定')
+        self.assertEqual(names(api_url('taro')), ['自分の予定'])
+        self.assertEqual(names(api_url()), ['共有の予定'])
+
+    def test_board_page_tells_react_its_id(self):
+        response = self.client.get(reverse('countdown:board_list', args=['taro']))
+        self.assertContains(response, 'data-board="taro"')
+        self.assertContains(response, f'data-api-url="{api_url("taro")}"')
 
     def test_unknown_id_is_404(self):
-        self.assertEqual(
-            self.client.get(reverse('countdown:board_list', args=['nobody'])).status_code, 404)
+        for url in [reverse('countdown:board_list', args=['nobody']), api_url('nobody')]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
 
     def test_create_event_goes_to_the_board(self):
-        response = self.client.post(reverse('countdown:board_create', args=['taro']), {
+        response = self.api('post', api_url('taro'), {
             'name': '発表会', 'date': self.today.isoformat(), 'memo': '',
         })
-        self.assertRedirects(response, reverse('countdown:board_list', args=['taro']))
+        self.assertEqual(response.status_code, 201)
         self.assertEqual(CountEvent.objects.get(name='発表会').board, self.board)
 
     def test_events_cannot_be_reached_from_another_board(self):
@@ -172,21 +240,30 @@ class BoardTests(TestCase):
         ]:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 404)
-                self.assertEqual(self.client.post(url).status_code, 404)
+        for url in [
+            api_url(pk=self.mine.pk),
+            api_url('jiro', self.mine.pk),
+            api_url('taro', self.shared.pk),
+        ]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+                self.assertEqual(self.api('patch', url, {'name': '乗っ取り'}).status_code, 404)
+                self.assertEqual(self.api('delete', url).status_code, 404)
         self.assertEqual(CountEvent.objects.count(), 2)
+        self.assertEqual(set(CountEvent.objects.values_list('name', flat=True)), {'自分の予定', '共有の予定'})
 
     def test_update_and_delete_on_own_board(self):
-        url = reverse('countdown:board_update', args=['taro', self.mine.pk])
-        response = self.client.post(url, {'name': '直した', 'date': self.today.isoformat()})
-        self.assertRedirects(response, reverse('countdown:board_list', args=['taro']))
+        url = api_url('taro', self.mine.pk)
+        response = self.api('patch', url, {'name': '直した', 'date': self.today.isoformat()})
+        self.assertEqual(response.status_code, 200)
         self.mine.refresh_from_db()
         self.assertEqual(self.mine.name, '直した')
 
-        self.client.post(reverse('countdown:board_delete', args=['taro', self.mine.pk]))
+        self.api('delete', url)
         self.assertFalse(CountEvent.objects.filter(pk=self.mine.pk).exists())
 
 
-class NotifyTests(TestCase):
+class NotifyTests(ApiClientMixin, TestCase):
     """メール通知。通知先は ID ごとに1つで、確認のメールを経たアドレスだけを持つ。"""
 
     ADDRESS = 'taro@example.com'
@@ -347,17 +424,30 @@ class NotifyTests(TestCase):
 
     def test_shared_board_has_no_mail_settings(self):
         self.assertEqual(self.client.get('/countdown/events/mail/').status_code, 404)
-        self.assertNotContains(self.client.get(reverse('countdown:event_create')), 'name="notify"')
+        # 共有ボードの入れ物には通知の設定を渡さない（React は通知の欄を出さない）
+        self.assertNotContains(self.client.get(reverse('countdown:event_create')), 'data-mail-url')
         self.assertContains(
-            self.client.get(reverse('countdown:board_create', args=['taro'])), 'name="notify"')
+            self.client.get(reverse('countdown:board_create', args=['taro'])), 'data-mail-url')
+        # 共有ボードでは、印を送っても付かない
+        self.api('post', api_url(), {'name': '共有', 'date': self.today.isoformat(), 'notify': True})
+        self.assertFalse(CountEvent.objects.get(name='共有').notify)
 
     def test_notify_flag_is_set_per_event(self):
-        self.client.post(reverse('countdown:board_create', args=['taro']), {
-            'name': '知らせる', 'date': self.today.isoformat(), 'notify': 'on'})
-        self.client.post(reverse('countdown:board_create', args=['taro']), {
-            'name': '知らせない', 'date': self.today.isoformat()})
+        self.api('post', api_url('taro'), {
+            'name': '知らせる', 'date': self.today.isoformat(), 'notify': True})
+        self.api('post', api_url('taro'), {
+            'name': '知らせない', 'date': self.today.isoformat(), 'notify': False})
         self.assertTrue(CountEvent.objects.get(name='知らせる').notify)
         self.assertFalse(CountEvent.objects.get(name='知らせない').notify)
+
+        # 名前だけ変えても、印は外れない
+        event = CountEvent.objects.get(name='知らせる')
+        self.api('patch', api_url('taro', event.pk), {'name': '知らせる2'})
+        event.refresh_from_db()
+        self.assertTrue(event.notify)
+        self.api('patch', api_url('taro', event.pk), {'notify': False})
+        event.refresh_from_db()
+        self.assertFalse(event.notify)
 
     # ---- 毎日の送信 ----
 

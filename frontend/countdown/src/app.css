@@ -1,0 +1,902 @@
+/* countdown の一覧の画面の見た目（hirahira_room の countdown と同じ作り）。
+   土台は _assets.html の Bootstrap と funitclub.css（サイトの外枠・ネイビーの地）。
+   ここでは countdown にしか無いもの（リング・トースト・パネル・スケルトン・動き）と、色・余白を決める。
+   色は funitclub.css の変数（--navy・--accent など）に合わせ、すべて下の --cd-* から取る。 */
+
+:root {
+  --cd-accent: var(--accent, #5bb8ff);
+  --cd-accent-soft: rgb(91 184 255 / 0.14);
+  --cd-bg: var(--navy, #001e3c);
+  --cd-surface: var(--navy-2, #003060);
+  --cd-surface-2: #0b3d70;
+  --cd-text: #ffffff;
+  --cd-muted: #b4c6d8;
+  --cd-border: #1f4c78;
+  /* 急ぎぐあいの色。当日・7日以内・それより先・過ぎた */
+  --cd-today: var(--accent, #5bb8ff);
+  --cd-soon: #ffb36b;
+  --cd-later: var(--accent, #5bb8ff);
+  --cd-past: #8cd3a8;
+  --cd-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --cd-shadow-lift: 0 4px 16px rgb(0 0 0 / 0.5);
+  /* フォームの部品（日付の選択など）もブラウザの暗い見た目にする */
+  color-scheme: dark;
+}
+
+/* funitclub.css は .btn を block、.card を白地・余白 24px にしている。この画面では Bootstrap に近い形に戻す */
+.cd-app .btn,
+.cd-sheet .btn {
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+}
+
+.cd-app .btn-sm {
+  padding: 0.2rem 0.6rem;
+}
+
+.cd-app .card {
+  padding: 0;
+}
+
+.cd-app a,
+.cd-sheet a {
+  color: var(--cd-accent);
+}
+
+/* Bootstrap の部品を、変数の色に合わせる */
+.cd-sheet .form-control,
+.cd-sheet .form-select {
+  background-color: var(--cd-surface-2);
+  border-color: var(--cd-border);
+  color: var(--cd-text);
+}
+
+.cd-sheet .form-control:focus {
+  background-color: var(--cd-surface-2);
+  color: var(--cd-text);
+}
+
+.cd-sheet .form-control::placeholder {
+  color: var(--cd-muted);
+}
+
+.cd-sheet .form-label {
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--cd-muted);
+}
+
+.cd-app .btn-primary,
+.cd-sheet .btn-primary {
+  background: var(--cd-accent);
+  border-color: var(--cd-accent);
+  color: var(--cd-bg);
+  font-weight: 700;
+}
+
+.cd-app .btn-outline-primary,
+.cd-sheet .btn-outline-primary {
+  color: var(--cd-accent);
+  border-color: #2f6596;
+}
+
+.cd-app .btn-outline-primary:hover {
+  background: var(--cd-accent);
+  border-color: var(--cd-accent);
+  color: var(--cd-bg);
+}
+
+.cd-app .btn-outline-secondary,
+.cd-sheet .btn-outline-secondary {
+  color: var(--cd-muted);
+  border-color: var(--cd-border);
+}
+
+.cd-app .btn-outline-secondary:hover,
+.cd-sheet .btn-outline-secondary:hover {
+  background: var(--cd-surface-2);
+  color: var(--cd-text);
+}
+
+.cd-sheet .form-check-input {
+  background-color: var(--cd-surface-2);
+  border-color: var(--cd-border);
+}
+
+.cd-sheet .form-check-input:checked {
+  background-color: var(--cd-accent);
+  border-color: var(--cd-accent);
+}
+
+.cd-app {
+  color: var(--cd-text);
+}
+
+.cd-accent {
+  color: var(--cd-accent);
+}
+
+.cd-muted {
+  color: var(--cd-muted);
+}
+
+/* ---- 枠組み。中身の幅を絞って、横の空きを減らす ---- */
+
+.cd-main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.cd-header {
+  padding-top: 1.75rem;
+}
+
+.cd-header-inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  color: #fff;
+}
+
+.cd-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.cd-today {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--cd-muted);
+}
+
+.cd-board-note {
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  line-height: 1.8;
+  color: var(--cd-muted);
+}
+
+.cd-body {
+  /* タブの行の上の空き（下の .cd-toolbar の margin-bottom と合わせて、タブの行を広めに取る） */
+  padding-top: 2rem;
+  padding-bottom: 1.5rem;
+}
+
+/* ---- 一覧の上（タブと新規登録） ---- */
+
+.cd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.cd-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  background: var(--cd-surface-2);
+  border-radius: 999px;
+}
+
+.cd-tab {
+  flex: 1 1 0;
+  border: 0;
+  background: transparent;
+  color: var(--cd-muted);
+  border-radius: 999px;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.cd-tab:hover {
+  color: var(--cd-text);
+}
+
+.cd-tab.is-active {
+  background: var(--cd-surface);
+  color: var(--cd-accent);
+  font-weight: 700;
+  box-shadow: var(--cd-shadow);
+}
+
+.cd-tab-count {
+  font-family: var(--mono);
+  display: inline-block;
+  min-width: 1.3em;
+  margin-left: 0.25rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--cd-accent-soft);
+  color: var(--cd-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.cd-new {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cd-kbd {
+  display: inline-block;
+  padding: 0 0.3rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.6;
+}
+
+/* キーボードの手がかりは、キーボードのある広い画面でだけ見せる */
+@media (max-width: 767.98px), (hover: none) {
+  .cd-kbd {
+    display: none;
+  }
+}
+
+.cd-section {
+  /* 「これからの予定」と「過ぎた出来事」のあいだ */
+  margin-bottom: 2.5rem;
+}
+
+.cd-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--cd-muted);
+  margin-bottom: 0.5rem;
+}
+
+.cd-empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--cd-muted);
+  border: 2px dashed var(--cd-border);
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+/* ---- カード ---- */
+
+.cd-card {
+  --cd-ring: var(--cd-later);
+  margin-bottom: 0.5rem;
+  background: var(--cd-surface);
+  border: 1px solid var(--cd-border);
+  border-left: 4px solid var(--cd-ring);
+  border-radius: 0.6rem;
+  box-shadow: var(--cd-shadow);
+  color: var(--cd-text);
+  transition: box-shadow 0.2s, opacity 0.2s;
+}
+
+.cd-card:hover {
+  box-shadow: var(--cd-shadow-lift);
+}
+
+.cd-card--today {
+  --cd-ring: var(--cd-today);
+  background: linear-gradient(135deg, var(--cd-accent-soft), var(--cd-surface) 60%);
+}
+
+.cd-card--soon {
+  --cd-ring: var(--cd-soon);
+}
+
+.cd-card--later {
+  --cd-ring: var(--cd-later);
+}
+
+.cd-card--past {
+  --cd-ring: var(--cd-past);
+}
+
+/* サーバーの返事を待っているあいだ */
+.cd-card--pending {
+  opacity: 0.65;
+}
+
+/* 新しく入った・戻ってきたカードを少し光らせる */
+.cd-card--highlight {
+  animation: cd-glow 1.8s ease-out;
+}
+
+@keyframes cd-glow {
+  0% { box-shadow: 0 0 0 3px var(--cd-ring); }
+  100% { box-shadow: var(--cd-shadow); }
+}
+
+.cd-card-body {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem 0.6rem 0.9rem;
+}
+
+.cd-card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cd-card-side {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.cd-card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.cd-note {
+  margin: 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.cd-card-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* スマホだけで出す「あと19日（2週と5日）」（広い画面では .cd-note がリングの横に出す） */
+.cd-nowrap {
+  white-space: nowrap;
+}
+
+.cd-note-inline {
+  display: none;
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--cd-ring);
+}
+
+.cd-card-actions .btn {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.cd-name-heading {
+  margin: 0 0 0.1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.cd-date {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cd-muted);
+}
+
+.cd-memo {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  white-space: pre-line;
+}
+
+/* 名前（クリックでその場で書きかえ） */
+.cd-name {
+  border: 0;
+  padding: 0 0.15rem;
+  margin: 0 -0.15rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border-radius: 0.25rem;
+  cursor: text;
+}
+
+.cd-name:hover:not(:disabled) {
+  background: var(--cd-accent-soft);
+}
+
+.cd-name-input {
+  max-width: 20rem;
+  font-weight: 700;
+}
+
+.cd-pill {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--cd-bg);
+}
+
+.cd-pill--soon {
+  background: var(--cd-soon);
+}
+
+/* 当日・明日の残り時間 */
+.cd-tick {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--cd-ring);
+  font-weight: 700;
+}
+
+.cd-tick-time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- リング ---- */
+
+.cd-ring {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  color: var(--cd-ring);
+}
+
+.cd-ring-track {
+  fill: none;
+  stroke: var(--cd-border);
+}
+
+.cd-ring-bar {
+  fill: none;
+  stroke: var(--cd-ring);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease;
+}
+
+.cd-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.cd-ring-days {
+  font-family: var(--mono);
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 4桁（1000日以上）は小さくして輪に収める */
+.cd-ring-days.is-long {
+  font-size: 0.95rem;
+}
+
+.cd-ring-unit {
+  margin-left: 0.05rem;
+  font-size: 0.65rem;
+  color: var(--cd-muted);
+}
+
+.cd-ring-today {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+/* ---- 読み込み中（スケルトン） ---- */
+
+.cd-skeleton {
+  border-left-color: var(--cd-border);
+}
+
+.cd-bone {
+  height: 0.75rem;
+  margin-bottom: 0.45rem;
+  border-radius: 0.3rem;
+  background: linear-gradient(90deg, var(--cd-surface-2) 25%, var(--cd-border) 50%, var(--cd-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: cd-shimmer 1.3s infinite linear;
+}
+
+.cd-bone-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  margin: 0;
+}
+
+@keyframes cd-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.cd-spinner {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: cd-spin 0.8s linear infinite;
+}
+
+@keyframes cd-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- 入力パネル（<dialog>）。広い画面では右から、狭い画面では下から ---- */
+
+.cd-sheet {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(28rem, 100vw);
+  height: 100dvh;
+  max-width: 100vw;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--cd-border);
+  background: var(--cd-surface);
+  color: var(--cd-text);
+  box-shadow: -8px 0 32px rgb(0 0 0 / 0.5);
+  animation: cd-slide-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cd-sheet::backdrop {
+  background: rgb(0 0 0 / 0.55);
+  animation: cd-fade-in 0.25s ease;
+}
+
+.cd-sheet-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cd-sheet-head,
+.cd-sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  flex: 0 0 auto;
+}
+
+.cd-sheet-head {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--cd-border);
+}
+
+.cd-sheet-head h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.cd-sheet-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--cd-border);
+}
+
+.cd-sheet-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+}
+
+.cd-sheet-scroll .mb-3 {
+  margin-bottom: 0.65rem !important;
+}
+
+.cd-icon-button {
+  border: 0;
+  background: transparent;
+  color: var(--cd-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.cd-icon-button:hover {
+  color: var(--cd-text);
+  background: var(--cd-surface-2);
+}
+
+/* 入力中の見通し */
+.cd-preview {
+  --cd-ring: var(--cd-later);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+  border-radius: 0.6rem;
+  background: var(--cd-surface-2);
+  border-left: 4px solid var(--cd-ring);
+  font-size: 0.9rem;
+}
+
+.cd-notify {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--cd-border);
+  border-radius: 0.6rem;
+}
+
+@keyframes cd-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+
+@keyframes cd-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes cd-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- スマホ ---- */
+@media (max-width: 767.98px) {
+  .cd-main {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .cd-body {
+    padding-top: 1.5rem;
+  }
+
+  /* タブを1行目、新規登録を2行目にする */
+  .cd-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .cd-tabs {
+    flex-basis: 100%;
+  }
+
+  .cd-new {
+    flex: 1 1 100%;
+  }
+
+  .cd-tab {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.2rem;
+  }
+
+  .cd-tab-count {
+  font-family: var(--mono);
+    margin-left: 0.15rem;
+    padding: 0 0.2rem;
+  }
+
+  .cd-card-body {
+    gap: 0.5rem;
+    padding: 0.55rem 0.6rem 0.55rem 0.75rem;
+  }
+
+  .cd-card-side {
+    gap: 0.5rem;
+  }
+
+  /* 狭い画面では、日数の補足（あと19日（2週と5日））をリングの横ではなく日付の下に出す */
+  .cd-note {
+    display: none;
+  }
+
+  .cd-note-inline {
+    display: block;
+  }
+
+  /* 編集・削除を縦に積んで、リングの左に並べる（カードの高さを抑える） */
+  .cd-card-actions {
+    flex-direction: column;
+  }
+
+  .cd-ring {
+    width: 56px;
+    height: 56px;
+  }
+
+  .cd-ring svg {
+    width: 56px;
+    height: 56px;
+  }
+
+  .cd-ring-days {
+    font-size: 1.05rem;
+  }
+
+  .cd-ring-days.is-long {
+    font-size: 0.82rem;
+  }
+
+  /* 下からせり上がるシート */
+  .cd-sheet {
+    inset: auto 0 0 0;
+    width: 100vw;
+    height: auto;
+    max-height: 92dvh;
+    border-left: 0;
+    border-top: 1px solid var(--cd-border);
+    border-radius: 1rem 1rem 0 0;
+    box-shadow: 0 -8px 32px rgb(0 0 0 / 0.5);
+    animation-name: cd-slide-up;
+  }
+
+  .cd-sheet-body {
+    max-height: 92dvh;
+  }
+
+  .cd-sheet-head {
+    position: relative;
+    padding-top: 1.1rem;
+  }
+
+  /* 指でつまむところ */
+  .cd-sheet-head::before {
+    content: "";
+    position: absolute;
+    top: 0.4rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 0.25rem;
+    margin-left: -1.25rem;
+    border-radius: 999px;
+    background: var(--cd-border);
+  }
+}
+
+/* ---- トースト ---- */
+
+.cd-toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.cd-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem 0.7rem;
+  overflow: hidden;
+  border: 1px solid var(--cd-border);
+  border-radius: 0.6rem;
+  background: #0b3d70;
+  color: #f1f3f5;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  pointer-events: auto;
+  animation: cd-toast-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cd-toast-icon {
+  flex: 0 0 auto;
+}
+
+.cd-toast-success .cd-toast-icon { color: #7bd88f; }
+.cd-toast-info .cd-toast-icon { color: var(--cd-accent); }
+.cd-toast-danger .cd-toast-icon { color: #ff8a80; }
+
+.cd-toast-text {
+  flex: 1 1 auto;
+  font-size: 0.88rem;
+}
+
+.cd-toast-action {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--cd-accent);
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+}
+
+.cd-toast-action:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.cd-toast-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #adb5bd;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+/* 残り時間の帯 */
+.cd-toast-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: rgb(255 255 255 / 0.35);
+  transform-origin: left;
+  animation-name: cd-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes cd-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes cd-toast-in {
+  from { transform: translateY(1rem); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (max-width: 767.98px) {
+  .cd-toasts {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+  }
+}
+
+/* ---- カードが増える・消える・並びが変わるときの動き（View Transitions。transition.ts） ---- */
+
+::view-transition-group(*) {
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+::view-transition-new(*):only-child {
+  animation: cd-pop-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+::view-transition-old(*):only-child {
+  animation: cd-pop-out 0.25s ease-in forwards;
+}
+
+@keyframes cd-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+}
+
+@keyframes cd-pop-out {
+  to { opacity: 0; transform: scale(0.96) translateX(24px); }
+}
+
+/* 動きを減らす設定のときは、動きを止める */
+@media (prefers-reduced-motion: reduce) {
+  .cd-app *,
+  .cd-sheet,
+  .cd-sheet::backdrop,
+  .cd-toast {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
