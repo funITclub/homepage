@@ -43,6 +43,10 @@ body {
 .cd-sheet .btn {
   display: inline-block;
   padding: 0.35rem 0.85rem;
+  /* funitclub.css の等幅の書体ではなく、本文と同じ書体にする（hirahira_room と同じ） */
+  font-family: inherit;
+  font-size: 0.88rem;
+  letter-spacing: normal;
 }
 
 .cd-app .btn-sm {
@@ -246,6 +250,67 @@ body {
   border: 2px dashed var(--cd-border);
   border-radius: 0.75rem;
   margin-bottom: 1rem;
+}
+
+/* ---- 紹介ページ（templates/countdown/index.html。React ではなく、この CSS だけを読む） ---- */
+
+.cd-hero {
+  margin-bottom: 2.5rem;
+}
+
+.cd-hero-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.cd-hero-lead {
+  margin: 0 0 1.25rem;
+  color: var(--cd-muted);
+  line-height: 1.9;
+}
+
+.cd-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cd-about-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+}
+
+.cd-app .cd-about-card {
+  margin: 0;
+  padding: 0.9rem 1rem;
+}
+
+/* 注意書きのカードは、急ぎぐあいの色を使わない */
+.cd-card.cd-card--note {
+  --cd-ring: var(--cd-border);
+}
+
+.cd-about-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.cd-about-icon {
+  color: var(--cd-ring);
+}
+
+.cd-about-text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.85;
+  color: var(--cd-muted);
+}
+
+.cd-about-text strong {
+  color: var(--cd-text);
 }
 
 /* ---- カード ---- */
