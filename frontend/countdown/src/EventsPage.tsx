@@ -22,7 +22,6 @@ import { site, type EventInput } from './api'
 import { derive } from './derive'
 import { EventCard } from './EventCard'
 import { EventPanel } from './EventPanel'
-import { formatDate } from './format'
 import { Icon } from './Icon'
 import { Skeleton } from './Skeleton'
 import { useToast } from './toast'
@@ -168,14 +167,6 @@ export function EventsPage() {
 
   return (
     <div className="cd-app">
-      <header className="cd-header">
-        <div className="cd-main cd-header-inner">
-          <h1 className="cd-title">{site.board ? <>ID「{site.board}」の一覧</> : '共有ボード'}</h1>
-          <p className="cd-today">{today ? `本日 ${formatDate(today)}` : '\u00a0'}</p>
-        </div>
-        <BoardNote />
-      </header>
-
       <main className="cd-main cd-body">
         <div className="cd-toolbar">
           <div className="cd-tabs" role="tablist" aria-label="絞り込み">
@@ -268,27 +259,5 @@ function Section({ icon, title, children }: { icon: string; title: string; child
       </h2>
       {children}
     </section>
-  )
-}
-
-/** 一覧の見出しの下の説明。ID の一覧か共有ボードかで変わる */
-function BoardNote() {
-  if (!site.board) {
-    return (
-      <p className="cd-main cd-board-note">
-        ID を使わない<strong>共有ボード</strong>です。誰でも登録・編集・削除できます。{'自分だけの一覧にしたいときは '}
-        <a href={site.enterUrl}>ID を使う</a>。
-      </p>
-    )
-  }
-  return (
-    <p className="cd-main cd-board-note">
-      この ID を知っている人だけが開けます。このページの URL をブックマークしておくと、次からすぐに開けます。
-      <br />
-      <a href={site.mailUrl}><Icon name="envelope" className="me-1" />メール通知</a>
-      {site.notifyTo
-        ? `：${site.notifyTo} に、通知をオンにしたカウントダウンを毎日0時ごろ送ります。`
-        : '：通知先は未登録です（任意）。'}
-    </p>
   )
 }

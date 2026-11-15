@@ -120,7 +120,7 @@ App Service には常設のスケジューラがなく、DB は VNet の中に�
 ## 一覧の画面（React）
 
 一覧・登録・編集・削除は、hirahira_room の countdown と同じ React の画面（ソースは
-[frontend/countdown](../../frontend/countdown)）。色も hirahira_room と同じ（ダークの地・青の見出しの帯）。この画面ではサイトの外枠（ヘッダー・フッター）の地も同じ色にする。
+[frontend/countdown](../../frontend/countdown)）。色も hirahira_room と同じ（ダークの地）。見出しの帯は置かず、メール通知の設定へはヘッダーのナビから行く。この画面ではサイトの外枠（ヘッダー・フッター）の地も同じ色にする。
 
 - 一覧・登録・編集・削除の URL はどれも同じ入れ物（`AppView`）を返し、何を描くかは React がアドレスを見て決める。
   登録・編集は一覧の上にパネルを開く。削除は確認を出さずにすぐ消し、トーストの「元に戻す」で取り消せる

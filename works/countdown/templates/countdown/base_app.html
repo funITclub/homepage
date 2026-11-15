@@ -23,6 +23,7 @@
             {% if list_url %}
             <a href="{{ list_url }}" {% if nav == 'list' %}class="is-active"{% endif %}>一覧</a>
             <a href="{{ create_url }}" {% if nav == 'create' %}class="is-active"{% endif %}>登録</a>
+            {% if board %}<a href="{{ board.mail_url }}" {% if nav == 'mail' %}class="is-active"{% endif %}>メール通知</a>{% endif %}
             <a href="{% url 'countdown:enter' %}">{% if board %}ID: {{ board.code }}（切り替える）{% else %}ID を使う{% endif %}</a>
             {% else %}
             <a href="{% url 'countdown:enter' %}" {% if nav == 'enter' %}class="is-active"{% endif %}>ID で使う</a>
