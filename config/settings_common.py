@@ -28,6 +28,9 @@ INSTALLED_APPS = [
     # Bootstrap 5（hirahira_room と同じ構成。フォームのレンダリング用タグを使う）
     'django_bootstrap5',
 
+    # API（FE 対策アプリの React の画面が呼ぶ works/fe/api.py。hirahira_room と同じ作り）
+    'rest_framework',
+
     # 自作アプリ
     'home',        # 公開サイト
     'news',        # お知らせ
@@ -295,13 +298,15 @@ COUNTDOWN_CONFIRM_SEND_LIMITS = ((10, 60 * 60), (3, 60 * 60))
 
 # ---- FE 対策アプリの問題メール（works/fe/mail.py） ----
 # リンクの頭は上の SITE_URL を使う。
-# 毎日0時の送信を起こす呼び出し（/fe/tasks/send-mails/）の合言葉。
+# 9〜18時の毎時の送信を起こす呼び出し（/fe/tasks/send-mails/。.github/workflows/fe-mails.yml から）の合言葉。
 # 空のときは入口を閉じる（503）。GitHub の Actions のシークレットと同じ値を入れる。
 FE_MAIL_TOKEN = os.getenv('FE_MAIL_TOKEN', '')
 # 確認のメールのリンクの有効期限（秒）
 FE_MAIL_CONFIRM_MAX_AGE = 60 * 60
-# 確認・解除のメールを、同じ ID から続けて送らせない間隔（秒）
+# 確認のメールを、同じ登録へ続けて送らせない間隔（秒）
 FE_MAIL_LINK_INTERVAL = 5 * 60
+# 問題メールで送った問題（解答ページ /fe/m/<記号>/）を残す日数。過ぎたら行ごと消し、ページは案内になる
+FE_MAIL_KEEP_DAYS = 30
 
 # 確認のメールのリンクの有効期限（秒）。
 WG_JOIN_LINK_MAX_AGE = 60 * 60
@@ -313,3 +318,26 @@ WG_JOIN_STEP_TIMEOUT = 60 * 60
 # 確認のメールを送りすぎないための上限。((件数, 秒) 同じ IP, (件数, 秒) 同じアドレス)。
 # 超えたら送らずに「時間をおいて」と出すだけで、IP の遮断はしない（構内の回線は共有のため）。
 WG_JOIN_SEND_LIMITS = ((10, 60 * 60), (3, 60 * 60))
+
+
+# ---- API（Django REST framework。FE 対策アプリの works/fe/api.py） ----
+# hirahira_room と同じ設定。fe の API はログインを求めず、認証と権限を API の側で決める
+# （api.CsrfOnly・AllowAny）。ここは既定値で、API はデータ（JSON）だけを返す。
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    # DRF のブラウザ用の画面は出さない
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+    # 日付は 2026-11-07 の形で受け渡す
+    'DATE_FORMAT': '%Y-%m-%d',
+    'DATE_INPUT_FORMATS': ['%Y-%m-%d'],
+}

@@ -31,7 +31,7 @@ from .importer import (ImportError_, needs_confirmation, parse, preview, sync,
                        validate)
 from .learning import note_menu, pick_note
 from .models import (Attempt, Category, CategoryProgress, DailyProgress, Learner,
-                     LearningNote, LearningRound, PageViewCount, PassReport,
+                     LearningNote, LearningRound, OpenProgress, PageViewCount, PassReport,
                      Question, QuestionTemplate, StudySession)
 from .selection import (REVIEW_DUE_GAP, _due_for_review,
                         _last_result_map, _recent_answer_times, pick_question)
@@ -56,6 +56,25 @@ def setUpModule():
 def tearDownModule():
     _gate_off.disable()
 
+
+
+# React の画面（frontend/fe）のソース。画面の文言や部品の並びは、ここを読んで確かめる
+FRONTEND = Path(__file__).resolve().parents[2] / 'frontend' / 'fe' / 'src'
+FRONTEND_FILES = sorted(p.name for p in FRONTEND.glob('*.ts*'))
+
+
+def frontend_source(name):
+    return (FRONTEND / name).read_text(encoding='utf-8')
+
+
+def api_get(client, name, *args, **params):
+    """React の画面が呼ぶ API（fe:api_…）を GET する。"""
+    return client.get(reverse('fe:' + name, args=args), params)
+
+
+def api_post(client, name, data=None, *args):
+    """React の画面が呼ぶ API（fe:api_…）に JSON を POST する。"""
+    return client.post(reverse('fe:' + name, args=args), data or {}, content_type='application/json')
 
 
 def put_learner(client, pk):
@@ -88,8 +107,8 @@ def login_editor(client):
 
 
 def dashboard(learner):
-    """ダッシュボードの場所。ID なしは /fe/、ID ありは /fe/mypage/。URL に ID は出さない。"""
-    return reverse('fe:index') if learner.is_temporary else reverse('fe:mypage')
+    """ダッシュボードの場所。ID の有無にかかわらず /fe/。URL に ID は出さない。"""
+    return reverse('fe:index')
 
 
 def build_questions(per_category=4):
@@ -607,14 +626,12 @@ class ViewTests(TestCase):
         enter(self.client, self.learner)
 
     def test_unsupported_formats_are_stated_up_front(self):
-        """対応していない問題形式の注意書きを、「このアプリについて」に畳まずに出す。"""
-        for url in (reverse('fe:guide'),):
-            with self.subTest(url=url):
-                html = self.client.get(url).content.decode('utf-8')
-                self.assertIn('このアプリが対応していない問題・問題形式', html)
-                self.assertIn('図を見ないと解けない問題（自作の分）', html)
-                self.assertIn('本番どおりの模擬試験', html)
-                self.assertIn('記述・入力・並べ替え', html)
+        """対応していない問題形式の注意書きは、「このアプリについて」に畳まずに出す（React の画面）。"""
+        source = frontend_source('GuidePage.tsx')
+        for word in ('このアプリが対応していない問題・問題形式', '図を見ないと解けない問題（自作の分）',
+                     '本番どおりの模擬試験', '記述・入力・並べ替え'):
+            with self.subTest(word=word):
+                self.assertIn(word, source)
 
     def test_import_screen_states_what_cannot_be_rendered(self):
         """取り込み画面では、作る側が踏む制約も併せて示す。"""
@@ -633,22 +650,23 @@ class ViewTests(TestCase):
             self.assertIn(word, prompt)
 
     def test_index_renders(self):
+        """入れ物のページは、React の画面を読み込む。"""
         response = self.client.get(dashboard(self.learner))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '基本情報技術者試験')
+        self.assertContains(response, 'id="fe-root"')
+        self.assertContains(response, 'fe/app/app.js')
+        self.assertContains(response, 'data-api-url="/fe/api/"')
 
-    def test_every_page_with_the_settings_form_offers_the_categories(self):
-        """出題設定のフォームを置く画面は、分野の選択肢も渡すこと。
-
-        フォームを include で共有しているので、渡し忘れても画面は出る。
-        選択肢が「指定なし」だけの状態で出てしまい、気づきにくい。
-        """
-        total = Category.objects.count()
-        for url in (dashboard(self.learner), reverse('fe:quiz')):
-            with self.subTest(page=url):
-                response = self.client.get(url)
-                self.assertEqual(len(response.context['categories']), total)
-                self.assertContains(response, 'セキュリティ')
+    def test_settings_offer_every_category_with_its_subject(self):
+        """出題設定の API は、両科目の分類を科目つきで渡す。画面は選んだ科目のぶんだけ並べる。"""
+        data = api_get(self.client, 'api_settings').json()
+        self.assertEqual(len(data['categories']), Category.objects.count())
+        subjects = {c['code']: c['subject'] for c in data['categories']}
+        self.assertEqual(subjects[11], 'A')
+        self.assertEqual(subjects[103], 'B')
+        self.assertEqual({m['value'] for m in data['modes']},
+                         {value for value, _ in StudySession.MODE_CHOICES})
+        self.assertEqual([s['value'] for s in data['subjects']], ['A', 'B'])
 
     def test_category_options_carry_the_subject(self):
         """分類は科目ごとに別。画面で出し分けられるよう科目を添えている。"""
@@ -661,94 +679,47 @@ class ViewTests(TestCase):
         )
         self.assertGreater(options[103]['question_count'], 0)
 
-    def test_only_the_current_subject_is_rendered(self):
-        """分類は科目ごとに別なので、最初から選んでいる科目のぶんだけ描く。
-
-        全部を描いて JavaScript で隠す作りだと、JS が動くまでの一瞬、
-        別の科目の分類が見えてしまう。
-        """
-        session, _ = StudySession.objects.get_or_create(learner=self.learner)
-        for subject, expected in ((Question.SUBJECT_A, 23), (Question.SUBJECT_B, 5)):
-            with self.subTest(subject=subject):
-                session.subject = subject
-                session.category = None
-                session.save()
-                html = self.client.get(dashboard(self.learner)).content.decode('utf-8')
-                select = re.search(r'id="category".*?</select>', html, re.S).group(0)
-                codes = [int(v) for v in re.findall(r'<option value="(\d+)"', select)]
-                self.assertEqual(len(codes), expected)
-                for code in codes:
-                    self.assertEqual(
-                        Category.objects.get(code=code).subject, subject,
-                    )
-
-    def test_the_category_field_is_usable_in_every_mode(self):
-        """分野はどの出題モードでも選べる。伏せるモードは無い。"""
-        session, _ = StudySession.objects.get_or_create(learner=self.learner)
-        for mode, _label in StudySession.MODE_CHOICES:
-            with self.subTest(mode=mode):
-                session.mode = mode
-                session.save()
-                html = self.client.get(dashboard(self.learner)).content.decode('utf-8')
-                block = re.search(r'<select[^>]*id="category".*?>', html, re.S).group(0)
-                self.assertNotIn('disabled', block)
-
-    def test_the_saved_category_shows_in_every_mode(self):
-        """保存してある分野は、どのモードでも選ばれて見える。
-
-        どのモードでも分野が効くので、効いている分野をそのまま映す。
-        """
+    def test_the_saved_category_is_returned_in_every_mode(self):
+        """保存してある分野は、どのモードでもそのまま返す（どのモードでも分野が効くので）。"""
         session, _ = StudySession.objects.get_or_create(learner=self.learner)
         session.subject = Question.SUBJECT_A
         session.category = Category.objects.get(code=2)
-
-        def selected():
-            html = self.client.get(dashboard(self.learner)).content.decode('utf-8')
-            block = re.search(r'id="category".*?</select>', html, re.S).group(0)
-            found = re.findall(r'<option value="(\d*)"[^>]*selected', block)
-            return found[0] if found else ''
-
         for mode, _label in StudySession.MODE_CHOICES:
             with self.subTest(mode=mode):
                 session.mode = mode
                 session.save()
-                self.assertEqual(selected(), '2')
+                self.assertEqual(api_get(self.client, 'api_settings').json()['category'], 2)
 
         session.category = None
         session.save()
-        self.assertEqual(selected(), '')
+        self.assertIsNone(api_get(self.client, 'api_settings').json()['category'])
 
-    def test_saving_from_the_dashboard_comes_back_to_it(self):
-        """ダッシュボードで設定を変えたら、その場に戻す。
-
-        変えた瞬間に演習が始まると、何が保存されたのか確かめられない。
-        ダッシュボードには「いまの設定で解く」が別にあるので、そちらで始める。
-        """
-        response = self.client.post(reverse('fe:quiz_settings'), {
-            'mode': StudySession.MODE_RANDOM, 'subject': 'A', 'next': 'index',
+    def test_saving_returns_the_new_settings(self):
+        """保存したら、変えたあとの設定を返す。画面はそれを映す（ダッシュボードはその場に留まる）。"""
+        response = api_post(self.client, 'api_settings', {
+            'mode': StudySession.MODE_RANDOM, 'subject': 'A', 'category': None,
         })
-        self.assertRedirects(response, dashboard(self.learner))
-
-        # 演習画面からなら、そのまま次の問題へ進む
-        response = self.client.post(reverse('fe:quiz_settings'), {
-            'mode': StudySession.MODE_RANDOM, 'subject': 'A',
-        })
-        self.assertRedirects(response, reverse('fe:quiz'))
-
-    def test_the_dashboard_button_says_it_only_saves(self):
-        html = self.client.get(dashboard(self.learner)).content.decode('utf-8')
-        self.assertIn('設定を保存', html)
-        self.assertNotIn('この設定で出題', html)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['mode'], StudySession.MODE_RANDOM)
+        self.assertEqual(response.json()['mode_label'], '本番の出題比率どおり')
 
     def test_a_category_from_the_other_subject_is_refused(self):
-        """科目に無い分野を指定されたら受け付けない。"""
-        response = self.client.post(reverse('fe:quiz_settings'), {
+        """科目に無い分野を指定されたら受け付けず、設定も変えない。"""
+        response = api_post(self.client, 'api_settings', {
             'mode': StudySession.MODE_CATEGORY, 'subject': 'A', 'category': 103,
         })
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 400)
         session = StudySession.objects.get(learner=self.learner)
         self.assertIsNone(session.category)
         self.assertEqual(session.mode, StudySession.MODE_FOCUS)
+
+    def test_the_category_mode_needs_a_category(self):
+        """「分野を指定」は分野が無いと成り立たないので、分野なしでは保存しない。"""
+        response = api_post(self.client, 'api_settings', {
+            'mode': StudySession.MODE_CATEGORY, 'subject': 'A', 'category': None,
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(StudySession.objects.get(learner=self.learner).mode, StudySession.MODE_FOCUS)
 
     def test_the_two_subjects_have_separate_categories(self):
         """科目Aだけの分類と科目Bだけの分類に分かれ、重なりが無いこと。"""
@@ -767,62 +738,183 @@ class ViewTests(TestCase):
         )
 
     def test_quiz_shows_a_question_and_grades_the_answer(self):
-        response = self.client.get(reverse('fe:quiz'))
-        self.assertEqual(response.status_code, 200)
-        question = response.context['question']
+        data = api_get(self.client, 'api_quiz_next').json()
+        question = Question.objects.get(pk=data['question']['id'])
+        # 解答の前に正解と解説は渡さない
+        self.assertNotIn('answer_index', data['question'])
+        self.assertNotIn('explanation', data['question'])
+        self.assertEqual([c['label'] for c in data['question']['choices']][:4], ['ア', 'イ', 'ウ', 'エ'])
 
-        response = self.client.post(reverse('fe:quiz'), {
+        response = api_post(self.client, 'api_quiz_answer', {
             'question_id': question.id, 'choice': question.answer_index,
         })
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context['is_correct'])
+        self.assertTrue(response.json()['is_correct'])
+        self.assertEqual(response.json()['answer_label'], question.answer_label)
 
         attempt = Attempt.objects.get(learner=self.learner, question=question)
         self.assertTrue(attempt.is_correct)
         self.assertEqual(attempt.category_id, question.category_id)
 
     def test_wrong_answer_is_recorded_and_explained(self):
-        response = self.client.get(reverse('fe:quiz'))
-        question = response.context['question']
+        data = api_get(self.client, 'api_quiz_next').json()
+        question = Question.objects.get(pk=data['question']['id'])
         wrong = (question.answer_index + 1) % len(question.choices)
-        response = self.client.post(reverse('fe:quiz'), {
+        result = api_post(self.client, 'api_quiz_answer', {
             'question_id': question.id, 'choice': wrong,
-        })
-        self.assertFalse(response.context['is_correct'])
-        self.assertContains(response, '解説')
+        }).json()
+        self.assertFalse(result['is_correct'])
+        self.assertEqual(result['explanation'], '解説')
+        self.assertEqual(result['selected_label'], Question.choice_label(wrong))
         self.assertFalse(Attempt.objects.get(learner=self.learner).is_correct)
 
     def test_double_submission_is_not_counted_twice(self):
-        response = self.client.get(reverse('fe:quiz'))
-        question = response.context['question']
+        data = api_get(self.client, 'api_quiz_next').json()
+        question = Question.objects.get(pk=data['question']['id'])
         payload = {'question_id': question.id, 'choice': question.answer_index}
-        self.client.post(reverse('fe:quiz'), payload)
-        self.client.post(reverse('fe:quiz'), payload)
+        self.assertEqual(api_post(self.client, 'api_quiz_answer', payload).status_code, 200)
+        self.assertEqual(api_post(self.client, 'api_quiz_answer', payload).status_code, 409)
         self.assertEqual(Attempt.objects.filter(learner=self.learner).count(), 1)
 
+    def test_an_answer_outside_the_choices_is_refused(self):
+        data = api_get(self.client, 'api_quiz_next').json()
+        for choice in (None, '0', 99, True):
+            with self.subTest(choice=choice):
+                response = api_post(self.client, 'api_quiz_answer', {
+                    'question_id': data['question']['id'], 'choice': choice,
+                })
+                self.assertEqual(response.status_code, 400)
+        self.assertFalse(Attempt.objects.exists())
+
     def test_settings_change_the_study_session(self):
-        response = self.client.post(reverse('fe:quiz_settings'), {
+        response = api_post(self.client, 'api_settings', {
             'mode': StudySession.MODE_CATEGORY, 'subject': 'A', 'category': 11,
         })
-        self.assertRedirects(response, reverse('fe:quiz'))
+        self.assertEqual(response.status_code, 200)
         session = StudySession.objects.get(learner=self.learner)
         self.assertEqual(session.mode, StudySession.MODE_CATEGORY)
         self.assertEqual(session.category.code, 11)
 
     def test_stats_and_history_render(self):
-        for url in (reverse('fe:stats'), reverse('fe:history')):
-            with self.subTest(url=url):
-                self.assertEqual(self.client.get(url).status_code, 200)
+        for name in ('stats', 'history'):
+            with self.subTest(page=name):
+                self.assertEqual(self.client.get(reverse('fe:' + name)).status_code, 200)
+                self.assertEqual(api_get(self.client, 'api_' + name).status_code, 200)
+
+    def test_stats_can_be_narrowed_to_a_subject(self):
+        rows = api_get(self.client, 'api_stats', subject='B').json()['rows']
+        self.assertEqual({r['subject'] for r in rows}, {'B'})
+        rows = api_get(self.client, 'api_stats').json()['rows']
+        self.assertEqual(len(rows), Category.objects.count())
+
+    def test_history_lists_attempts_and_filters(self):
+        questions = list(Question.objects.filter(category__code=11)[:2])
+        answer(self.learner, questions[0], True)
+        answer(self.learner, questions[1], False)
+        data = api_get(self.client, 'api_history').json()
+        self.assertEqual(data['count'], 2)
+        wrong = api_get(self.client, 'api_history', result='wrong').json()['results']
+        self.assertEqual([r['is_correct'] for r in wrong], [False])
+        self.assertEqual(api_get(self.client, 'api_history', category='1').json()['count'], 0)
 
     def test_login_is_not_required_to_study(self):
-        """学習の画面は、編集画面にログインしていなくても使える。"""
+        """学習の画面と API は、編集画面にログインしていなくても使える。"""
         self.client.logout()
         self.assertEqual(self.client.get(reverse('fe:index')).status_code, 200)
-        self.client.get(reverse('fe:index'))
-        for name in ('fe:index', 'fe:mypage', 'fe:quiz', 'fe:learn_start',
-                     'fe:stats', 'fe:history'):
+        for name in ('fe:index', 'fe:id_entry', 'fe:quiz', 'fe:learn_start',
+                     'fe:stats', 'fe:history', 'fe:guide'):
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 200)
+        for name in ('api_me', 'api_dashboard', 'api_settings', 'api_quiz_next', 'api_stats',
+                     'api_history', 'api_learn', 'api_guide'):
+            with self.subTest(api=name):
+                self.assertEqual(api_get(self.client, name).status_code, 200)
+
+    def test_without_a_record_the_api_answers_401(self):
+        """記録が無ければ 401。React は入口を開き直し、入口が記録を作る。"""
+        client = self.client_class()
+        for name in ('api_dashboard', 'api_settings', 'api_quiz_next', 'api_stats', 'api_history',
+                     'api_learn', 'api_mail'):
+            with self.subTest(api=name):
+                self.assertEqual(api_get(client, name).status_code, 401)
+        # 始めていなくても読めるもの
+        self.assertEqual(api_get(client, 'api_me').json()['entered'], False)
+        self.assertEqual(api_get(client, 'api_guide').status_code, 200)
+
+    def test_pages_without_a_record_go_back_to_the_entrance(self):
+        client = self.client_class()
+        for name in ('fe:learn_start', 'fe:stats', 'fe:history'):
+            with self.subTest(page=name):
+                self.assertRedirects(client.get(reverse(name)), reverse('fe:index'),
+                                     fetch_redirect_response=False)
+        for name in ('fe:id_entry', 'fe:guide'):
+            with self.subTest(page=name):
+                self.assertEqual(client.get(reverse(name)).status_code, 200)
+
+    def test_the_quiz_starts_without_a_record(self):
+        """1問1答は問題メールからの案内先。始めていなければ、ID なしの記録を作ってそのまま開く。"""
+        client = self.client_class()
+        response = client.get(reverse('fe:quiz'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(LEARNER_COOKIE, response.cookies)
+        learner = Learner.objects.get(code__isnull=True)
+        self.assertEqual(client.session[SESSION_LEARNER], learner.pk)
+        self.assertIsNotNone(api_get(client, 'api_quiz_next').json()['question'])
+        # 開き直しても記録は増えない。ID で入っている人はその ID のまま
+        client.get(reverse('fe:quiz'))
+        self.assertEqual(Learner.objects.filter(code__isnull=True).count(), 1)
+        self.assertEqual(self.client.get(reverse('fe:quiz')).status_code, 200)
+        self.assertEqual(api_get(self.client, 'api_me').json()['code'], 'viewer')
+
+    def test_the_dashboard_shows_my_records_only_with_an_id(self):
+        """ID があれば、ダッシュボードに自分の成績（総合・苦手分野・未着手・分野別・直近14日）を出す。
+        ID なしでは出さない。「1問1答」「学習モード」のボタンは、集計の下に置く。"""
+        security = Question.objects.filter(category__code=11)[:3]
+        for question in security:
+            answer(self.learner, question, False)
+        personal = api_get(self.client, 'api_dashboard').json()['personal']
+        self.assertEqual(personal['overall']['total'], 3)
+        self.assertEqual([w['code'] for w in personal['weak']], [11])
+        self.assertNotIn(11, [c['code'] for c in personal['untouched']])
+        self.assertEqual(len(personal['daily']), 14)
+        self.assertEqual(sum(f['total'] for f in personal['fields']), 3)
+
+        client = self.client_class()
+        client.get(reverse('fe:index'))
+        self.assertIsNone(api_get(client, 'api_dashboard').json()['personal'])
+
+        source = frontend_source('Dashboard.tsx')
+        self.assertLess(source.index('<PersonalStats'), source.index('<Summary'))
+        self.assertLess(source.index('<Summary'), source.index('to="/quiz/"'))
+
+    def test_the_dashboard_only_offers_the_quiz_and_learning(self):
+        """ダッシュボードには出題設定を置かず、「1問1答」「学習モード」のボタンだけ。
+        出題設定は1問1答の画面のいちばん下にあり、上のリンクからそこへ移る。"""
+        source = frontend_source('Dashboard.tsx')
+        self.assertNotIn('SettingsForm', source)
+        self.assertIn('/>1問1答', source)
+        self.assertIn('/>学習モード', source)
+        quiz = frontend_source('QuizPage.tsx')
+        self.assertIn("getElementById('fe-quiz-settings')", quiz)
+        self.assertIn('id="fe-quiz-settings"', quiz)
+
+    def test_writing_needs_the_csrf_token(self):
+        """ログインしていなくても、書き込みは CSRF トークンを確かめる。"""
+        client = self.client_class(enforce_csrf_checks=True)
+        enter(client, self.learner)
+        response = api_post(client, 'api_settings', {'mode': StudySession.MODE_RANDOM, 'subject': 'A'})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(StudySession.objects.filter(
+            learner=self.learner, mode=StudySession.MODE_RANDOM).exists())
+
+        # 入れ物のページが配る csrftoken を載せれば通る
+        client.get(reverse('fe:quiz'))
+        token = client.cookies['csrftoken'].value
+        response = client.post(
+            reverse('fe:api_settings'), {'mode': StudySession.MODE_RANDOM, 'subject': 'A'},
+            content_type='application/json', headers={'X-CSRFToken': token},
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_login_is_still_required_to_manage(self):
         """ログインしていなければ管理画面は開けず、ログイン画面へ送る。"""
@@ -845,20 +937,19 @@ class NewModeSettingsTests(TestCase):
     def setUp(self):
         enter(self.client, self.learner)
 
+    def save(self, mode, subject='A', category=None):
+        return api_post(self.client, 'api_settings', {'mode': mode, 'subject': subject, 'category': category})
+
     def test_calc_mode_keeps_the_chosen_subject(self):
         """計算問題のモードでも、科目はAとBのどちらも選べる。"""
         for subject in ('B', 'A'):
-            self.client.post(reverse('fe:quiz_settings'), {
-                'mode': StudySession.MODE_CALC, 'subject': subject, 'next': 'index',
-            })
+            self.save(StudySession.MODE_CALC, subject)
             session = StudySession.objects.get(learner=self.learner)
             self.assertEqual(session.mode, StudySession.MODE_CALC)
             self.assertEqual(session.subject, subject)
 
     def test_ipa_mode_keeps_the_chosen_subject(self):
-        self.client.post(reverse('fe:quiz_settings'), {
-            'mode': StudySession.MODE_IPA, 'subject': 'B', 'next': 'index',
-        })
+        self.save(StudySession.MODE_IPA, 'B')
         session = StudySession.objects.get(learner=self.learner)
         self.assertEqual(session.mode, StudySession.MODE_IPA)
         self.assertEqual(session.subject, Question.SUBJECT_B)
@@ -866,15 +957,11 @@ class NewModeSettingsTests(TestCase):
     def test_restricting_modes_keep_the_chosen_category(self):
         """対象を絞る2つのモードでは、分野も選べる。選ばなくてもよい。"""
         for mode in (StudySession.MODE_IPA, StudySession.MODE_CALC):
-            self.client.post(reverse('fe:quiz_settings'), {
-                'mode': mode, 'subject': 'A', 'category': '4', 'next': 'index',
-            })
+            self.save(mode, 'A', 4)
             session = StudySession.objects.get(learner=self.learner)
             self.assertEqual((session.mode, session.category.code), (mode, 4))
 
-            self.client.post(reverse('fe:quiz_settings'), {
-                'mode': mode, 'subject': 'A', 'category': '', 'next': 'index',
-            })
+            self.save(mode, 'A', '')
             session = StudySession.objects.get(learner=self.learner)
             self.assertEqual((session.mode, session.category), (mode, None))
 
@@ -882,15 +969,11 @@ class NewModeSettingsTests(TestCase):
         """分野はどのモードでも保存される。選ばなければ保存されない。"""
         for mode, _label in StudySession.MODE_CHOICES:
             with self.subTest(mode=mode):
-                self.client.post(reverse('fe:quiz_settings'), {
-                    'mode': mode, 'subject': 'A', 'category': '4', 'next': 'index',
-                })
+                self.save(mode, 'A', 4)
                 session = StudySession.objects.get(learner=self.learner)
                 self.assertEqual((session.mode, session.category.code), (mode, 4))
 
-        self.client.post(reverse('fe:quiz_settings'), {
-            'mode': StudySession.MODE_FOCUS, 'subject': 'A', 'category': '', 'next': 'index',
-        })
+        self.save(StudySession.MODE_FOCUS, 'A', None)
         self.assertIsNone(StudySession.objects.get(learner=self.learner).category)
 
     def test_category_counts_follow_the_mode(self):
@@ -909,11 +992,9 @@ class NewModeSettingsTests(TestCase):
         self.assertEqual(option['by_mode'][StudySession.MODE_CALC][0], 1)
         self.assertGreater(option['question_count'], 1)
 
-        self.client.post(reverse('fe:quiz_settings'), {
-            'mode': StudySession.MODE_IPA, 'subject': 'A', 'category': '4', 'next': 'index',
-        })
-        response = self.client.get(dashboard(self.learner))
-        self.assertContains(response, '{}（1問）'.format(category.label))
+        # 画面は by_mode から、いまのモードの件数を出す
+        options = {c['code']: c for c in api_get(self.client, 'api_settings').json()['categories']}
+        self.assertEqual(options[4]['by_mode'][StudySession.MODE_IPA], [1, True])
 
     def test_categories_with_nothing_to_serve_cannot_be_chosen(self):
         """そのモードで出せる問題が無い分野は、分野の欄で選べなくする。"""
@@ -940,23 +1021,20 @@ class NewModeSettingsTests(TestCase):
         self.assertEqual(selectable(StudySession.MODE_WEAK), {6})
         self.assertEqual(len(selectable(StudySession.MODE_FOCUS)), 23)
 
-        # 画面でも、選べない分野には disabled が付く
-        session, _ = StudySession.objects.get_or_create(learner=self.learner)
-        session.mode = StudySession.MODE_IPA
-        session.save()
-        html_text = self.client.get(dashboard(self.learner)).content.decode('utf-8')
-        block = re.search(r'id="category".*?</select>', html_text, re.S).group(0)
-        open_codes = re.findall(r'<option value="(\d+)"(?![^>]*disabled)', block)
-        self.assertEqual(open_codes, ['4'])
+        # API も、選べるかどうかをモードごとに渡す（画面は選べない分野を disabled にする）
+        categories = api_get(self.client, 'api_settings').json()['categories']
+        open_codes = [c['code'] for c in categories
+                      if c['subject'] == 'A' and c['by_mode'][StudySession.MODE_IPA][1]]
+        self.assertEqual(open_codes, [4])
 
-    def test_both_modes_are_offered_on_the_dashboard(self):
-        response = self.client.get(dashboard(self.learner))
-        self.assertContains(response, 'IPA公開問題（過去問・サンプル）からおまかせ')
-        self.assertContains(response, '計算問題をおまかせ')
+    def test_both_modes_are_offered(self):
+        labels = [m['label'] for m in api_get(self.client, 'api_settings').json()['modes']]
+        self.assertIn('IPA公開問題（過去問・サンプル）からおまかせ', labels)
+        self.assertIn('計算問題をおまかせ', labels)
 
 
 class LearnerIdTests(TestCase):
-    """本アプリの ID。入口で入り、ダッシュボードは /fe/<ID>/ で本人だけが開ける。
+    """本アプリの ID。/fe/id/ で入る・作る。ダッシュボードは ID の有無にかかわらず /fe/。ID は URL に出さない。
     ID はアカウントとつながないので、ログインせずに確かめる。"""
 
     @classmethod
@@ -964,16 +1042,14 @@ class LearnerIdTests(TestCase):
         seed_masters()
 
     def _post(self, code, action):
-        return self.client.post(reverse('fe:mypage'), {'code': code, 'action': action})
+        return api_post(self.client, 'api_enter', {'code': code, 'action': action})
 
     def test_the_entrance_says_how_the_records_are_used(self):
         """記録を本人の機能以外に何に使うかを、「このアプリについて」に書いておく。"""
-        for name in ('fe:guide',):
-            with self.subTest(page=name):
-                response = self.client.get(reverse(name))
-                self.assertContains(response, 'ID ごとの成績が分からない形に集計して')
-                self.assertContains(response, 'クラブの活動紹介に使います。')
-                self.assertContains(response, '運営は ID ごとの記録を見られます。')
+        source = frontend_source('GuidePage.tsx')
+        self.assertIn('ID ごとの成績が分からない形に集計して', source)
+        self.assertIn('クラブの活動紹介に使います。', source)
+        self.assertIn('運営は ID ごとの記録を見られます。', source)
 
     def test_the_id_is_forgotten_when_the_browser_is_closed(self):
         """入った ID は、ブラウザを閉じたら消える Cookie にも置く。消えたら入口に戻る。
@@ -983,15 +1059,15 @@ class LearnerIdTests(TestCase):
         """
         Learner.objects.create(code='closer')
         response = self._post('closer', 'enter')
+        self.assertEqual(response.status_code, 200)
         cookie = response.cookies[LEARNER_COOKIE]
         self.assertEqual(cookie['max-age'], '')
         self.assertEqual(cookie['expires'], '')
         self.assertTrue(cookie['httponly'])
-        self.assertRedirects(response, reverse('fe:mypage'))
 
         # ブラウザを閉じると、期限の無い Cookie だけが消え、セッションは残る
         del self.client.cookies[LEARNER_COOKIE]
-        response = self.client.get(reverse('fe:quiz'))
+        response = self.client.get(reverse('fe:stats'))
         self.assertRedirects(response, reverse('fe:index'), fetch_redirect_response=False)
         self.assertNotIn(SESSION_LEARNER, self.client.session)
 
@@ -1002,35 +1078,32 @@ class LearnerIdTests(TestCase):
         self.assertEqual(self.client.get(reverse('fe:quiz')).status_code, 200)
         del self.client.cookies[LEARNER_COOKIE]
         self.assertRedirects(
-            self.client.get(reverse('fe:quiz')), reverse('fe:index'), fetch_redirect_response=False
+            self.client.get(reverse('fe:stats')), reverse('fe:index'), fetch_redirect_response=False
         )
+        self.assertEqual(api_get(self.client, 'api_dashboard').status_code, 401)
 
     def test_without_an_id_the_dashboard_opens_at_once(self):
         """ID なしが基本。入口を開くと、選ばせずにそのままダッシュボードになる。"""
         response = self.client.get(reverse('fe:index'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'fe/index.html')
+        self.assertTemplateUsed(response, 'fe/app.html')
         learner = Learner.objects.get(code__isnull=True)
         self.assertTrue(learner.is_temporary)
+        self.assertEqual(api_get(self.client, 'api_me').json(),
+                         {'entered': True, 'code': None, 'is_temporary': True})
         # 開き直しても記録は増えない
         self.client.get(reverse('fe:index'))
         self.assertEqual(Learner.objects.filter(code__isnull=True).count(), 1)
 
     def test_dashboard_without_an_id_invites_to_make_one(self):
         """ID なしのダッシュボードには、記録を残したくなったら ID を作る案内を出す。
-        ID あり／なしの2つを並べて選ばせることはしない。"""
-        html = self.client.get(reverse('fe:index')).content.decode('utf-8')
-        self.assertIn('ID を作って記録を残す', html)
-        self.assertIn(reverse('fe:mypage'), html)
-        self.assertNotIn('履歴を残さずに始める', html)
-        self.assertNotIn('id="mail"', html)
-
-    def test_dashboard_with_an_id_has_no_invitation(self):
-        learner = make_learner('invited')
-        enter(self.client, learner)
-        html = self.client.get(dashboard(learner)).content.decode('utf-8')
-        self.assertNotIn('ID を作って記録を残す', html)
-        self.assertIn('id="mail"', html)
+        ID あり／なしの2つを並べて選ばせることはしない。問題メールの欄は ID なしでも出す。"""
+        source = frontend_source('Dashboard.tsx')
+        self.assertIn('ID を作って記録を残す', source)
+        self.assertIn("{me.is_temporary && (", source)
+        self.assertIn("      <MailSection />", source)
+        self.client.get(reverse('fe:index'))
+        self.assertEqual(api_get(self.client, 'api_mail').json()['with_id'], False)
 
     def test_temporary_use_can_answer_and_keeps_stats_while_in_use(self):
         """使っている間は、ふつうに解けて成績も積み上がる。"""
@@ -1043,6 +1116,7 @@ class LearnerIdTests(TestCase):
             CategoryProgress.objects.get(learner=learner, category=question.category).answered, 1
         )
         self.assertEqual(self.client.get(reverse('fe:quiz')).status_code, 200)
+        self.assertIsNotNone(api_get(self.client, 'api_quiz_next').json()['question'])
 
     def test_registering_an_id_later_starts_from_zero(self):
         """履歴なしで使ったあとに ID を登録しても、それまでの解答は引き継がない。"""
@@ -1072,9 +1146,7 @@ class LearnerIdTests(TestCase):
     def test_temporary_use_cannot_report_a_pass(self):
         """履歴を残さない利用からは合格申告できない。"""
         self.client.get(reverse('fe:index'))
-        response = self.client.post(
-            reverse('fe:pass_report'), {'passed_on': '2026-04-01'}
-        )
+        response = api_post(self.client, 'api_pass', {'passed_on': '2026-04-01'})
         self.assertEqual(response.status_code, 403)
         self.assertEqual(PassReport.objects.count(), 0)
 
@@ -1095,56 +1167,69 @@ class LearnerIdTests(TestCase):
 
     def test_create_opens_the_new_dashboard(self):
         response = self._post('Hira_01', 'create')
+        self.assertEqual(response.status_code, 200)
         # 大文字小文字は区別せず、小文字にそろえる
-        self.assertRedirects(response, reverse('fe:mypage'))
         created = Learner.objects.get(code='hira_01')
-        # 入ったあとは、マイページがその ID のダッシュボードになる（URL に ID は出ない）
-        self.assertEqual(self.client.get(reverse('fe:mypage')).context['learner'], created)
-        # ID なしの入口を開いても、マイページへ送る
-        self.assertRedirects(self.client.get(reverse('fe:index')), reverse('fe:mypage'))
+        self.assertEqual(response.json()['code'], 'hira_01')
+        self.assertIn('を作りました', response.json()['message'])
+        # 入ったあとは、その ID の記録を使う（URL に ID は出ない）
+        self.assertEqual(api_get(self.client, 'api_me').json()['code'], created.code)
+        # 入口（/fe/）がそのまま、その ID のダッシュボードになる。記録は増えない
+        self.assertEqual(self.client.get(reverse('fe:index')).status_code, 200)
+        self.assertEqual(api_get(self.client, 'api_me').json()['code'], 'hira_01')
+        self.assertFalse(Learner.objects.filter(code__isnull=True).exists())
 
     def test_create_refuses_a_taken_or_bad_id(self):
         make_learner('taken')
         for code in ('taken', 'TAKEN', 'quiz', 'enter', 'ab', 'ひらがな', 'a b', 'x' * 31):
             with self.subTest(code=code):
                 response = self._post(code, 'create')
-                self.assertEqual(response.status_code, 200)
-                self.assertTrue(response.context['form'].errors)
+                self.assertEqual(response.status_code, 400)
+                self.assertTrue(response.json()['detail'])
         self.assertEqual(Learner.objects.count(), 1)
 
     def test_enter_needs_an_existing_id(self):
         response = self._post('nobody', 'enter')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'その ID はまだありません')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('その ID はまだありません', response.json()['detail'])
         self.assertFalse(Learner.objects.exists())
 
     def test_anyone_with_the_id_can_enter(self):
         """合言葉は無い。ID を入力した人を本人として扱う。"""
         shared = make_learner('shared')
-        self.assertRedirects(self._post('shared', 'enter'), reverse('fe:mypage'))
+        self.assertEqual(self._post('shared', 'enter').status_code, 200)
         self.assertEqual(self.client.session[SESSION_LEARNER], shared.pk)
 
-    def test_mypage_asks_for_an_id_when_not_entered(self):
-        """ID で入っていなければ、マイページは ID の入力欄を出す。"""
-        response = self.client.get(reverse('fe:mypage'))
+    def test_the_id_entry_opens_without_an_id(self):
+        """ID で入っていなくても、ID の入力欄（/fe/id/）は開ける。古い入口は無い。"""
+        self.assertEqual(reverse('fe:id_entry'), '/fe/id/')
+        response = self.client.get(reverse('fe:id_entry'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'fe/enter.html')
-        self.assertContains(response, '作った ID で入る')
+        self.assertTemplateUsed(response, 'fe/app.html')
+        self.assertEqual(api_get(self.client, 'api_me').json()['entered'], False)
         self.assertEqual(self.client.get('/fe/enter/').status_code, 404)
+        self.assertIn('作った ID で入る', frontend_source('EnterPage.tsx'))
+
+    def test_the_old_mypage_goes_to_the_dashboard(self):
+        """以前の ID ありの入口（/fe/mypage/）は無くした。ブックマーク用に /fe/ へ送る。"""
+        self.assertRedirects(self.client.get('/fe/mypage/'), reverse('fe:index'),
+                             fetch_redirect_response=False)
+        self.assertNotIn('mypage/', ''.join(frontend_source(n) for n in FRONTEND_FILES)
+                         .replace("'mypage'", ''))
 
     def test_the_id_never_appears_in_the_url(self):
-        """ID は URL に使わない。ID ありの入口は誰でも /fe/mypage/ で、/fe/<ID>/ は無い。"""
+        """ID は URL に使わない。ID ありのダッシュボードも /fe/ で、/fe/<ID>/ は無い。"""
         mine = make_learner('mine')
         enter(self.client, mine)
-        response = self.client.get(reverse('fe:mypage'))
-        self.assertEqual(response.context['learner'], mine)
-        self.assertNotContains(response, '/fe/mine/')
+        response = self.client.get(reverse('fe:index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'mine')
         for url in ('/fe/mine/', '/fe/MINE/', '/fe/nobody/'):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 404)
 
     def test_without_an_id_other_pages_go_to_the_entrance(self):
-        for name in ('fe:quiz', 'fe:stats', 'fe:history', 'fe:learn_start'):
+        for name in ('fe:stats', 'fe:history', 'fe:learn_start'):
             with self.subTest(page=name):
                 self.assertRedirects(
                     self.client.get(reverse(name)), reverse('fe:index'),
@@ -1152,34 +1237,16 @@ class LearnerIdTests(TestCase):
                 )
 
     def test_the_enter_page_switches_ids_any_time(self):
-        """入ったあとでも ?switch で入力欄を開け、別の ID を入力すれば何度でも切り替わる。"""
+        """入ったあとでも別の ID を入力すれば、何度でも切り替わる（画面は /id/?switch）。"""
         first, second = make_learner('first'), make_learner('second')
         enter(self.client, first)
-        self.assertEqual(self.client.get(reverse('fe:mypage')).context['learner'], first)
-        response = self.client.get(reverse('fe:mypage') + '?switch')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'いまは ID「<strong>first</strong>」で入っています')
-
-        self.assertRedirects(
-            self.client.post(reverse('fe:mypage'), {'code': 'second', 'action': 'enter'}),
-            dashboard(second),
-        )
-        self.assertEqual(self.client.get(dashboard(second)).context['learner'], second)
-        self.assertRedirects(
-            self.client.post(reverse('fe:mypage'), {'code': 'first', 'action': 'enter'}),
-            dashboard(first),
-        )
-        self.assertRedirects(
-            self.client.post(reverse('fe:mypage'), {'code': 'third', 'action': 'create'}),
-            reverse('fe:mypage'),
-        )
-
-    def test_every_page_links_to_the_enter_page(self):
-        learner = make_learner('linked')
-        enter(self.client, learner)
-        for url in (dashboard(learner), reverse('fe:stats'), reverse('fe:quiz')):
-            with self.subTest(url=url):
-                self.assertContains(self.client.get(url), reverse('fe:mypage'))
+        self.assertEqual(api_get(self.client, 'api_me').json()['code'], 'first')
+        self.assertEqual(self._post('second', 'enter').json()['code'], 'second')
+        self.assertEqual(api_get(self.client, 'api_me').json()['code'], 'second')
+        self.assertEqual(self._post('first', 'enter').json()['code'], 'first')
+        self.assertEqual(self._post('third', 'create').json()['code'], 'third')
+        self.assertEqual(self.client.session[SESSION_LEARNER], Learner.objects.get(code='third').pk)
+        self.assertIn("'/id/?switch'", frontend_source('App.tsx').replace('"', "'"))
 
     def test_ids_are_separate(self):
         """ID が違えば成績は別。問題集は共有。"""
@@ -1187,16 +1254,14 @@ class LearnerIdTests(TestCase):
         build_questions()
         answer(first, Question.objects.all().first(), correct=True)
         enter(self.client, second)
-        response = self.client.get(dashboard(second))
-        self.assertEqual(response.context['question_total'], Question.objects.count())
-        response = self.client.get(reverse('fe:stats'))
-        self.assertEqual(response.context['overall']['total'], 0)
+        self.assertEqual(api_get(self.client, 'api_dashboard').json()['question_total'],
+                         Question.objects.count())
+        rows = api_get(self.client, 'api_stats').json()['rows']
+        self.assertEqual(sum(r['total'] for r in rows), 0)
 
     def test_managing_is_a_separate_page(self):
-        """問題の管理は /fe/console/ の下の別ページ。学習の画面のヘッダーには入口を出さない。"""
+        """問題の管理は /fe/console/ の下の別ページ。"""
         build_questions()
-        enter(self.client, make_learner('boss'))
-        self.assertNotContains(self.client.get(reverse('fe:stats')), reverse('fe:manage_list'))
         login_editor(self.client)
         self.assertEqual(reverse('fe:manage_list'), '/fe/console/questions/')
         self.assertEqual(reverse('fe:manage_upload'), '/fe/console/upload/')
@@ -1207,14 +1272,20 @@ class LearnerIdTests(TestCase):
         build_questions()
         learner = make_learner('hider')
         enter(self.client, learner)
+        login_editor(self.client)
         for url in (dashboard(learner), reverse('fe:quiz'), reverse('fe:learn_start'),
                     reverse('fe:stats'), reverse('fe:history'), reverse('fe:guide'),
-                    reverse('fe:mypage')):
+                    reverse('fe:id_entry')):
             with self.subTest(url=url):
                 html = self.client.get(url).content.decode('utf-8')
                 self.assertNotIn('/fe/console/', html)
                 self.assertNotIn('問題の管理', html)
-                self.assertNotIn('取り込', html)
+        for name in FRONTEND_FILES:
+            with self.subTest(source=name):
+                source = frontend_source(name)
+                self.assertNotIn('console', source)
+                self.assertNotIn('問題の管理', source)
+                self.assertNotIn('取り込', source)
 
 
 class ManageTests(TestCase):
@@ -1756,13 +1827,8 @@ class LearningModeTests(TestCase):
 
     @staticmethod
     def _checked_notes(response):
-        """学習対象のうち、最初から選ばれている行の値。"""
-        html = response.content.decode('utf-8')
-        return [
-            m.group(1) for m in re.finditer(
-                r'name="note"\s+value="([^"]*)"[^>]*\bchecked\b', html
-            )
-        ]
+        """学習対象のうち、最初から選ばれている行。React の画面は何も選ばずに始める（おまかせ）。"""
+        return []
 
     @staticmethod
     def _add_questions(category, topic, count):
@@ -1787,31 +1853,35 @@ class LearningModeTests(TestCase):
             )
 
     def test_a_round_needs_a_note(self):
-        """解説が無ければ始められず、「解説がありません。」とだけ出す。ログインしていても同じ。"""
+        """解説が無ければ始められず、「解説がありません。」とだけ伝える。ログインしていても同じ。"""
         build_questions()
         enter(self.client, make_learner('curator'))
-        response = self.client.post(reverse('fe:learn_start'), {'minutes': 5}, follow=True)
-        self.assertRedirects(response, reverse('fe:learn_start'))
-        self.assertContains(response, '解説がありません。')
-        self.assertNotContains(response, reverse('fe:manage_upload'))
+        login_editor(self.client)
+        response = api_post(self.client, 'api_learn', {'minutes': 5})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['detail'], '解説がありません。')
         self.assertEqual(LearningRound.objects.count(), 0)
 
     def test_reading_phase_shows_the_note_not_the_questions(self):
         """読む段階では、設問も選択肢も見せない。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        response = api_post(self.client, 'api_learn', {'minutes': 5})
+        self.assertEqual(response.status_code, 201)
         round_ = LearningRound.objects.get(learner=self.learner)
+        self.assertEqual(response.json()['round']['id'], round_.pk)
         self.assertEqual(round_.reading_seconds, 300)
 
-        response = self.client.get(reverse('fe:learn_read', args=[round_.pk]))
+        response = api_get(self.client, 'api_learn_read', round_.pk)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, round_.note.title)
+        self.assertEqual([n['title'] for n in response.json()['notes']], [round_.note.title])
+        self.assertLessEqual(response.json()['remaining'], 300)
+        body = response.content.decode()
         for item in round_.items.all():
-            self.assertNotContains(response, item.question.stem)
+            self.assertNotIn(item.question.stem, body)
 
     def test_questions_come_from_the_note_s_category(self):
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
         self.assertEqual(round_.total, LearningRound.QUESTION_COUNT)
         for item in round_.items.select_related('question'):
@@ -1829,7 +1899,7 @@ class LearningModeTests(TestCase):
         other = self._add_questions(database, '別の小分類', 5)
         mine = Question.objects.filter(category=database, topic=note.topic)
 
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5, 'note': note.pk})
+        api_post(self.client, 'api_learn', {'minutes': 5, 'note': note.pk})
         round_ = LearningRound.objects.get(learner=self.learner)
         asked = {item.question_id for item in round_.items.all()}
         self.assertTrue(asked <= set(mine.values_list('id', flat=True)))
@@ -1847,7 +1917,7 @@ class LearningModeTests(TestCase):
             category=law, topic='知的財産権', title='著作権と産業財産権', body='本文',
         )
 
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5, 'note': note.pk})
+        api_post(self.client, 'api_learn', {'minutes': 5, 'note': note.pk})
         round_ = LearningRound.objects.get(learner=self.learner)
         self.assertEqual(round_.total, 3)
 
@@ -1883,11 +1953,11 @@ class LearningModeTests(TestCase):
         self.assertEqual(generated.source_text, '計算問題：{}'.format(template.title))
 
     def test_learning_quiz_shows_the_source_with_the_question(self):
-        """学習モードでは、出典と出題元の区別を選択肢の下に出す。解説の側には出さない。"""
+        """学習モードでは、出典と出題元の区別を答える前から渡す。解説は答えてから。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
-        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+        api_post(self.client, 'api_learn_read', {}, round_.pk)
 
         item = round_.items.get(order=0)
         question = item.question
@@ -1895,60 +1965,54 @@ class LearningModeTests(TestCase):
         question.explanation = 'テスト用の解説'
         question.save()
 
-        before = self.client.get(reverse('fe:learn_quiz', args=[round_.pk]))
-        self.assertContains(before, '</span>シラバス 中分類1 テスト用の項目', count=1)
-        body = before.content.decode()
-        last_choice = body.rindex(html.escape(question.choices[-1]))
-        self.assertLess(last_choice, body.index('テスト用の項目'))
-        self.assertContains(before, '自作')
+        before = api_get(self.client, 'api_learn_quiz', round_.pk).json()
+        self.assertFalse(before['answered'])
+        self.assertEqual(before['question']['source'], 'シラバス 中分類1 テスト用の項目')
+        self.assertEqual(before['question']['origin_label'], '自作')
+        self.assertNotIn('explanation', before)
 
-        after = self.client.post(
-            reverse('fe:learn_quiz', args=[round_.pk]),
-            {'choice': question.answer_index},
-        )
-        self.assertContains(after, '</span>シラバス 中分類1 テスト用の項目', count=1)
-        body = after.content.decode()
-        last_choice = body.rindex(html.escape(question.choices[-1]))
-        self.assertLess(last_choice, body.index('テスト用の項目'))
-        self.assertLess(body.index('テスト用の項目'), body.index('テスト用の解説'))
+        after = api_post(self.client, 'api_learn_quiz', {'choice': question.answer_index}, round_.pk).json()
+        self.assertTrue(after['answered'])
+        self.assertEqual(after['question']['source'], 'シラバス 中分類1 テスト用の項目')
+        self.assertEqual(after['explanation'], 'テスト用の解説')
+        # 出典は選択肢の下、解説はその下に出す
+        source = frontend_source('LearnQuizPage.tsx')
+        self.assertLess(source.index('<Choices'), source.index('<Source'))
+        self.assertLess(source.index('<Source'), source.index('item.explanation &&'))
 
     def test_quiz_shows_the_source_with_the_question(self):
-        """1問1答でも、出典は答える前から選択肢の下に出す。解説の側には出さない。"""
+        """1問1答でも、出典は答える前から渡し、選択肢の下に出す。解説は答えてから。"""
         self._prepare()
         # その場で作られる計算問題は出典が別なので、この確認では出さない
         QuestionTemplate.objects.update(is_active=False)
         Question.objects.update(source='シラバス 中分類1 テスト用の項目', explanation='テスト用の解説')
 
-        before = self.client.get(reverse('fe:quiz'))
-        question = before.context['question']
-        self.assertContains(before, '</span>シラバス 中分類1 テスト用の項目', count=1)
-        body = before.content.decode()
-        last_choice = body.rindex(html.escape(question.choices[-1]))
-        self.assertLess(last_choice, body.index('テスト用の項目'))
+        before = api_get(self.client, 'api_quiz_next').json()
+        self.assertEqual(before['question']['source'], 'シラバス 中分類1 テスト用の項目')
+        self.assertNotIn('explanation', before['question'])
+        question = Question.objects.get(pk=before['question']['id'])
 
-        after = self.client.post(reverse('fe:quiz'), {
+        after = api_post(self.client, 'api_quiz_answer', {
             'question_id': question.id, 'choice': question.answer_index,
-        })
-        self.assertContains(after, '</span>シラバス 中分類1 テスト用の項目', count=1)
-        body = after.content.decode()
-        last_choice = body.rindex(html.escape(question.choices[-1]))
-        self.assertLess(last_choice, body.index('テスト用の項目'))
-        self.assertLess(body.index('テスト用の項目'), body.index('テスト用の解説'))
+        }).json()
+        self.assertEqual(after['explanation'], 'テスト用の解説')
+        source = frontend_source('QuizPage.tsx')
+        self.assertLess(source.index('<Choices'), source.index('<Source'))
+        self.assertLess(source.index('<Source'), source.index('<Explanation'))
 
     def test_answering_records_progress(self):
         """学習モードで解いた分も、分野ごとの理解度に積む。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
-        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+        api_post(self.client, 'api_learn_read', {}, round_.pk)
 
         item = round_.items.get(order=0)
-        response = self.client.post(
-            reverse('fe:learn_quiz', args=[round_.pk]),
-            {'choice': item.question.answer_index},
-        )
+        response = api_post(self.client, 'api_learn_quiz', {'choice': item.question.answer_index}, round_.pk)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context['is_correct'])
+        self.assertTrue(response.json()['is_correct'])
+        # 二度送っても二度は数えない
+        api_post(self.client, 'api_learn_quiz', {'choice': item.question.answer_index}, round_.pk)
 
         item.refresh_from_db()
         self.assertTrue(item.is_correct)
@@ -1960,31 +2024,31 @@ class LearningModeTests(TestCase):
 
     def test_a_round_runs_to_the_result_screen(self):
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 3})
+        api_post(self.client, 'api_learn', {'minutes': 3})
         round_ = LearningRound.objects.get(learner=self.learner)
-        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+        # 読む段階のうちは、解く API は問題を出さない（画面は読む画面へ戻す）
+        self.assertIsNone(api_get(self.client, 'api_learn_quiz', round_.pk).json()['question'])
+        self.assertEqual(api_post(self.client, 'api_learn_read', {}, round_.pk).json()['round']['phase'], 'quiz')
 
         for _ in range(round_.total):
             item = round_.items.get(order=round_.position)
-            self.client.post(
-                reverse('fe:learn_quiz', args=[round_.pk]),
-                {'choice': item.question.answer_index},
-            )
-            self.client.post(reverse('fe:learn_next', args=[round_.pk]))
+            api_post(self.client, 'api_learn_quiz', {'choice': item.question.answer_index}, round_.pk)
+            api_post(self.client, 'api_learn_next', {}, round_.pk)
             round_.refresh_from_db()
 
         self.assertEqual(round_.phase, LearningRound.PHASE_DONE)
         self.assertEqual(round_.correct, round_.total)
-        response = self.client.get(reverse('fe:learn_result', args=[round_.pk]))
+        response = api_get(self.client, 'api_learn_result', round_.pk)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['missed'], [])
+        self.assertEqual([i for i in response.json()['items'] if i['is_correct'] is False], [])
+        self.assertEqual(self.client.get(reverse('fe:learn_result', args=[round_.pk])).status_code, 200)
 
     def test_the_result_lists_every_question_with_its_source(self):
         """結果には、正解した問題も含めて全問を出典つきで並べる。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 3})
+        api_post(self.client, 'api_learn', {'minutes': 3})
         round_ = LearningRound.objects.get(learner=self.learner)
-        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+        api_post(self.client, 'api_learn_read', {}, round_.pk)
 
         for order in range(round_.total):
             item = round_.items.get(order=order)
@@ -1995,18 +2059,18 @@ class LearningModeTests(TestCase):
             choice = question.answer_index
             if order == 0:
                 choice = (choice + 1) % len(question.choices)
-            self.client.post(reverse('fe:learn_quiz', args=[round_.pk]), {'choice': choice})
-            self.client.post(reverse('fe:learn_next', args=[round_.pk]))
+            api_post(self.client, 'api_learn_quiz', {'choice': choice}, round_.pk)
+            api_post(self.client, 'api_learn_next', {}, round_.pk)
 
-        response = self.client.get(reverse('fe:learn_result', args=[round_.pk]))
-        self.assertEqual(len(response.context['items']), round_.total)
-        self.assertEqual(len(response.context['missed']), 1)
-        for order in range(round_.total):
-            self.assertContains(
-                response, '</span>シラバス 中分類1 テスト用の項目{}'.format(order)
-            )
-        self.assertContains(response, '不正解', count=1)
-        self.assertContains(response, 'あなたの解答', count=1)
+        items = api_get(self.client, 'api_learn_result', round_.pk).json()['items']
+        self.assertEqual(len(items), round_.total)
+        self.assertEqual([i['is_correct'] for i in items].count(False), 1)
+        self.assertEqual(
+            [i['question']['source'] for i in items],
+            ['シラバス 中分類1 テスト用の項目{}'.format(order) for order in range(round_.total)],
+        )
+        self.assertEqual(items[0]['selected_label'],
+                         Question.choice_label((round_.items.get(order=0).question.answer_index + 1) % 4))
 
     def test_the_menu_groups_notes_by_category(self):
         """学習対象は、中分類でまとめて小分類（解説）を並べる。"""
@@ -2019,12 +2083,11 @@ class LearningModeTests(TestCase):
                 title='{}の解説'.format(topic), body='本文', source='テスト',
             )
 
-        response = self.client.get(reverse('fe:learn_start'))
-        groups = response.context['groups']
-        self.assertEqual([g['category'].code for g in groups], [9, 11])
-        self.assertEqual(len(groups[0]['notes']), 2)
+        groups = api_get(self.client, 'api_learn').json()['groups']
+        self.assertEqual([g['code'] for g in groups], [9, 11])
+        self.assertEqual(len(groups[0]['entries']), 2)
         self.assertEqual(
-            [n['note'].topic for n in groups[0]['notes']],
+            [e['topic'] for e in groups[0]['entries']],
             ['データベース方式', 'データベース設計'],
         )
 
@@ -2042,23 +2105,20 @@ class LearningModeTests(TestCase):
         )
         Question.objects.filter(category=category).update(topic='データベース方式')
 
-        menu = self.client.get(reverse('fe:learn_start'))
-        group = menu.context['groups'][0]
+        group = api_get(self.client, 'api_learn').json()['groups'][0]
         self.assertEqual(group['note_count'], 2)
-        self.assertEqual(len(group['notes']), 1)
-        self.assertEqual(group['notes'][0]['notes'], [first, second])
+        self.assertEqual(len(group['entries']), 1)
+        self.assertEqual(group['entries'][0]['titles'], [first.title, second.title])
 
         # 2本目を指定して始めても、読むのは2本とも。学習回数は小分類で数える。
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5, 'note': second.pk})
+        api_post(self.client, 'api_learn', {'minutes': 5, 'note': second.pk})
         round_ = LearningRound.objects.get(learner=self.learner)
-        page = self.client.get(reverse('fe:learn_read', args=[round_.pk]))
-        self.assertEqual(page.context['notes'], [first, second])
-        body = page.content.decode()
-        self.assertLess(body.index(first.title), body.index('二本目の解説'))
-        self.assertContains(page, '二本目の本文')
+        notes = api_get(self.client, 'api_learn_read', round_.pk).json()['notes']
+        self.assertEqual([n['id'] for n in notes], [first.pk, second.pk])
+        self.assertEqual(notes[1]['body'], '二本目の本文')
 
-        menu = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(menu.context['groups'][0]['notes'][0]['rounds'], 1)
+        group = api_get(self.client, 'api_learn').json()['groups'][0]
+        self.assertEqual(group['entries'][0]['rounds'], 1)
 
     def test_notes_follow_the_syllabus_order(self):
         """中分類の中はシラバスの小分類の順。取り込んだ順でも文字順でもない。
@@ -2106,9 +2166,7 @@ class LearningModeTests(TestCase):
             title='正規化の解説', body='本文', source='テスト',
         )
         self._add_questions(database, '正規化', 4)
-        self.client.post(
-            reverse('fe:learn_start'), {'minutes': 5, 'note': chosen.pk}
-        )
+        api_post(self.client, 'api_learn', {'minutes': 5, 'note': chosen.pk})
         round_ = LearningRound.objects.get(learner=self.learner)
         self.assertEqual(round_.note_id, chosen.pk)
         for item in round_.items.select_related('question'):
@@ -2116,10 +2174,10 @@ class LearningModeTests(TestCase):
 
     def test_an_unknown_note_is_not_accepted(self):
         self._prepare()
-        response = self.client.post(
-            reverse('fe:learn_start'), {'minutes': 5, 'note': 999999}
-        )
-        self.assertRedirects(response, reverse('fe:learn_start'))
+        for note in (999999, 'abc'):
+            with self.subTest(note=note):
+                response = api_post(self.client, 'api_learn', {'minutes': 5, 'note': note})
+                self.assertEqual(response.status_code, 400)
         self.assertEqual(LearningRound.objects.count(), 0)
 
     def test_a_note_without_questions_is_reported(self):
@@ -2129,10 +2187,9 @@ class LearningModeTests(TestCase):
             category=Category.objects.get(code=23),
             topic='法務', title='法務の解説', body='本文',
         )
-        response = self.client.post(
-            reverse('fe:learn_start'), {'minutes': 5, 'note': note.pk}
-        )
-        self.assertRedirects(response, reverse('fe:learn_start'))
+        response = api_post(self.client, 'api_learn', {'minutes': 5, 'note': note.pk})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['detail'], '「法務の解説」に出題できる問題がありません。')
         self.assertEqual(LearningRound.objects.count(), 0)
 
     def test_a_note_without_questions_is_never_picked_automatically(self):
@@ -2190,10 +2247,8 @@ class LearningModeTests(TestCase):
             category=b, topic=b.name,
             title='科目Bの解説', body='本文',
         )
-        response = self.client.post(
-            reverse('fe:learn_start'), {'minutes': 5, 'note': theirs.pk}
-        )
-        self.assertRedirects(response, reverse('fe:learn_start'))
+        response = api_post(self.client, 'api_learn', {'minutes': 5, 'note': theirs.pk})
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(LearningRound.objects.count(), 0)
 
     def _set_category(self, category):
@@ -2205,33 +2260,27 @@ class LearningModeTests(TestCase):
 
     def _finish_round(self, note):
         """その解説のラウンドを、最後まで解いて終わらせる。"""
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5, 'note': note.pk})
+        api_post(self.client, 'api_learn', {'minutes': 5, 'note': note.pk})
         round_ = LearningRound.objects.filter(learner=self.learner).first()
-        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+        api_post(self.client, 'api_learn_read', {}, round_.pk)
         for _ in range(round_.total):
             item = round_.items.get(order=round_.position)
-            self.client.post(
-                reverse('fe:learn_quiz', args=[round_.pk]),
-                {'choice': item.question.answer_index},
-            )
-            self.client.post(reverse('fe:learn_next', args=[round_.pk]))
+            api_post(self.client, 'api_learn_quiz', {'choice': item.question.answer_index}, round_.pk)
+            api_post(self.client, 'api_learn_next', {}, round_.pk)
             round_.refresh_from_db()
         return round_
 
-    @staticmethod
-    def _opened_codes(response):
-        """学習モードの一覧で開いている中分類の番号。"""
-        return sorted(category.code for category in response.context['opened'])
+    def _opened_codes(self, response=None):
+        """学習モードの一覧で、最初から開いておく中分類の番号。"""
+        groups = api_get(self.client, 'api_learn').json()['groups']
+        return sorted(g['code'] for g in groups if g['opened'])
 
     def test_the_dashboard_category_is_opened(self):
         """まだ学習していなければ、ダッシュボードで指定した分野を開く。選んだ状態にはしない。"""
         self._prepare()
         self._set_category(Category.objects.get(code=9))
-
-        response = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(self._opened_codes(response), [9])
-        self.assertContains(response, 'fe-group border-bottom" open', count=1)
-        self.assertEqual(self._checked_notes(response), [])
+        self.assertEqual(self._opened_codes(), [9])
+        self.assertIn('useState<number | null>(null)', frontend_source('LearnStartPage.tsx'))
 
     def test_the_dashboard_category_follows_a_new_choice(self):
         """解き終えたあとで分野を指定し直せば、指定し直した分野も開く。
@@ -2250,20 +2299,15 @@ class LearningModeTests(TestCase):
             category=security, topic=security.name, title='セキュリティの解説', body='本文',
         )
         self._finish_round(note)
-        response = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(self._opened_codes(response), [3])
+        self.assertEqual(self._opened_codes(), [3])
 
         for code in (9, 11, 9):
             self._set_category(Category.objects.get(code=code))
-            response = self.client.get(reverse('fe:learn_start'))
-            self.assertEqual(self._opened_codes(response), [3, code])
-            self.assertContains(response, 'fe-group border-bottom" open', count=2)
+            self.assertEqual(self._opened_codes(), [3, code])
 
         # 指定した分野を解き終えたなら、同じ中分類なので1つだけ開く
         self._set_category(hardware)
-        response = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(self._opened_codes(response), [3])
-        self.assertContains(response, 'fe-group border-bottom" open', count=1)
+        self.assertEqual(self._opened_codes(), [3])
 
     def test_the_last_studied_category_is_opened(self):
         """指定とは別の分野を解き終えたら、指定した分野と、解き終えた中分類の両方を開く。
@@ -2278,20 +2322,13 @@ class LearningModeTests(TestCase):
         )
         self._set_category(Category.objects.get(code=9))
         self._finish_round(note)
-
-        response = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(self._opened_codes(response), [9, 11])
-        self.assertContains(response, 'fe-group border-bottom" open', count=2)
-        self.assertEqual(self._checked_notes(response), [])
+        self.assertEqual(self._opened_codes(), [9, 11])
 
         # 途中のラウンドは数えない。終わったものだけが「直前に学習した」になる。
-        self.client.post(
-            reverse('fe:learn_start'),
-            {'minutes': 5, 'note': LearningNote.objects.get(category__code=9).pk},
-        )
+        api_post(self.client, 'api_learn',
+                 {'minutes': 5, 'note': LearningNote.objects.get(category__code=9).pk})
         self._set_category(None)
-        response = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(self._opened_codes(response), [11])
+        self.assertEqual(self._opened_codes(), [11])
 
     def test_the_auto_pick_stays_inside_the_dashboard_category(self):
         """分野を指定していれば、おまかせもその分野の中から選ぶ。"""
@@ -2306,7 +2343,7 @@ class LearningModeTests(TestCase):
         self._set_category(database)
 
         for _ in range(10):
-            self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+            api_post(self.client, 'api_learn', {'minutes': 5})
             round_ = LearningRound.objects.get(learner=self.learner)
             self.assertEqual(round_.note.category_id, database.pk)
 
@@ -2321,7 +2358,7 @@ class LearningModeTests(TestCase):
             )
         seen = set()
         for _ in range(30):
-            self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+            api_post(self.client, 'api_learn', {'minutes': 5})
             seen.add(LearningRound.objects.get(learner=self.learner).note.category.code)
         self.assertGreater(len(seen), 1)
 
@@ -2330,41 +2367,37 @@ class LearningModeTests(TestCase):
         self._prepare()
         self._set_category(Category.objects.get(code=23))
 
-        response = self.client.post(reverse('fe:learn_start'), {'minutes': 5})
-        self.assertRedirects(response, reverse('fe:learn_start'))
+        response = api_post(self.client, 'api_learn', {'minutes': 5})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('ダッシュボードの分野の指定を変えてください', response.json()['detail'])
         self.assertEqual(LearningRound.objects.count(), 0)
 
     def test_nothing_is_opened_without_a_category(self):
-        """まだ学習していなければ、どの中分類も開かず、何も選ばない。"""
+        """まだ学習していなければ、どの中分類も開かない。"""
         self._prepare()
-        response = self.client.get(reverse('fe:learn_start'))
-        self.assertEqual(response.context['opened'], [])
-        self.assertEqual(self._checked_notes(response), [])
+        self.assertEqual(self._opened_codes(), [])
 
     def test_a_category_of_the_other_subject_is_not_used(self):
         """科目を切り替えたあとの指定は引き継がない。その科目には無い分類のため。"""
         self._prepare()
         self._set_category(Category.objects.filter(subject='B').first())
         # おまかせの範囲も絞らない。絞ると科目Aでは1本も選べなくなる。
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
         self.assertEqual(round_.note.category.subject, Question.SUBJECT_A)
 
     def test_a_round_can_be_abandoned_from_the_quiz(self):
         """解答の途中でやめて学習モードトップへ戻れる。ラウンドは残さない。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
-        self.client.post(reverse('fe:learn_read', args=[round_.pk]))
+        api_post(self.client, 'api_learn_read', {}, round_.pk)
 
         # 1問だけ解いてからやめる
         item = round_.items.get(order=0)
-        self.client.post(
-            reverse('fe:learn_quiz', args=[round_.pk]),
-            {'choice': item.question.answer_index},
-        )
-        response = self.client.post(reverse('fe:learn_abandon', args=[round_.pk]))
-        self.assertRedirects(response, reverse('fe:learn_start'))
+        api_post(self.client, 'api_learn_quiz', {'choice': item.question.answer_index}, round_.pk)
+        response = api_post(self.client, 'api_learn_abandon', {}, round_.pk)
+        self.assertTrue(response.json()['abandoned'])
         self.assertEqual(LearningRound.objects.count(), 0)
 
         # 解いたぶんの記録は残る。ラウンドとは別に積んでいるため。
@@ -2377,22 +2410,22 @@ class LearningModeTests(TestCase):
     def test_a_finished_round_is_not_deleted(self):
         """終わったラウンドは結果を見返すためのものなので、中断では消さない。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
         round_.phase = LearningRound.PHASE_DONE
         round_.save(update_fields=['phase'])
 
-        response = self.client.post(reverse('fe:learn_abandon', args=[round_.pk]))
-        self.assertRedirects(response, reverse('fe:learn_result', args=[round_.pk]))
+        response = api_post(self.client, 'api_learn_abandon', {}, round_.pk)
+        self.assertFalse(response.json()['abandoned'])
         self.assertEqual(LearningRound.objects.count(), 1)
 
     def test_starting_a_new_round_clears_the_left_over_one(self):
         """画面を離れて置き去りになったラウンドは、次を始めるときに片づける。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         left_over = LearningRound.objects.get(learner=self.learner)
 
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         rounds = LearningRound.objects.filter(learner=self.learner)
         self.assertEqual(rounds.count(), 1)
         self.assertNotEqual(rounds.first().pk, left_over.pk)
@@ -2400,35 +2433,37 @@ class LearningModeTests(TestCase):
     def test_a_finished_round_survives_the_next_one(self):
         """終わったラウンドは、次を始めても残る。結果を見返せなくなるため。"""
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         done = LearningRound.objects.get(learner=self.learner)
         done.phase = LearningRound.PHASE_DONE
         done.save(update_fields=['phase'])
 
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         self.assertEqual(LearningRound.objects.filter(learner=self.learner).count(), 2)
         self.assertTrue(LearningRound.objects.filter(pk=done.pk).exists())
 
     def test_another_account_cannot_abandon_the_round(self):
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
 
         enter(self.client, make_learner('stranger3'))
-        response = self.client.post(reverse('fe:learn_abandon', args=[round_.pk]))
+        response = api_post(self.client, 'api_learn_abandon', {}, round_.pk)
         self.assertEqual(response.status_code, 404)
         self.assertTrue(LearningRound.objects.filter(pk=round_.pk).exists())
 
     def test_another_account_cannot_open_the_round(self):
         self._prepare()
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         round_ = LearningRound.objects.get(learner=self.learner)
 
         enter(self.client, make_learner('stranger2'))
-        for name in ('fe:learn_read', 'fe:learn_quiz', 'fe:learn_result'):
-            self.assertEqual(
-                self.client.get(reverse(name, args=[round_.pk])).status_code, 404,
-            )
+        for name in ('api_learn_read', 'api_learn_quiz', 'api_learn_result'):
+            with self.subTest(api=name):
+                self.assertEqual(api_get(self.client, name, round_.pk).status_code, 404)
+        for name in ('api_learn_read', 'api_learn_quiz', 'api_learn_next', 'api_learn_timer'):
+            with self.subTest(api=name):
+                self.assertEqual(api_post(self.client, name, {'choice': 0}, round_.pk).status_code, 404)
 
 
 class SiteSummaryTests(TestCase):
@@ -2485,37 +2520,42 @@ class SiteSummaryTests(TestCase):
         self.assertEqual(site_summary()['total'], 1)
 
     def test_dashboard_shows_summary(self):
-        """みんなの集計は、ダッシュボードの後半に出す。"""
+        """みんなの集計は、ダッシュボードの後半に出す。他人の名前は出さない。"""
         answer(self.bob, self._question(self.bob, 11), True)
-        response = self.client.get(dashboard(self.alice))
-        self.assertContains(response, 'みんなの集計')
-        self.assertEqual(response.context['summary']['total'], 1)
-        # 他人の名前は出さない
+        response = api_get(self.client, 'api_dashboard')
+        self.assertEqual(response.json()['summary']['total'], 1)
+        self.assertEqual(response.json()['summary']['learners'], 1)
         self.assertNotContains(response, 'bob')
+        self.assertIn('みんなの集計', frontend_source('Dashboard.tsx'))
 
     def test_report_and_withdraw_pass(self):
-        url = reverse('fe:pass_report')
-        response = self.client.post(url, {'passed_on': '2026-06-01'})
-        self.assertRedirects(response, dashboard(self.alice) + '#summary')
+        response = api_post(self.client, 'api_pass', {'passed_on': '2026-06-01'})
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(site_summary()['passers'], 1)
+        self.assertEqual(api_get(self.client, 'api_dashboard').json()['my_report'],
+                         {'passed_on': '2026-06-01'})
 
         # 申告し直しても1人は1件のまま
-        self.client.post(url, {'passed_on': '2026-07-01'})
+        api_post(self.client, 'api_pass', {'passed_on': '2026-07-01'})
         self.assertEqual(PassReport.objects.count(), 1)
         self.assertEqual(str(PassReport.objects.get().passed_on), '2026-07-01')
 
-        self.client.post(url, {'action': 'withdraw'})
+        self.client.delete(reverse('fe:api_pass'))
         self.assertEqual(site_summary()['passers'], 0)
+        self.assertIsNone(api_get(self.client, 'api_dashboard').json()['my_report'])
 
     def test_future_date_is_rejected(self):
-        self.client.post(reverse('fe:pass_report'), {'passed_on': '2999-01-01'})
+        for value in ('2999-01-01', '', 'きのう'):
+            with self.subTest(value=value):
+                response = api_post(self.client, 'api_pass', {'passed_on': value})
+                self.assertEqual(response.status_code, 400)
         self.assertFalse(PassReport.objects.exists())
 
-    def test_pass_report_requires_an_id(self):
-        """始めていない人（ID も一時的な記録もない）の申告は受け付けない。"""
-        self.client.session.flush()
-        response = self.client.post(reverse('fe:pass_report'), {'passed_on': '2026-06-01'})
-        self.assertRedirects(response, reverse('fe:index'))
+    def test_pass_report_requires_login(self):
+        """ID で入っていなければ申告できない（ブラウザを閉じて抜けたときなど）。"""
+        client = self.client_class()
+        response = api_post(client, 'api_pass', {'passed_on': '2026-06-01'})
+        self.assertEqual(response.status_code, 401)
         self.assertFalse(PassReport.objects.exists())
 
 
@@ -2604,9 +2644,12 @@ class ExamDefinitionTests(TestCase):
         """問題を作る資料の案内は取り込み画面にだけ置き、ダッシュボードには出さない。"""
         learner = make_learner('materials_dash')
         enter(self.client, learner)
-        response = self.client.get(dashboard(learner))
+        response = api_get(self.client, 'api_dashboard')
         self.assertNotContains(response, '問題を作るのに必要な資料')
-        self.assertContains(response, '問題集はまだ用意されていません')
+        self.assertEqual(response.json()['question_total'], 0)
+        source = frontend_source('Dashboard.tsx')
+        self.assertNotIn('問題を作るのに必要な資料', source)
+        self.assertIn('問題集はまだ用意されていません', source)
 
 
 class ManageNeedsLoginTests(TestCase):
@@ -2629,7 +2672,7 @@ class ManageNeedsLoginTests(TestCase):
         enter(self.client, learner)
         for url in (dashboard(learner), reverse('fe:quiz'), reverse('fe:learn_start'),
                     reverse('fe:stats'), reverse('fe:history'), reverse('fe:guide'),
-                    reverse('fe:mypage')):
+                    reverse('fe:id_entry')):
             with self.subTest(url=url):
                 html = self.client.get(url).content.decode('utf-8')
                 self.assertNotIn('/fe/console/', html)
@@ -2760,17 +2803,18 @@ class FigureTests(TestCase):
         Question.objects.filter(template__isnull=False).delete()
         QuestionTemplate.objects.update(is_active=False)
         enter(self.client, make_learner('seer'))
-        response = self.client.get(reverse('fe:quiz'))
-        self.assertContains(response, 'src="{}"'.format(png_uri()))
-        self.assertContains(response, 'alt="根が a の2分木"')
-        self.assertContains(response, 'src="{}"'.format(png_uri(4)))
+        data = api_get(self.client, 'api_quiz_next').json()['question']
+        self.assertEqual(data['figures'], [{'src': png_uri(), 'alt': '根が a の2分木'}])
+        self.assertEqual(data['choices'][0]['figure'], png_uri(4))
+        self.assertIsNone(data['choices'][1]['figure'])
 
-        question = response.context['question']
-        response = self.client.post(reverse('fe:quiz'), {
+        question = Question.objects.get(pk=data['id'])
+        result = api_post(self.client, 'api_quiz_answer', {
             'question_id': question.id, 'choice': question.answer_index,
-        })
-        self.assertContains(response, 'src="{}"'.format(png_uri()), msg_prefix='答えた後も図を出す')
-        self.assertContains(response, 'src="{}"'.format(png_uri(4)))
+        }).json()
+        self.assertEqual(result['answer_figure'], None)
+        # 画面は答えた後も同じ問題（図つき）を出したまま、正誤と解説を足す
+        self.assertIn('<Stem question={q} />', frontend_source('QuizPage.tsx'))
 
 
 class NoteAudioTests(TestCase):
@@ -2799,7 +2843,7 @@ class NoteAudioTests(TestCase):
                 topic=note['topic'], title=note['title'],
                 body=note['body'], source=note['source'],
             )
-        self.client.post(reverse('fe:learn_start'), {'minutes': 5})
+        api_post(self.client, 'api_learn', {'minutes': 5})
         return LearningRound.objects.get(learner=self.learner)
 
     def _put_audio(self, note, data=b'0123456789'):
@@ -2826,14 +2870,16 @@ class NoteAudioTests(TestCase):
 
     def test_player_appears_only_when_the_audio_exists(self):
         round_ = self._start_round()
-        url = reverse('fe:learn_read', args=[round_.pk])
-        self.assertNotContains(self.client.get(url), '<audio')
+        notes = api_get(self.client, 'api_learn_read', round_.pk).json()['notes']
+        self.assertIsNone(notes[0]['audio_url'])
 
         self._put_audio(round_.note)
-        self.assertContains(
-            self.client.get(url),
-            reverse('fe:note_audio', args=[speech.audio_name(round_.note)]),
+        notes = api_get(self.client, 'api_learn_read', round_.pk).json()['notes']
+        self.assertEqual(
+            notes[0]['audio_url'], reverse('fe:note_audio', args=[speech.audio_name(round_.note)]),
         )
+        # 画面は audio_url があるときだけ再生バーを出す
+        self.assertIn('{note.audio_url && (', frontend_source('LearnReadPage.tsx'))
 
     def test_audio_answers_range_requests(self):
         """iPhone の Safari は Range 要求で取りに来るので、206 で一部だけ返す。"""
@@ -2885,13 +2931,12 @@ class NoteAudioTests(TestCase):
 
     def test_timer_endpoint_pauses_and_resumes(self):
         round_ = self._start_round()
-        url = reverse('fe:learn_timer', args=[round_.pk])
-        response = self.client.post(url, {'state': 'pause'})
+        response = api_post(self.client, 'api_learn_timer', {'state': 'pause'}, round_.pk)
         self.assertIn('remaining', response.json())
         round_.refresh_from_db()
         self.assertIsNotNone(round_.paused_at)
 
-        self.client.post(url, {'state': 'resume'})
+        api_post(self.client, 'api_learn_timer', {'state': 'resume'}, round_.pk)
         round_.refresh_from_db()
         self.assertIsNone(round_.paused_at)
 
@@ -2901,7 +2946,7 @@ class NoteAudioTests(TestCase):
         LearningRound.objects.filter(pk=round_.pk).update(
             paused_at=timezone.now() - timezone.timedelta(seconds=30),
         )
-        self.client.get(reverse('fe:learn_read', args=[round_.pk]))
+        api_get(self.client, 'api_learn_read', round_.pk)
         round_.refresh_from_db()
         self.assertIsNone(round_.paused_at)
         self.assertGreaterEqual(round_.paused_seconds, 30)
@@ -2951,12 +2996,13 @@ class NoteAudioTests(TestCase):
         self.assertTrue(speech.has_audio(round_.note))
 
         LearningRound.objects.filter(pk=round_.pk).update(note=b_note)
-        page = self.client.get(reverse('fe:learn_read', args=[round_.pk]))
-        self.assertNotContains(page, '<audio')
+        notes = api_get(self.client, 'api_learn_read', round_.pk).json()['notes']
+        self.assertIsNone(notes[0]['audio_url'])
 
 
 class MailTests(TestCase):
-    """問題メール。確認のメールを経た登録、メールのリンクからだけの解除、毎日の送り方。"""
+    """問題メール。確認のメールを経た登録、メールのリンクからだけの解除、
+    9〜18時の毎時に3問（IPA 公開問題・おまかせ）、1問ごとの解答ページでの記録。"""
 
     @classmethod
     def setUpTestData(cls):
@@ -2968,19 +3014,36 @@ class MailTests(TestCase):
         self.learner = make_learner('mailer')
         enter(self.client, self.learner)
 
-    def _sync(self, counts):
-        """{(中分類番号, 小分類): 問数} の問題を作る。"""
+    def _sync(self, counts, source='令和6年度 科目A 問{}'):
+        """{(中分類番号, 小分類): 問数} の問題を作る。出典は既定で IPA の公開問題。
+
+        取り込みは科目ごとの一括差し替えなので、出典を変えて混ぜたいときは
+        _sync_groups でまとめて取り込む。
+        """
+        return self._sync_groups([(counts, source)])
+
+    def _sync_groups(self, groups):
+        records = []
+        serial = 0
+        for counts, source in groups:
+            records += self._records(counts, source, serial)
+            serial += len(records)
+        return sync(validate({'questions': records, 'notes': None}))
+
+    def _records(self, counts, source, serial):
         records = []
         for (code, topic), n in counts.items():
             category = Category.objects.get(code=code)
             for i in range(n):
+                serial += 1
                 records.append({
                     'category': code, 'subject': category.subject, 'topic': topic,
                     'stem': '{}の問題{}'.format(topic, i),
                     'choices': ['選択肢{}-{}'.format(j, i) for j in range(6 if code > 100 else 4)],
-                    'answer': 1, 'explanation': '{}の解説{}'.format(topic, i), 'source': '自作',
+                    'answer': 1, 'explanation': '{}の解説{}'.format(topic, i),
+                    'source': source.format(serial) if '{}' in source else source,
                 })
-        return sync(validate({'questions': records, 'notes': None}))
+        return records
 
     def _subscribe(self, email='me@example.com', **fields):
         from .models import MailSubscription
@@ -2994,17 +3057,19 @@ class MailTests(TestCase):
     def _link(self, message):
         return urlsplit(re.search(r'http://\S+/fe/mail/\S+/', message.body).group(0)).path
 
+    def _answer_links(self, message):
+        return [url.split('8010', 1)[1] for url in re.findall(r'http://\S+/fe/m/\w+/', message.body)]
+
     # ---- 登録と解除 ----
 
     def test_address_is_saved_only_after_pressing_receive(self):
         from .models import MailSubscription
-        self._sync({(11, '情報セキュリティ'): 3})
-        response = self.client.post(reverse('fe:mail_settings'), {
-            'email': 'me@example.com', 'marathon': 'on',
-        })
-        self.assertEqual(response.status_code, 302)
+        response = api_post(self.client, 'api_mail', {'email': 'me@example.com'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['pending'])
         self.assertEqual(len(self.outbox.outbox), 1)
         self.assertEqual(self.outbox.outbox[0].to, ['me@example.com'])
+        self.assertIn('9時から18時まで毎時', self.outbox.outbox[0].body)
         subscription = MailSubscription.objects.get(learner=self.learner)
         self.assertEqual(subscription.email, '')
 
@@ -3019,41 +3084,46 @@ class MailTests(TestCase):
         self.assertContains(self.client.post(link), 'このリンクは使えません')
 
     def test_old_confirm_link_dies_when_another_address_is_requested(self):
-        self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'marathon': 'on'})
+        api_post(self.client, 'api_mail', {'email': 'a@example.com'})
         old = self._link(self.outbox.outbox[0])
         with override_settings(FE_MAIL_LINK_INTERVAL=0):
-            self.client.post(reverse('fe:mail_settings'), {'email': 'b@example.com', 'marathon': 'on'})
+            api_post(self.client, 'api_mail', {'email': 'b@example.com'})
         self.assertContains(self.client.post(old), 'このリンクは使えません')
         self.assertContains(self.client.post(self._link(self.outbox.outbox[1])), '登録しました')
 
     def test_confirmation_mails_are_throttled(self):
-        self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'marathon': 'on'})
-        self.client.post(reverse('fe:mail_settings'), {'email': 'b@example.com', 'marathon': 'on'})
+        api_post(self.client, 'api_mail', {'email': 'a@example.com'})
+        response = api_post(self.client, 'api_mail', {'email': 'b@example.com'})
+        self.assertEqual(response.status_code, 429)
         self.assertEqual(len(self.outbox.outbox), 1)
 
+    def test_a_bad_address_is_refused(self):
+        response = api_post(self.client, 'api_mail', {'email': 'not-an-address'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(self.outbox.outbox), 0)
+
     def test_registered_address_cannot_be_changed_from_the_screen(self):
-        self._subscribe(marathon=True)
-        self._sync({(11, '情報セキュリティ'): 3})
-        self.client.post(reverse('fe:mail_settings'), {
-            'email': 'attacker@example.com', 'training': 'on', 'topics': ['11|情報セキュリティ'],
-        })
+        self._subscribe()
+        response = api_post(self.client, 'api_mail', {'email': 'attacker@example.com'})
+        self.assertEqual(response.status_code, 400)
         subscription = self.learner.mail_subscription
         subscription.refresh_from_db()
         self.assertEqual(subscription.email, 'me@example.com')
-        self.assertFalse(subscription.marathon)
-        self.assertTrue(subscription.training)
-        self.assertEqual(subscription.training_topics, [[11, '情報セキュリティ']])
         self.assertEqual(len(self.outbox.outbox), 0)
-
-    def test_training_needs_a_topic(self):
-        self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'training': 'on'})
-        self.assertEqual(len(self.outbox.outbox), 0)
+        data = api_get(self.client, 'api_mail').json()
+        self.assertEqual(data, {'registered': True, 'masked_email': 'm***@example.com', 'pending': False,
+                                'with_id': True})
 
     def test_stop_only_from_the_mailed_link(self):
-        subscription = self._subscribe(marathon=True)
-        self.client.post(reverse('fe:mail_settings'), {'action': 'send_stop'})
+        """解除は、届いた問題メールの末尾のリンクからだけ（ID のあり・なしとも。画面からは解除しない）。"""
+        from .mail import send_slot
+        self._sync({(11, '情報セキュリティ'): 3})
+        subscription = self._subscribe()
+        send_slot('h09')
         self.assertEqual(self.outbox.outbox[0].to, ['me@example.com'])
         link = self._link(self.outbox.outbox[0])
+        self.assertIn('/fe/mail/stop/', link)
+        self.assertNotIn('解除用のメール', frontend_source('MailSection.tsx'))
         self.client.get(link)
         subscription.refresh_from_db()
         self.assertEqual(subscription.email, 'me@example.com', '開いただけでは解除しない')
@@ -3063,7 +3133,7 @@ class MailTests(TestCase):
 
     def test_addresses_are_encrypted_in_the_db(self):
         from django.db import connection
-        self.client.post(reverse('fe:mail_settings'), {'email': 'secret@example.com', 'marathon': 'on'})
+        api_post(self.client, 'api_mail', {'email': 'secret@example.com'})
         with connection.cursor() as cursor:
             cursor.execute('SELECT email_enc, pending_email_enc FROM funitclub_fe_mail_subscription')
             rows = cursor.fetchall()
@@ -3083,16 +3153,16 @@ class MailTests(TestCase):
 
     def test_unreadable_address_counts_as_unregistered(self):
         """SECRET_KEY を替えて読めなくなった宛先には送らない。"""
-        from .mail import send_daily
+        from .mail import send_slot
         self._sync({(11, '情報セキュリティ'): 3})
-        self._subscribe(marathon=True)
+        self._subscribe()
         with override_settings(SECRET_KEY='another-key-' + 'x' * 40, SECRET_KEY_FALLBACKS=[]):
             self.assertEqual(self.learner.mail_subscription.email, '')
-            self.assertEqual(send_daily()['marathon'], 0)
+            self.assertEqual(send_slot('h09')['sent'], 0)
 
     def test_pending_address_is_purged_after_the_deadline(self):
         from .mail import purge_pending
-        self.client.post(reverse('fe:mail_settings'), {'email': 'late@example.com', 'marathon': 'on'})
+        api_post(self.client, 'api_mail', {'email': 'late@example.com'})
         subscription = self.learner.mail_subscription
         link = self._link(self.outbox.outbox[0])
         sent_at = subscription.link_sent_at
@@ -3102,113 +3172,289 @@ class MailTests(TestCase):
         self.assertEqual(subscription.pending_email, '')
         self.assertContains(self.client.post(link), 'このリンクは使えません')
 
-    def test_dashboard_and_daily_run_purge_expired_pending(self):
-        from .mail import send_daily
+    def test_dashboard_and_each_run_purge_expired_pending(self):
+        from .mail import send_slot
         from .models import MailSubscription
-        self.client.post(reverse('fe:mail_settings'), {'email': 'late@example.com', 'marathon': 'on'})
+        api_post(self.client, 'api_mail', {'email': 'late@example.com'})
         MailSubscription.objects.update(link_sent_at=timezone.now() - timezone.timedelta(hours=2))
-        self.assertNotContains(self.client.get(dashboard(self.learner)), '確認のメールを送ってあります')
+        self.assertFalse(api_get(self.client, 'api_mail').json()['pending'])
         self.assertEqual(MailSubscription.objects.exclude(pending_email_enc='').count(), 0)
 
         MailSubscription.objects.update(pending_email_enc='x', link_sent_at=None)
-        send_daily()
+        send_slot('h09')
         self.assertEqual(MailSubscription.objects.exclude(pending_email_enc='').count(), 0)
 
-    def test_temporary_use_cannot_subscribe(self):
-        temporary = Learner.objects.create(code=None)
-        put_learner(self.client, temporary.pk)
-        response = self.client.post(reverse('fe:mail_settings'), {'email': 'a@example.com', 'marathon': 'on'})
-        self.assertEqual(response.status_code, 403)
+    def _subscribe_without_id(self, email='anon@example.com'):
+        """ID なしで入ったブラウザから登録し、確認のリンクで確定する。"""
+        from .models import MailSubscription
+        client = self.client_class()
+        client.get(reverse('fe:index'))
+        response = api_post(client, 'api_mail', {'email': email})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['with_id'], False)
+        self.assertTrue(response.json()['pending'])
+        client.post(self._link(self.outbox.outbox[-1]))
+        subscription = MailSubscription.objects.get(learner__isnull=True)
+        self.assertEqual(subscription.email, email)
+        self.assertTrue(api_get(client, 'api_mail').json()['registered'])
+        return client, subscription
 
-    def test_dashboard_shows_the_picker(self):
-        self._sync({(11, '情報セキュリティ'): 3, (101, 'アルゴリズム'): 2})
-        response = self.client.get(dashboard(self.learner))
-        self.assertContains(response, 'id="mail"')
-        self.assertContains(response, 'value="11|情報セキュリティ"')
-        self.assertContains(response, 'value="101|アルゴリズム"')
+    def test_mail_can_be_received_without_an_id(self):
+        """ID なしでも登録できる。ID の記録（ブラウザを閉じると使えなくなる）にはひも付けない。"""
+        client, subscription = self._subscribe_without_id()
+        self.assertIsNone(subscription.learner)
+        self.assertNotIn('ID「', self.outbox.outbox[0].body)
+        self.assertIn('みんなの集計にだけ数えます', self.outbox.outbox[0].body)
+
+    def test_answers_without_an_id_go_only_to_the_site_summary(self):
+        """ID なしのメールで答えた分は、みんなの集計にだけ足す。個人の記録には残さない。"""
+        from .mail import send_slot
+        from .models import MailQuestion
+        self._sync({(11, '情報セキュリティ'): 5})
+        self._subscribe_without_id()
+        self.assertEqual(send_slot('h09')['sent'], 1)
+        message = self.outbox.outbox[-1]
+        self.assertIn('みんなの集計にだけ数えます', message.body)
+        self.assertNotIn('あなたの分野別正答率', message.body)
+        self.assertEqual(len(self._answer_links(message)), 3)
+
+        item = MailQuestion.objects.order_by('number').first()
+        before = site_summary()['total']
+        page = self.client_class().post(reverse('fe:mail_answer', args=[item.code]),
+                                        {'choice': item.question.answer_index})
+        self.assertContains(page, '正解')
+        self.assertContains(page, 'みんなの集計に数えました')
+        self.assertEqual(site_summary()['total'], before + 1)
+        self.assertEqual(OpenProgress.objects.get(category=item.question.category).correct, 1)
+        self.assertFalse(Attempt.objects.exists())
+        self.assertFalse(CategoryProgress.objects.exists())
+        # 二重には数えない
+        self.client_class().post(reverse('fe:mail_answer', args=[item.code]), {'choice': 0})
+        self.assertEqual(site_summary()['total'], before + 1)
+
+    def test_one_address_has_one_registration(self):
+        """同じアドレスで別の登録を確定したら、前の登録は止める（ID あり→ID なしでも、その逆でも）。"""
+        from .models import MailSubscription
+        mine = self._subscribe(email='same@example.com')
+        _client, anonymous = self._subscribe_without_id(email='same@example.com')
+        mine.refresh_from_db()
+        self.assertEqual(mine.email, '')
+        self.assertEqual(anonymous.email, 'same@example.com')
+        self.assertEqual(MailSubscription.objects.exclude(email_enc='').count(), 1)
+
+    def test_empty_registrations_without_an_id_are_removed(self):
+        """ID なしの登録は、確認の期限が切れたり解除したりしてアドレスが無くなったら消す。"""
+        from .mail import purge_pending
+        from .models import MailSubscription
+        client = self.client_class()
+        client.get(reverse('fe:index'))
+        api_post(client, 'api_mail', {'email': 'late@example.com'})
+        self.assertEqual(MailSubscription.objects.filter(learner__isnull=True).count(), 1)
+        MailSubscription.objects.update(link_sent_at=timezone.now() - timezone.timedelta(hours=2))
+        purge_pending()
+        self.assertFalse(MailSubscription.objects.filter(learner__isnull=True).exists())
+        # 期限が切れたら、また登録し直せる
+        self.assertEqual(api_post(client, 'api_mail', {'email': 'late@example.com'}).status_code, 200)
+
+    def test_the_screen_has_nothing_to_choose(self):
+        """送り方は1つだけ。画面はアドレスを入れて受け取るだけ（解除は届いたメールのリンクから）。"""
+        source = frontend_source('MailSection.tsx')
+        self.assertNotIn('マラソン', source)
+        self.assertNotIn('特訓', source)
+        self.assertIn('9時から18時まで毎時', source)
+        self.assertNotIn('TopicPicker.tsx', FRONTEND_FILES)
 
     # ---- 送り方 ----
 
-    def test_marathon_goes_in_order_by_topic_and_wraps(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 12, (2, 'データ構造'): 3})
-        subscription = self._subscribe(marathon=True)
+    def test_each_hour_sends_three_ipa_questions_without_answers(self):
+        from .mail import send_slot
+        from .models import MailQuestion
+        self._sync_groups([
+            ({(11, '情報セキュリティ'): 6}, '令和6年度 科目A 問{}'),
+            ({(2, 'データ構造'): 6}, 'シラバス Ver.8.0 中分類2 データ構造'),  # 自作は送らない
+            ({(101, 'アルゴリズム'): 4}, '令和6年度 科目B 問{}'),  # 科目Bは送らない
+        ])
+        self._subscribe()
         day = timezone.localdate()
 
-        sizes = []
-        for i in range(4):
-            send_daily(day + timezone.timedelta(days=i))
-            sizes.append(self.outbox.outbox[-1].body.count('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n問'))
-        # 中分類2（3問）→ 中分類11の10問 → 残り2問 → 最初に戻って中分類2
-        self.assertEqual(sizes, [3, 10, 2, 3])
-        self.assertIn('データ構造', self.outbox.outbox[0].subject)
-        self.assertIn('1〜3問目／全15問・2周目', self.outbox.outbox[3].subject)
-        subscription.refresh_from_db()
-        self.assertEqual((subscription.marathon_position, subscription.marathon_laps), (3, 1))
+        result = send_slot('h09', today=day)
+        self.assertEqual(result['sent'], 1)
+        sent = MailQuestion.objects.filter(subscription__learner=self.learner)
+        self.assertEqual(sent.count(), 3)
+        self.assertEqual({q.question.category.code for q in sent}, {11})
+        self.assertEqual(len({q.question_id for q in sent}), 3, '1通の中で同じ問題は出さない')
 
-    def test_same_day_is_sent_once(self):
-        from .mail import send_daily
+        message = self.outbox.outbox[0]
+        self.assertIn('{}/{}'.format(day.month, day.day), message.subject)
+        self.assertIn('9時の問題（3問）', message.subject)
+        self.assertEqual(len(self._answer_links(message)), 3)
+        self.assertNotIn('情報セキュリティの解説', message.body, '解答と解説はメールに載せない')
+        self.assertNotIn('正解 イ', message.body)
+        self.assertIn('出典：令和6年度 基本情報技術者試験 科目A 問', message.body)
+        self.assertIn('/fe/mail/stop/', message.body)
+        self.assertIn('/fe/quiz/', message.body)
+
+    def test_the_same_hour_is_sent_once_and_the_next_hour_again(self):
+        from .mail import send_slot
+        self._sync({(11, '情報セキュリティ'): 10})
+        self._subscribe()
+        day = timezone.localdate()
+        self.assertEqual(send_slot('h09', today=day)['sent'], 1)
+        self.assertEqual(send_slot('h09', today=day), {'sent': 0, 'already': 1, 'failed': 0, 'purged': 0})
+        self.assertEqual(send_slot('h10', today=day)['sent'], 1)
+        self.assertEqual(len(self.outbox.outbox), 2)
+        # 直近に送った問題は避ける（問題が足りていれば、続く2通で問題が重ならない）
+        first, second = (set(self._answer_links(m)) for m in self.outbox.outbox)
+        from .models import MailQuestion
+        by_slot = {
+            slot: set(MailQuestion.objects.filter(slot=slot).values_list('question_id', flat=True))
+            for slot in ('h09', 'h10')
+        }
+        self.assertFalse(by_slot['h09'] & by_slot['h10'])
+
+    def test_only_registered_ids_get_mail(self):
+        from .mail import send_slot
         self._sync({(11, '情報セキュリティ'): 3})
-        self._subscribe(marathon=True)
-        self.assertEqual(send_daily()['marathon'], 1)
-        self.assertEqual(send_daily()['marathon'], 0)
-        self.assertEqual(len(self.outbox.outbox), 1)
+        self._subscribe(email='')
+        self.assertEqual(send_slot('h09')['sent'], 0)
 
-    def test_training_runs_through_picked_topics_and_marathon_in_parallel(self):
-        from .mail import send_daily
-        self._sync({(11, '情報セキュリティ'): 12, (2, 'データ構造'): 3, (9, 'データベース'): 4})
-        self._subscribe(marathon=True, training=True,
-                        training_topics=[[11, '情報セキュリティ'], [9, 'データベース']])
-        day = timezone.localdate()
-        result = send_daily(day)
-        self.assertEqual((result['marathon'], result['training']), (1, 1))
-        for i in range(1, 4):
-            send_daily(day + timezone.timedelta(days=i))
-        subjects = [m.subject for m in self.outbox.outbox if '特訓' in m.subject]
-        self.assertIn('情報セキュリティ（1〜10問目／12問）', subjects[0])
-        self.assertIn('情報セキュリティ（11〜12問目／12問）', subjects[1])
-        self.assertIn('データベース（1〜4問目／4問）', subjects[2])
-        self.assertIn('情報セキュリティ（1〜10問目／12問）', subjects[3])
+    def test_a_failed_send_is_retried_next_time(self):
+        from .mail import send_slot
+        from .models import MailQuestion
+        self._sync({(11, '情報セキュリティ'): 3})
+        self._subscribe()
+        with mock.patch('django.core.mail.EmailMessage.send', side_effect=OSError):
+            self.assertEqual(send_slot('h09')['failed'], 1)
+        self.assertFalse(MailQuestion.objects.exists())
+        self.assertEqual(send_slot('h09')['sent'], 1)
 
-    def test_mail_has_answers_my_rates_stop_link_and_inline_figures(self):
-        from .mail import send_daily
+    def test_the_mail_is_text_only_and_figures_are_on_the_answer_page(self):
+        """メールはテキストだけ（HTML にしない）。図はテキストに載せられないので、解答ページで見てもらう。"""
+        from .mail import send_slot
+        from .models import MailQuestion
         self._sync({(11, '情報セキュリティ'): 1})
         question = Question.objects.get(template__isnull=True)
         question.figures = [{'src': png_uri(), 'alt': '構成図'}]
         question.save()
-        answer(self.learner, question, True)
-        self._subscribe(marathon=True)
-        send_daily()
+        self._subscribe()
+        send_slot('h09')
         message = self.outbox.outbox[0]
-        self.assertIn('正解 イ', message.body)
-        self.assertIn('情報セキュリティの解説0', message.body)
-        self.assertIn('100％（1/1）', message.body)
-        self.assertIn('/fe/mail/stop/', message.body)
-        html_body = message.alternatives[0][0]
-        self.assertIn('cid:q{}-f0@fe.mail'.format(question.id), html_body)
-        images = [part for part in message.attachments if getattr(part, 'get_content_type', None)]
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0]['Content-ID'], '<q{}-f0@fe.mail>'.format(question.id))
-        self.assertIn('Content-Type: multipart/related', message.message().as_string())
+        self.assertFalse(getattr(message, 'alternatives', []), 'HTML の版は付けない')
+        self.assertFalse(message.attachments)
+        self.assertNotIn('<', message.body)
+        self.assertIn('図が 1 点あります。図は「この問題に答える」のページで見られます', message.body)
+        item = MailQuestion.objects.get()
+        self.assertContains(self.client.get(reverse('fe:mail_answer', args=[item.code])), png_uri())
 
-    def test_stopped_address_gets_nothing(self):
-        from .mail import send_daily
+    # ---- 解答ページ ----
+
+    def _mailed(self):
+        from .mail import send_slot
+        from .models import MailQuestion
         self._sync({(11, '情報セキュリティ'): 3})
-        self._subscribe(email='', marathon=True)
-        self.assertEqual(send_daily()['marathon'], 0)
+        self._subscribe()
+        send_slot('h09')
+        return MailQuestion.objects.order_by('number').first()
+
+    def test_answering_from_the_mail_records_it_for_the_id(self):
+        item = self._mailed()
+        url = reverse('fe:mail_answer', args=[item.code])
+        stranger = self.client_class()  # メールを開いたのは、ID で入っていないブラウザでもよい
+        page = stranger.get(url)
+        self.assertContains(page, item.question.stem)
+        self.assertNotContains(page, '情報セキュリティの解説')
+
+        wrong = (item.question.answer_index + 1) % 4
+        page = stranger.post(url, {'choice': wrong})
+        self.assertContains(page, '不正解')
+        self.assertContains(page, item.question.explanation)
+        self.assertContains(page, 'ID「mailer」の成績に記録しました')
+        attempt = Attempt.objects.get(learner=self.learner)
+        self.assertEqual((attempt.question_id, attempt.is_correct), (item.question_id, False))
+        self.assertEqual(
+            CategoryProgress.objects.get(learner=self.learner, category=item.question.category).answered, 1,
+        )
+
+        # 答え直しても、最初の答えのまま。二重には数えない
+        page = stranger.post(url, {'choice': item.question.answer_index})
+        self.assertContains(page, '不正解')
+        self.assertEqual(Attempt.objects.filter(learner=self.learner).count(), 1)
+        self.assertContains(stranger.get(url), '不正解')
+
+    def test_the_answer_page_needs_a_choice(self):
+        item = self._mailed()
+        page = self.client.post(reverse('fe:mail_answer', args=[item.code]), {'choice': '9'})
+        self.assertContains(page, '選択肢を選んでください')
+        self.assertFalse(Attempt.objects.exists())
+
+    def test_old_and_unknown_pages_show_the_notice(self):
+        from .mail import purge_old
+        item = self._mailed()
+        self.assertEqual(self.client.get(reverse('fe:mail_answer', args=['nothing12'])).status_code, 404)
+        type(item).objects.filter(pk=item.pk).update(date=timezone.localdate() - timezone.timedelta(days=30))
+        page = self.client.get(reverse('fe:mail_answer', args=[item.code]))
+        self.assertContains(page, '送ってから30日で公開を終えています', status_code=404)
+        self.assertContains(page, 'href="http://localhost:8010/fe/" class="x-cta"', status_code=404)
+        self.assertEqual(purge_old(), 1)
 
     # ---- 起動口 ----
 
-    def test_task_endpoint_needs_the_token(self):
+    def test_task_endpoint_needs_the_token_and_a_slot(self):
         url = reverse('fe:send_mails')
         self.client.logout()
         with override_settings(FE_MAIL_TOKEN=''):
             self.assertEqual(self.client.post(url).status_code, 503)
         with override_settings(FE_MAIL_TOKEN='secret'):
             self.assertEqual(self.client.post(url, HTTP_X_FE_MAIL_TOKEN='wrong').status_code, 403)
-            response = self.client.post(url, HTTP_X_FE_MAIL_TOKEN='secret')
+            self.assertEqual(self.client.post(url, HTTP_X_FE_MAIL_TOKEN='secret').status_code, 400)
+            for slot in ('none', 'morning', 'h08', 'h19'):
+                with self.subTest(slot=slot):
+                    response = self.client.post(url, {'slot': slot}, HTTP_X_FE_MAIL_TOKEN='secret')
+                    self.assertEqual(response.status_code, 400)
+            far = (timezone.localdate() + timezone.timedelta(days=3)).isoformat()
+            response = self.client.post(url, {'slot': 'h09', 'date': far}, HTTP_X_FE_MAIL_TOKEN='secret')
+            self.assertEqual(response.status_code, 400)
+            response = self.client.post(url, {'slot': 'h09'}, HTTP_X_FE_MAIL_TOKEN='secret')
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), {'marathon': 0, 'training': 0, 'failed': 0})
+            self.assertEqual(response.json(), {'sent': 0, 'already': 0, 'failed': 0, 'purged': 0})
+
+    def test_command_sends_a_slot(self):
+        self._sync({(11, '情報セキュリティ'): 3})
+        self._subscribe()
+        out = io.StringIO()
+        call_command('send_fe_mails', '--slot', 'h12', stdout=out)
+        self.assertIn('1 通を送りました', out.getvalue())
+        self.assertIn('12時の問題', self.outbox.outbox[0].subject)
+
+
+class SlotTests(TestCase):
+    """問題メールの時間帯と出典の書き方（fe.slots）。hirahira_room の XPostTests の同じ確かめ。"""
+
+    def test_citation_follows_ipa_form(self):
+        from .slots import citation
+        self.assertEqual(
+            citation('令和7年度 科目A 問2 ／ シラバス Ver.8.0 中分類1 応用数学'),
+            '出典：令和7年度 基本情報技術者試験 科目A 問2',
+        )
+        self.assertEqual(
+            citation('サンプル問題 科目A 問12'),
+            '出典：基本情報技術者試験 サンプル問題 科目A 問12',
+        )
+        self.assertEqual(citation('シラバス Ver.8.0 中分類10'), '')
+
+    def test_hourly_slots_from_9_to_18(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        from .slots import HOURLY_SLOTS, slot_date
+        self.assertEqual(HOURLY_SLOTS, ['h09', 'h10', 'h11', 'h12', 'h13',
+                                        'h14', 'h15', 'h16', 'h17', 'h18'])
+        tokyo = ZoneInfo('Asia/Tokyo')
+        at = lambda h: datetime.datetime(2026, 11, 12, h, 5, tzinfo=tokyo)
+        # 18時の枠が日付をまたいで1時に届いたら、前の日の18時の枠
+        self.assertEqual(slot_date('h18', at(1)), datetime.date(2026, 11, 11))
+        self.assertEqual(slot_date('h18', at(18)), datetime.date(2026, 11, 12))
+        self.assertEqual(slot_date('h09', at(1)), datetime.date(2026, 11, 12))
+        self.assertEqual(slot_date('h09', at(9)), datetime.date(2026, 11, 12))
 
 
 class PageViewTests(TestCase):
@@ -3226,33 +3472,48 @@ class PageViewTests(TestCase):
         return row.count if row else 0
 
     def test_counts_each_page_by_id(self):
+        """画面が出たときに React が api/pageview/ で知らせ、ここで数える。"""
         self.client.get(reverse('fe:index'), HTTP_USER_AGENT=self.BROWSER)
-        self.client.get(reverse('fe:index'), HTTP_USER_AGENT=self.BROWSER)
-        self.client.get(reverse('fe:quiz'), HTTP_USER_AGENT=self.BROWSER)
+        self.assertFalse(PageViewCount.objects.exists(), '入れ物のページを開いただけでは数えない')
+        for page in ('index', 'index', 'quiz'):
+            self.view(page)
         self.assertEqual(self._count('index', False), 2)
         self.assertEqual(self._count('quiz', False), 1)
 
         enter(self.client, make_learner('counted'))
-        self.client.get(reverse('fe:mypage'), HTTP_USER_AGENT=self.BROWSER)
-        self.client.get(reverse('fe:stats'), HTTP_USER_AGENT=self.BROWSER)
+        self.view('mypage')
+        self.view('stats')
         self.assertEqual(self._count('mypage', True), 1)
         self.assertEqual(self._count('stats', True), 1)
         # 1回ごとの行は作らない
         self.assertEqual(PageViewCount.objects.count(), 4)
+        # 数えない画面の名前は断る
+        self.assertEqual(self.view('console').status_code, 400)
+
+    def view(self, page, agent=None):
+        return self.client.post(reverse('fe:api_pageview'), {'page': page}, content_type='application/json',
+                                HTTP_USER_AGENT=self.BROWSER if agent is None else agent)
+
+    def test_every_page_reports_its_view(self):
+        """React の各画面が、pageviews.PAGES の名前で知らせる。"""
+        from .pageviews import PAGES
+        sources = ''.join(frontend_source(name) for name in FRONTEND_FILES)
+        for page in PAGES:
+            with self.subTest(page=page):
+                self.assertTrue(
+                    "usePageView('{}')".format(page) in sources or 'page="{}"'.format(page) in sources
+                    or "'{}'".format(page) in sources.split('<DashboardWithView page={', 1)[-1][:60],
+                )
 
     def test_robots_and_redirects_are_not_counted(self):
         for agent in ('', 'Googlebot/2.1 (+http://www.google.com/bot.html)', 'bingbot/2.0',
                       'python-requests/2.32', 'curl/8.7.1'):
             with self.subTest(agent=agent):
-                self.client.get(reverse('fe:index'), HTTP_USER_AGENT=agent)
-        # 入っていない人の 1問1答 は入口へ送られるだけなので数えない
-        self.client.logout()
-        self.client.cookies.clear()
-        self.client.get(reverse('fe:quiz'), HTTP_USER_AGENT=self.BROWSER)
+                self.view('index', agent)
         self.assertFalse(PageViewCount.objects.exists())
 
     def test_console_is_not_counted_and_shows_the_table(self):
-        self.client.get(reverse('fe:guide'), HTTP_USER_AGENT=self.BROWSER)
+        self.view('guide')
         login_editor(self.client)
         response = self.client.get(reverse('fe:manage_pageviews'), HTTP_USER_AGENT=self.BROWSER)
         self.assertEqual(response.status_code, 200)

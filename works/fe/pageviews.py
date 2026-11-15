@@ -4,23 +4,26 @@
 1つ増やすだけにする。IP アドレス・ID・ブラウザの情報は残さない。
 検索エンジンなどの巡回ロボットは、ブラウザの種類の文字列（User-Agent）で見分けて数えない。
 問題の管理（/fe/console/）は数えない。
+
+画面の切りかえは React（frontend/fe）の中で行うので、画面を出したときに React が
+api/pageview/ で知らせ、そこで record を呼ぶ（api.PageViewAPI）。
 """
 
 import datetime
 import re
 
-from django.contrib.auth.decorators import login_not_required
 from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
-from django.utils.decorators import method_decorator
 
 from .models import PageViewCount
 
 # 数える画面。値は表の見出し。並びは表の列の並び
 PAGES = {
     'index': 'ダッシュボード（ID なし）',
-    'mypage': 'マイページ',
+    # 以前の「マイページ」。いまは ID ありのダッシュボード（/fe/）を数える
+    'mypage': 'ダッシュボード（ID あり）',
+    'id_entry': 'ID の入力',
     'quiz': '1問1答',
     'learn_start': '学習モード 開始',
     'learn_read': '学習モード 読む',
@@ -61,24 +64,6 @@ def record(request, page):
     except IntegrityError:
         # 同時に最初の1件を作られたら、そちらに足す
         PageViewCount.objects.filter(**key).update(count=F('count') + 1)
-
-
-@method_decorator(login_not_required, name='dispatch')
-class CountPageViewMixin:
-    """GET で画面を出せたときに、page_name の画面として1件数える。
-
-    ID の有無を見るので、LearnerRequiredMixin より前（左）に置く。数えるのは学習の
-    画面だけで、どれもログインは要らない。この dispatch がいちばん外側になるので、
-    LearnerRequiredMixin と同じくログインを求めない印を付けておく。
-    """
-
-    page_name = None
-
-    def dispatch(self, request, *args, **kwargs):
-        response = super().dispatch(request, *args, **kwargs)
-        if request.method == 'GET' and response.status_code == 200:
-            record(request, self.page_name)
-        return response
 
 
 def summary(days=30):

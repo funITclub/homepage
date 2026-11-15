@@ -1,11 +1,14 @@
 """FE 対策アプリのビュー。
 
-出題は 1 問 1 答。GET で 1 問出し，POST で採点してその場で解説を出す。
+学習の画面（ダッシュボード・ID の入力・1問1答・学習モード・分野別正答率・履歴・
+このアプリについて）は React（frontend/fe）が描く。ここが出すのは、その入れ物のページ
+（AppView）と、Django の画面のままのもの（問題の管理・メールのリンク・
+問題メールの解答ページ・定期実行の入口・読み上げ音声）。React が呼ぶ API は api.py にある。
 出題する問題の選定は fe.selection，成績の集計は fe.stats に分けてある。
 
 成績は Learner（本アプリの中の ID）ごとに持つ。/fe/ を開くと ID なしの記録を
-作ってセッションが覚える。ID を持っている人の入口は /fe/mypage/ で、
-ID で入るとそこがダッシュボードになる（ID は URL に出さない）。問題と技術解説は全 ID で共有し、
+作ってセッションが覚える。ID で入る・作るのは /fe/id/ で、入ったあとも
+ダッシュボードは /fe/ のまま（ID は URL に出さない。以前の /fe/mypage/ は /fe/ へ送る）。問題と技術解説は全 ID で共有し、
 取り込みなどの管理は /fe/console/ で、編集画面にログインした人だけができる。学習の画面には
 管理のページがあることを出さない。
 
@@ -27,32 +30,24 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.conf import settings
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.core.paginator import Paginator
-from django.db.models import Count, Q, Sum
+from django.core.exceptions import PermissionDenied
+from django.db.models import Count
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.core.validators import validate_email
 from django.utils.decorators import method_decorator
 from django.views import generic
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 
 from .exam import EXAM, build_prompt
-from .forms import LearnerForm, PassReportForm, QuestionUploadForm
+from .forms import QuestionUploadForm
 from .importer import (ImportError_, needs_confirmation, parse,
                        preview, sync, validate)
-from .learning import current_item, focus_category, grade, note_menu, start_round
 from . import mail, speech
-from .models import (Attempt, Category, CategoryProgress, Learner, LearningNote,
-                     LearningRound, MailSubscription, PassReport, Question,
-                     QuestionTemplate, StudySession)
-from .pageviews import CountPageViewMixin, summary as page_view_summary
-from .selection import pick_question
-from .stats import (categories_for, category_options, category_stats, daily_counts,
-                    field_stats, overall_stats, record_progress, site_summary,
-                    weak_categories)
+from .models import (Category, Learner, MailQuestion, Question, StudySession)
+from .pageviews import summary as page_view_summary
+from .slots import HOURLY_SLOTS, citation
 
 logger = logging.getLogger(__name__)
 
@@ -158,403 +153,43 @@ class LearnerRequiredMixin:
         """入っている ID でこの画面を使えるか。使えなければ例外を投げる。"""
 
 
-def dashboard_url(learner):
-    """ダッシュボードの場所。ID なしは /fe/、ID ありは /fe/mypage/。どちらも URL に ID は出さない。"""
-    if learner.is_temporary:
-        return reverse('fe:index')
-    return reverse('fe:mypage')
-
-
+@method_decorator(ensure_csrf_cookie, name='dispatch')
 @method_decorator(login_not_required, name='dispatch')
-class MyPageView(CountPageViewMixin, generic.FormView):
-    """ID ありの入口（/fe/mypage/）。URL に ID は出さない。
+class AppView(generic.TemplateView):
+    """学習の画面の入れ物。中身は React（frontend/fe。ビルドしたものは static/fe/app/）が描き、
+    データは api.py から取る。作りは bk_houmu3・countdown と同じ。
 
-    ID で入っていれば、ここがその ID のダッシュボードになる。入っていなければ、
-    ID で入る・新しく作るための入力欄を出す。?switch を付けると、入っていても
-    入力欄を出し、別の ID に切り替えられる。
+    ensure_csrf_cookie で csrftoken の Cookie を必ず配る。React は書き込みのとき、
+    その値を X-CSRFToken ヘッダーに載せて送る。
+
+    entry で、開いたときの記録の扱いを分ける。
+      'index'   入口（/fe/）。ID の有無にかかわらずダッシュボード。まだ始めていなければ、
+                履歴を残さない記録をその場で作る
+      'open'    始めていなくても開ける画面（ID の入力欄・このアプリについて）
+      'start'   1問1答（/fe/quiz/）。問題メールの「1問1答を解く」からの案内先なので、まだ始めていなければ
+                入口と同じく、履歴を残さない記録をその場で作ってそのまま解かせる
+      'learner' 始めている人向けの画面。始めていなければ入口へ戻す（入口が記録を作る）
+
+    ページビューは、画面を出したときに React が api/pageview/ で数える（画面の切りかえは
+    React の中で行い、ここを通らないため）。
     """
 
-    page_name = 'mypage'
-
-    template_name = 'fe/enter.html'
-    form_class = LearnerForm
-
-    def dispatch(self, request, *args, **kwargs):
-        # 入ったら、ブラウザを閉じたら消える Cookie を置く。入口（IndexView）も同じ
-        return remember_entry(request, super().dispatch(request, *args, **kwargs))
+    template_name = 'fe/app.html'
+    entry = 'learner'
 
     def get(self, request, *args, **kwargs):
         learner = current_learner(request)
-        if learner is not None and not learner.is_temporary and 'switch' not in request.GET:
-            touch(learner)
-            request.fe_learner = learner
-            return DashboardView.render_for(request, learner)
-        return super().get(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['current'] = current_learner(self.request)
-        return context
-
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs['creating'] = self.request.POST.get('action') == 'create'
-        return kwargs
-
-    def form_valid(self, form):
-        if form.creating:
-            learner = Learner.objects.create(code=form.cleaned_data['code'])
-            messages.success(
-                self.request,
-                'ID「{}」を作りました。これからの解答はこの ID に残ります。'.format(learner.code),
-            )
-        else:
-            learner = form.learner
-        # 履歴を残さずに使っていた分は引き継がない。放っておけば掃除で消える。
-        _enter(self.request, learner)
-        return redirect(dashboard_url(learner))
-
-
-@method_decorator(login_not_required, name='dispatch')
-class IndexView(CountPageViewMixin, generic.View):
-    """アプリの入口。
-
-    ID は求めない。まだ始めていなければ、履歴を残さない記録をその場で作り、
-    この場所をそのままダッシュボードにする。ID で入っていれば /fe/mypage/ へ送る
-    （ID は URL に出さない）。
-    記録を残したくなったら、ダッシュボードの案内から ID を作る（MyPageView）。
-    """
-
-    page_name = 'index'
-
-    def get(self, request, *args, **kwargs):
-        learner = current_learner(request)
-        if learner is None:
+        if self.entry == 'index':
+            if learner is None:
+                learner = start_temporary(request)
+        elif self.entry == 'start' and learner is None:
             learner = start_temporary(request)
-        elif not learner.is_temporary:
-            return redirect(dashboard_url(learner))
-        touch(learner)
-        request.fe_learner = learner
-        # 入ったら、ブラウザを閉じたら消える Cookie を置く（MyPageView と同じ）
-        return remember_entry(request, DashboardView.render_for(request, learner))
-
-
-@method_decorator(login_not_required, name='dispatch')
-class GuideView(CountPageViewMixin, generic.TemplateView):
-    """このアプリについて。ダッシュボードから外した説明をまとめる。
-
-    始めていなくても読める。入っていれば、ヘッダーにその記録を使う。
-    """
-
-    page_name = 'guide'
-
-    template_name = 'fe/guide.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        learner = current_learner(self.request)
+        elif self.entry == 'learner' and learner is None:
+            return redirect('fe:index')
         if learner is not None:
-            self.request.fe_learner = learner
-        context['learner'] = learner
-        context['exam'] = EXAM
-        context['question_total'] = Question.objects.active().filter(
-            template__isnull=True
-        ).count()
-        context['template_total'] = QuestionTemplate.objects.filter(is_active=True).count()
-        return context
-
-
-class DashboardView(LearnerRequiredMixin, generic.TemplateView):
-    """ダッシュボード（マイページ）。問題を解き始めることを最優先にする。
-    自分の成績と苦手分野は StatsView で見る。
-
-    自分の URL は持たない。ID なしは IndexView（/fe/）、ID ありは MyPageView
-    （/fe/mypage/）から render_for で描く。
-    """
-
-    template_name = 'fe/index.html'
-
-    @classmethod
-    def render_for(cls, request, learner):
-        """入口（/fe/・/fe/mypage/）で、ダッシュボードをその場で描く。"""
-        view = cls()
-        view.request = request
-        view.learner = learner
-        view.kwargs = {}
-        view.args = ()
-        return view.render_to_response(view.get_context_data())
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        learner = self.learner
-        context['learner'] = learner
-
-        context['study_session'] = _get_study_session(learner)
-        # 出題設定のフォームを他の画面と共有しているので、分野の選択肢も渡す
-        context['categories'] = category_options(
-            learner, context['study_session'].mode
-        )
-        context['question_total'] = Question.objects.active().filter(
-            template__isnull=True
-        ).count()
-        # 全 ID を合わせた集計と、自分の合格申告。ダッシュボードの後半に出す
-        context['summary'] = site_summary()
-        context['my_report'] = PassReport.objects.filter(learner=learner).first()
-        context['pass_form'] = PassReportForm()
-        context.update(mail_context(learner))
-        return context
-
-
-class QuizSettingsView(LearnerRequiredMixin, generic.View):
-    """出題モード・科目・分野の変更。"""
-
-    def post(self, request, *args, **kwargs):
-        session = _get_study_session(self.learner)
-        mode = request.POST.get('mode')
-        subject = request.POST.get('subject')
-        category_code = request.POST.get('category')
-
-        valid_modes = {choice[0] for choice in StudySession.MODE_CHOICES}
-        if mode in valid_modes:
-            session.mode = mode
-        if subject in {Question.SUBJECT_A, Question.SUBJECT_B}:
-            session.subject = subject
-
-        # 分野はどのモードでも選べる。選んだら、そのモードの出し方のまま
-        # その分野の中だけから出す。選ばなければ全分野から出す。
-        session.category = None
-        if category_code:
-            session.category = Category.objects.filter(
-                code=category_code, subject=session.subject
-            ).first()
-            if session.category is None:
-                messages.error(request, 'その分野は選んだ科目にありません。')
-                # 「分野を指定」は分野が無いと成り立たない。あとの2つは分野なしで続ける。
-                if session.mode == StudySession.MODE_CATEGORY:
-                    session.mode = StudySession.MODE_FOCUS
-
-        session.save()
-        # 設定を変えたら履歴の除外はいったんリセットする
-        request.session[SESSION_RECENT] = []
-        # ダッシュボードから変えたときは、そのまま戻して結果を確かめられるようにする。
-        # 演習画面からなら、次の問題へ進む。
-        if request.POST.get('next') == 'index':
-            return redirect(dashboard_url(self.learner))
-        return redirect('fe:quiz')
-
-
-class QuizView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
-    """1 問 1 答の出題と採点。"""
-
-    page_name = 'quiz'
-
-    template_name = 'fe/quiz.html'
-
-    def get(self, request, *args, **kwargs):
-        study_session = _get_study_session(self.learner)
-        recent = request.session.get(SESSION_RECENT, [])
-        question, reason = pick_question(self.learner, study_session, exclude_ids=recent)
-
-        if question is None:
-            return render(request, self.template_name, {
-                'study_session': study_session,
-                'categories': category_options(self.learner, study_session.mode),
-                'no_question': True,
-            })
-
-        request.session[SESSION_PENDING] = question.id
-        request.session[SESSION_SHOWN_AT] = timezone.now().isoformat()
-
-        return render(request, self.template_name, {
-            'question': question,
-            'reason': reason,
-            'study_session': study_session,
-            'categories': category_options(self.learner, study_session.mode),
-            'progress': self._progress(self.learner, question.category),
-        })
-
-    def post(self, request, *args, **kwargs):
-        study_session = _get_study_session(self.learner)
-        pending_id = request.session.get(SESSION_PENDING)
-        question_id = request.POST.get('question_id')
-
-        if not question_id or str(pending_id) != str(question_id):
-            # 二重送信やブラウザの戻る操作。採点せずに次の問題へ送る。
-            messages.info(request, 'その問題は既に解答済みです。次の問題を表示します。')
-            return redirect('fe:quiz')
-
-        question = (
-            Question.objects.filter(id=pending_id)
-            .select_related('category').first()
-        )
-        if question is None:
-            return redirect('fe:quiz')
-
-        selected = request.POST.get('choice')
-        if selected is None or not selected.isdigit() or int(selected) >= len(question.choices):
-            messages.error(request, '選択肢を選んでください。')
-            return render(request, self.template_name, {
-                'question': question,
-                'study_session': study_session,
-                'categories': category_options(self.learner, study_session.mode),
-                'progress': self._progress(self.learner, question.category),
-            })
-
-        selected = int(selected)
-        is_correct = selected == question.answer_index
-
-        elapsed_ms = None
-        shown_at = request.session.get(SESSION_SHOWN_AT)
-        if shown_at:
-            try:
-                delta = timezone.now() - timezone.datetime.fromisoformat(shown_at)
-                # 途中で離席した場合に極端な値が入らないよう上限を設ける
-                elapsed_ms = min(int(delta.total_seconds() * 1000), 30 * 60 * 1000)
-            except ValueError:
-                elapsed_ms = None
-
-        Attempt.objects.create(
-            learner=self.learner,
-            question=question,
-            category=question.category,
-            selected_index=selected,
-            is_correct=is_correct,
-            elapsed_ms=elapsed_ms,
-        )
-        # 問題が入れ替わっても残る記録。分野別の正答率と苦手判定はこちらを見る。
-        record_progress(self.learner, question, is_correct)
-
-        # 採点済みなので保留を落とし，直近履歴に積む
-        request.session.pop(SESSION_PENDING, None)
-        request.session.pop(SESSION_SHOWN_AT, None)
-        recent = request.session.get(SESSION_RECENT, [])
-        recent.append(question.id)
-        request.session[SESSION_RECENT] = recent[-RECENT_LIMIT:]
-
-        return render(request, self.template_name, {
-            'question': question,
-            'study_session': study_session,
-            'categories': category_options(self.learner, study_session.mode),
-            'answered': True,
-            'selected': selected,
-            'selected_label': Question.choice_label(selected),
-            'is_correct': is_correct,
-            'elapsed_ms': elapsed_ms,
-            'progress': self._progress(self.learner, question.category),
-        })
-
-    @staticmethod
-    def _progress(learner, category):
-        """その中分類の現在の成績（解答直後に見せる）。"""
-        totals = CategoryProgress.objects.filter(learner=learner, category=category).aggregate(
-            total=Sum('answered'), correct=Sum('correct')
-        )
-        total = totals['total'] or 0
-        correct = totals['correct'] or 0
-        return {
-            'category': category,
-            'total': total,
-            'correct': correct,
-            'rate_percent': round(correct / total * 100) if total else None,
-        }
-
-
-class StatsView(CountPageViewMixin, LearnerRequiredMixin, generic.TemplateView):
-    """分野別の正答率の一覧。"""
-
-    page_name = 'stats'
-
-    template_name = 'fe/stats.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        learner = self.learner
-        subject = self.request.GET.get('subject')
-        if subject not in (Question.SUBJECT_A, Question.SUBJECT_B):
-            subject = None
-
-        rows = category_stats(learner, subject=subject)
-        context['rows'] = rows
-        context['fields'] = field_stats(rows)
-        context['overall'] = overall_stats(learner)
-        context['weak'] = weak_categories(rows, limit=5)
-        # ダッシュボードから移した、直近14日の解答数
-        context['daily'] = daily_counts(learner, days=14)
-        context['max_daily'] = max([d['total'] for d in context['daily']] + [1])
-        context['subject'] = subject
-        context['subject_choices'] = Question.SUBJECT_CHOICES
-        # 重点出題でどれだけ重みが乗っているかを見せる
-        total_weight = sum(
-            r['category'].exam_weight * (0.3 + 2.0 * r['weakness'])
-            for r in rows if r['question_count']
-        ) or 1
-        for row in rows:
-            weight = row['category'].exam_weight * (0.3 + 2.0 * row['weakness'])
-            row['focus_share'] = round(weight / total_weight * 100, 1) if row['question_count'] else 0.0
-        return context
-
-
-class PassReportView(LearnerRequiredMixin, generic.View):
-    """本番合格の申告と取り消し。1人1件で、申告し直すと受験日を上書きする。
-
-    履歴を残さない利用からは申告できない。消える記録なので、
-    合格者数に数えると実態と合わなくなるため。
-    """
-
-    def check_learner(self, learner):
-        if learner.is_temporary:
-            raise PermissionDenied(
-                '合格の申告には ID の登録が必要です。履歴を残さない利用では申告できません。'
-            )
-
-    def post(self, request, *args, **kwargs):
-        back = dashboard_url(self.learner) + '#summary'
-        if request.POST.get('action') == 'withdraw':
-            PassReport.objects.filter(learner=self.learner).delete()
-            messages.info(request, '合格の申告を取り消しました。')
-            return redirect(back)
-
-        form = PassReportForm(request.POST)
-        if not form.is_valid():
-            for error in form.errors.get('passed_on', []):
-                messages.error(request, error)
-            return redirect(back)
-        PassReport.objects.update_or_create(
-            learner=self.learner, defaults={'passed_on': form.cleaned_data['passed_on']},
-        )
-        messages.success(request, '合格おめでとうございます。合格者数に数えました。')
-        return redirect(back)
-
-
-class HistoryView(CountPageViewMixin, LearnerRequiredMixin, generic.ListView):
-    """解答履歴。まちがえた問題を見返すために使う。"""
-
-    page_name = 'history'
-
-    template_name = 'fe/history.html'
-    context_object_name = 'attempts'
-    paginate_by = 20
-
-    def get_queryset(self):
-        queryset = (
-            Attempt.objects.filter(learner=self.learner)
-            .select_related('question', 'category')
-        )
-        if self.request.GET.get('result') == 'wrong':
-            queryset = queryset.filter(is_correct=False)
-        elif self.request.GET.get('result') == 'correct':
-            queryset = queryset.filter(is_correct=True)
-        category_code = self.request.GET.get('category')
-        if category_code and category_code.isdigit():
-            queryset = queryset.filter(category__code=category_code)
-        return queryset
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['categories'] = categories_for(_get_study_session(self.learner).subject)
-        context['result_filter'] = self.request.GET.get('result', '')
-        context['category_filter'] = self.request.GET.get('category', '')
-        return context
+            touch(learner)
+        # 入ったら、ブラウザを閉じたら消える Cookie を置く
+        return remember_entry(request, super().get(request, *args, **kwargs))
 
 
 # ================================================================ 問題の管理
@@ -673,146 +308,6 @@ class QuestionUploadView(LoginRequiredMixin, generic.FormView):
         return super().post(request, *args, **kwargs)
 
 
-class LearnStartView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
-    """学習モードの入口。読む時間を決めてラウンドを始める。"""
-
-    page_name = 'learn_start'
-
-    template_name = 'fe/learn_start.html'
-
-    def get(self, request, *args, **kwargs):
-        session = _get_study_session(self.learner)
-        finished = LearningRound.objects.filter(
-            learner=self.learner, phase=LearningRound.PHASE_DONE
-        )
-        last = (
-            finished.filter(subject=session.subject, note__isnull=False)
-            .select_related('note__category').first()
-        )
-        return render(request, self.template_name, {
-            'minute_choices': LearningRound.MINUTE_CHOICES,
-            'default_minutes': LearningRound.DEFAULT_MINUTES,
-            'count': LearningRound.QUESTION_COUNT,
-            'study_session': session,
-            'groups': note_menu(self.learner, session.subject),
-            'opened': self._opened_categories(session, last),
-            'recent': finished[:5],
-        })
-
-    @staticmethod
-    def _opened_categories(session, last):
-        """一覧で開いておく中分類。次の2つを、重ねずに両方開く。
-
-        ・ダッシュボードで指定した分野。おまかせはこの中から選ぶので、開いておくと
-          何が対象か分かる。開かないと、分野をどう選び直しても一覧の開く先が変わらず、
-          前に解き終えた中分類に固定されているように見えた。
-        ・最後に解き終えたラウンドの中分類。学習した結果（学習回数）は小分類の行に
-          出るので、閉じたままだと、学習したことが一覧に反映されていないように見える。
-
-        どちらか一方だけにすると、学習モードで指定とは別の分野を解き終えたときに、
-        ダッシュボードの指定と一覧の開く先がずれる。指定のほうを書き換えて合わせると、
-        おまかせや1問1答の出題範囲まで変わってしまうので、両方を開いて済ませる。
-        指定が今の科目のものでなければ（focus_category が None なら）使わない。
-        """
-        opened = []
-        for category in (focus_category(session), last.note.category if last else None):
-            if category is not None and category not in opened:
-                opened.append(category)
-        return opened
-
-    def post(self, request, *args, **kwargs):
-        raw = request.POST.get('minutes')
-        minutes = int(raw) if raw and raw.isdigit() else LearningRound.DEFAULT_MINUTES
-        if minutes not in LearningRound.MINUTE_CHOICES:
-            minutes = LearningRound.DEFAULT_MINUTES
-
-        # 空なら「おまかせ」
-        note = None
-        chosen = request.POST.get('note')
-        if chosen and chosen.isdigit():
-            note = LearningNote.objects.filter(pk=chosen).select_related('category').first()
-            if note is None:
-                messages.error(request, 'その解説は見つかりませんでした。')
-                return redirect('fe:learn_start')
-
-        session = _get_study_session(self.learner)
-        round_ = start_round(self.learner, session, minutes, note=note)
-        if round_ is None:
-            if note is not None:
-                messages.error(
-                    request,
-                    '「{}」に出題できる問題がありません。'.format(note.title),
-                )
-                return redirect('fe:learn_start')
-            focus = focus_category(session)
-            if focus is not None:
-                messages.error(
-                    request,
-                    '{}には、出題できる問題のある技術解説がまだありません。'
-                    'ダッシュボードの分野の指定を変えてください。'.format(focus.name),
-                )
-                return redirect('fe:learn_start')
-            messages.error(request, '解説がありません。')
-            return redirect('fe:learn_start')
-        return redirect('fe:learn_read', pk=round_.pk)
-
-
-class LearnReadView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
-    """読む段階。設問ではなく、分野ごとにまとめた技術解説を出す。"""
-
-    page_name = 'learn_read'
-
-    template_name = 'fe/learn_read.html'
-
-    def get(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        # 終わったラウンドの解説は、結果画面から読み返せるようにしておく
-        if round_.phase == LearningRound.PHASE_QUIZ:
-            return redirect('fe:learn_quiz', pk=round_.pk)
-
-        # 開き直した時点で読み上げは止まっているので、止めていた時間を動かす
-        if round_.phase == LearningRound.PHASE_READING:
-            round_.resume()
-        # 同じ小分類の解説は、まとめて続けて読む
-        notes = round_.notes
-        for note in notes:
-            note.audio_url = (
-                reverse('fe:note_audio', args=[speech.audio_name(note)])
-                if speech.has_audio(note) else None
-            )
-        return render(request, self.template_name, {
-            'round': round_,
-            'notes': notes,
-            'finished': round_.phase == LearningRound.PHASE_DONE,
-            # 途中で再読み込みしても、残り時間は開始時刻から数え直す
-            'remaining': round_.remaining_seconds(),
-        })
-
-    def post(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        if round_.phase == LearningRound.PHASE_READING:
-            round_.phase = LearningRound.PHASE_QUIZ
-            round_.save(update_fields=['phase'])
-        return redirect('fe:learn_quiz', pk=round_.pk)
-
-
-class LearnTimerView(LearnerRequiredMixin, generic.View):
-    """読む時間を止める・動かす。読み上げを再生している間は止める。
-
-    残り時間はサーバーで数えているので、止めたこともサーバーに残す。画面の
-    数字だけ止めると、再読み込みしたときに止めていた分が消える。
-    """
-
-    def post(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        if round_.phase == LearningRound.PHASE_READING:
-            if request.POST.get('state') == 'pause':
-                round_.pause()
-            else:
-                round_.resume()
-        return JsonResponse({'remaining': round_.remaining_seconds()})
-
-
 _RANGE = re.compile(r'^bytes=(\d*)-(\d*)$')
 
 
@@ -859,215 +354,7 @@ class NoteAudioView(LearnerRequiredMixin, generic.View):
         return response
 
 
-class LearnQuizView(CountPageViewMixin, LearnerRequiredMixin, generic.View):
-    """解く段階。読んだ範囲をそのまま1問1答で出す。"""
-
-    page_name = 'learn_quiz'
-
-    template_name = 'fe/learn_quiz.html'
-
-    def get(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        if round_.phase == LearningRound.PHASE_READING:
-            return redirect('fe:learn_read', pk=round_.pk)
-        if round_.phase == LearningRound.PHASE_DONE:
-            return redirect('fe:learn_result', pk=round_.pk)
-
-        item = current_item(round_)
-        if item is None:
-            return self._finish(round_)
-        return render(request, self.template_name, {
-            'round': round_, 'item': item, 'question': item.question,
-        })
-
-    def post(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        item = current_item(round_)
-        if item is None:
-            return self._finish(round_)
-
-        question = item.question
-        selected = request.POST.get('choice')
-        if selected is None or not selected.isdigit() or int(selected) >= len(question.choices):
-            messages.error(request, '選択肢を選んでください。')
-            return render(request, self.template_name, {
-                'round': round_, 'item': item, 'question': question,
-            })
-
-        selected = int(selected)
-        if item.is_correct is None:
-            is_correct = grade(item, selected)
-            # 演習と同じ記録に積む。学習モードで解いた分も理解度に反映する。
-            Attempt.objects.create(
-                learner=self.learner, question=question, category=question.category,
-                selected_index=selected, is_correct=is_correct,
-            )
-            record_progress(self.learner, question, is_correct)
-
-        return render(request, self.template_name, {
-            'round': round_, 'item': item, 'question': question,
-            'answered': True,
-            'selected': item.selected_index,
-            'selected_label': item.selected_label,
-            'is_correct': item.is_correct,
-        })
-
-    def _finish(self, round_):
-        if round_.phase != LearningRound.PHASE_DONE:
-            round_.phase = LearningRound.PHASE_DONE
-            round_.finished_at = timezone.now()
-            round_.save(update_fields=['phase', 'finished_at'])
-        return redirect('fe:learn_result', pk=round_.pk)
-
-
-class LearnNextView(LearnerRequiredMixin, generic.View):
-    """採点結果を見てから次の1問へ進む。"""
-
-    def post(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        item = current_item(round_)
-        if item is not None and item.is_correct is not None:
-            round_.position += 1
-            round_.save(update_fields=['position'])
-        if current_item(round_) is None:
-            round_.phase = LearningRound.PHASE_DONE
-            round_.finished_at = timezone.now()
-            round_.save(update_fields=['phase', 'finished_at'])
-            return redirect('fe:learn_result', pk=round_.pk)
-        return redirect('fe:learn_quiz', pk=round_.pk)
-
-
-class LearnAbandonView(LearnerRequiredMixin, generic.View):
-    """途中のラウンドをやめて学習モードトップへ戻る。
-
-    やめたラウンドは残さずに消す。続きから再開する道を用意しないので、
-    残しても「解答中」のまま溜まるだけで、どこからも開けない記録になる。
-    解いたぶんの解答履歴と分野別の理解度はラウンドとは別に積んであり、
-    消しても失われない。
-    """
-
-    def post(self, request, pk, *args, **kwargs):
-        round_ = get_object_or_404(LearningRound, pk=pk, learner=self.learner)
-        if round_.phase == LearningRound.PHASE_DONE:
-            # 終わったラウンドは結果を見返すためのものなので消さない
-            return redirect('fe:learn_result', pk=round_.pk)
-        round_.delete()
-        messages.info(request, 'ラウンドを中断しました。解いたぶんの記録は残っています。')
-        return redirect('fe:learn_start')
-
-
-class LearnResultView(CountPageViewMixin, LearnerRequiredMixin, generic.DetailView):
-    """ラウンドの結果。解いた問題を、正解したものも含めて全問読み返せるようにする。"""
-
-    page_name = 'learn_result'
-
-    template_name = 'fe/learn_result.html'
-    context_object_name = 'round'
-
-    def get_queryset(self):
-        return LearningRound.objects.filter(learner=self.learner)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        items = self.object.items.select_related(
-            'question', 'question__category', 'question__template'
-        )
-        context['items'] = items
-        context['missed'] = [i for i in items if i.is_correct is False]
-        return context
-
-
 # ---- 問題メール（fe.mail） ----
-
-def mail_context(learner):
-    """ダッシュボードの「問題メール」の欄に渡すもの。"""
-    if learner.is_temporary:
-        return {'mail_subscription': None}
-    mail.purge_pending()
-    subscription = MailSubscription.objects.filter(learner=learner).first()
-    picked = {
-        mail.topic_value(code, topic) for code, topic in (subscription.training_topics if subscription else [])
-    }
-    total = len(mail.marathon_questions()) if subscription and subscription.marathon else 0
-    return {
-        'mail_subscription': subscription,
-        'mail_topic_groups': mail.topic_choices(),
-        'mail_picked_topics': picked,
-        'mail_marathon_total': total,
-    }
-
-
-class MailSettingsView(LearnerRequiredMixin, generic.View):
-    """問題メールの登録と、送り方の変更。
-
-    未登録なら、アドレスに確認のメールを送る（登録はリンクを開いてから）。
-    登録済みならアドレスは変えず、送り方と特訓の小分類だけを変える。
-    action=send_stop なら、配信先へ解除用のメールを送る。
-    """
-
-    def check_learner(self, learner):
-        if learner.is_temporary:
-            raise PermissionDenied('問題メールには ID の登録が必要です。')
-
-    def post(self, request, *args, **kwargs):
-        back = dashboard_url(self.learner) + '#mail'
-        subscription, _ = MailSubscription.objects.get_or_create(learner=self.learner)
-
-        if request.POST.get('action') == 'send_stop':
-            if not subscription.email:
-                return redirect(back)
-            if not mail.can_send_link(subscription):
-                messages.error(request, '解除用のメールは送ったばかりです。少し時間をおいてください。')
-                return redirect(back)
-            mail.send_stop_link(subscription)
-            subscription.link_sent_at = timezone.now()
-            subscription.save(update_fields=['link_sent_at'])
-            messages.success(request, '登録されているアドレスに、解除用のメールを送りました。')
-            return redirect(back)
-
-        marathon = request.POST.get('marathon') == 'on'
-        training = request.POST.get('training') == 'on'
-        topics = mail.parse_topic_values(request.POST.getlist('topics'))
-        if training and not topics:
-            messages.error(request, '特訓では、小分類を1つ以上選んでください。')
-            return redirect(back)
-
-        email = request.POST.get('email', '').strip()
-        if not subscription.email:
-            if not (marathon or training):
-                messages.error(request, 'マラソンか特訓の、少なくとも一方を選んでください。')
-                return redirect(back)
-            try:
-                validate_email(email)
-            except ValidationError:
-                messages.error(request, 'メールアドレスの形が正しくありません。')
-                return redirect(back)
-            if not mail.can_send_link(subscription):
-                messages.error(request, '確認のメールは送ったばかりです。少し時間をおいてください。')
-                return redirect(back)
-
-        if topics != subscription.training_topics:
-            # 選び直したら、選んだ小分類の最初から
-            subscription.training_index = subscription.training_offset = 0
-        subscription.marathon = marathon
-        subscription.training = training
-        subscription.training_topics = topics
-
-        if subscription.email:
-            subscription.save()
-            messages.success(request, '問題メールの送り方を変えました。')
-            return redirect(back)
-
-        subscription.pending_email = email
-        subscription.link_sent_at = timezone.now()
-        subscription.save()
-        mail.send_confirmation(subscription)
-        messages.success(
-            request,
-            '確認のメールを送りました。メールのリンクを開いて「受け取る」を押すと登録されます。',
-        )
-        return redirect(back)
-
 
 @method_decorator(login_not_required, name='dispatch')
 class MailConfirmView(generic.View):
@@ -1120,11 +407,10 @@ class MailStopView(generic.View):
 @method_decorator(login_not_required, name='dispatch')
 @method_decorator(csrf_exempt, name='dispatch')
 class SendMailsView(generic.View):
-    """問題メールの送信を、GitHub Actions の定期実行から起こす入口。
+    """問題メールの送信を、GitHub Actions（.github/workflows/fe-mails.yml）の定期実行から起こす入口（9〜18時の毎時）。
 
-    Azure App Service には cron が無いため、毎日0時に POST で叩かせる。
-    ログインの代わりに共有トークン（settings.FE_MAIL_TOKEN）で確かめる。
-    countdown の SendRemindersView と同じ形。
+    ログインの代わりに共有トークン（settings.FE_MAIL_TOKEN）で確かめ、時間帯（slot：h09〜h18）と
+    予定の日付（date、YYYY-MM-DD。省略可）を受け取る。日付は今日の前後1日だけ受け付ける。
     """
 
     def post(self, request):
@@ -1136,6 +422,81 @@ class SendMailsView(generic.View):
         if not hmac.compare_digest(provided, expected):
             logger.warning('問題メールの送信が、不正なトークンで試みられました。')
             return JsonResponse({'detail': '認証できません。'}, status=403)
-        result = mail.send_daily()
-        logger.info('問題メールを送りました（%s）', result)
+        slot = request.POST.get('slot') or request.GET.get('slot', '')
+        if slot not in HOURLY_SLOTS:
+            return JsonResponse({'detail': '時間帯（slot）が正しくありません。'}, status=400)
+        date_text = request.POST.get('date') or request.GET.get('date', '')
+        date = None
+        if date_text:
+            try:
+                date = datetime.date.fromisoformat(date_text)
+            except ValueError:
+                return JsonResponse({'detail': '日付（date）が正しくありません。'}, status=400)
+            if abs((date - timezone.localdate()).days) > 1:
+                return JsonResponse({'detail': '日付（date）が今日から離れすぎています。'}, status=400)
+        result = mail.send_slot(slot, today=date)
+        logger.info('問題メール（%s）を送りました（%s）', slot, result)
         return JsonResponse(result)
+
+
+@method_decorator(login_not_required, name='dispatch')
+class MailAnswerView(generic.View):
+    """問題メールの1問の解答ページ（/fe/m/<code>/）。ログインも ID の入力もなしで開ける。
+
+    メールに載せた問題と選択肢をもう一度出し、選ぶと正誤・解説を出して、メールを送った
+    ID の解答履歴と分野別の理解度に記録する（fe.mail.record_answer。1問につき1回だけ）。
+    ID なしで登録したメールなら、みんなの集計にだけ数える。
+    記号はランダムで、メールを受け取った人にしか分からない。画面は hirahira_room の X の解答ページと同じ作り。
+    期限（FE_MAIL_KEEP_DAYS）を過ぎた問題と存在しない記号には、同じ案内ページを出す。
+    """
+
+    template_name = 'fe/mail_answer.html'
+
+    def dispatch(self, request, code, *args, **kwargs):
+        self.item = (
+            MailQuestion.objects.filter(code=code)
+            .select_related('question__category', 'subscription__learner').first()
+        )
+        if self.item is None or not mail.is_open(self.item):
+            return render(request, self.template_name, self.base_context(None), status=404)
+        return super().dispatch(request, code, *args, **kwargs)
+
+    def base_context(self, question):
+        return {
+            'post': question,
+            # 「対策を続ける」の行き先はダッシュボード（ユーザーの指示）
+            'fe_url': settings.SITE_URL.rstrip('/') + reverse('fe:index'),
+            'citation': citation(question.source) if question else '',
+            'expired_text': 'メールの問題に答えるページは、送ってから{}日で公開を終えています。'.format(
+                settings.FE_MAIL_KEEP_DAYS),
+        }
+
+    def answered_context(self):
+        learner = self.item.subscription.learner
+        context = self.base_context(self.item.question)
+        context.update({
+            'answered': True,
+            'selected': self.item.selected_index,
+            'is_correct': self.item.is_correct,
+            'recorded_code': learner.code if learner else '',
+            'recorded_open': learner is None,
+        })
+        return context
+
+    def get(self, request, code):
+        if self.item.selected_index is not None:
+            return render(request, self.template_name, self.answered_context())
+        return render(request, self.template_name, self.base_context(self.item.question))
+
+    def post(self, request, code):
+        question = self.item.question
+        selected = request.POST.get('choice', '')
+        if self.item.selected_index is None and (
+                not selected.isdigit() or int(selected) >= len(question.choices)):
+            context = self.base_context(question)
+            context['error'] = '選択肢を選んでください。'
+            return render(request, self.template_name, context)
+        if self.item.selected_index is None:
+            mail.record_answer(self.item, int(selected))
+        # 答え直しても、最初の答えのまま見せる
+        return render(request, self.template_name, self.answered_context())

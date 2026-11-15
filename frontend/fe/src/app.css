@@ -1,0 +1,1298 @@
+/* 基本情報（fe）の画面の見た目。bk_houmu3・countdown（frontend/countdown/src/app.css）に合わせた。
+   土台は base.html の Bootstrap。色はすべて下の変数から取り、画面はいつもダークモード
+   （OS の明るい・暗いの設定には合わせない）。countdown と同じ色・角丸・余白・見出しの帯にする。 */
+
+:root {
+  --fe-accent: #8fb3ec;
+  --fe-accent-soft: #1d2a3d;
+  --fe-bg: #111418;
+  --fe-surface: #1a1e24;
+  --fe-surface-2: #22272e;
+  --fe-text: #e6e8eb;
+  --fe-muted: #9aa3ad;
+  --fe-border: #2e343c;
+  --fe-good: #8cc29b;
+  --fe-good-soft: #1c2e22;
+  --fe-warn: #f0a050;
+  --fe-warn-soft: #3a2a17;
+  --fe-bad: #ff8a80;
+  --fe-bad-soft: #3a1f1d;
+  --fe-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  /* 余白。部品どうし（カードの間）・セクションどうし・カードの内側 */
+  --fe-gap: 1rem;
+  --fe-section-gap: 2.75rem;
+  --fe-pad: 1.25rem;
+  /* フォームの部品もブラウザの暗い見た目にする */
+  color-scheme: dark;
+}
+
+/* この画面だけで読む CSS なので、ページ全体の背景も変えてよい */
+body,
+#wrapper {
+  background: var(--fe-bg);
+}
+
+/* base.html のフッター（py-5）は、この画面では詰める */
+#wrapper > footer {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+
+.fe-app {
+  color: var(--fe-text);
+}
+
+.fe-muted {
+  color: var(--fe-muted);
+}
+
+/* ボタンの形のリンク（<a class="btn">）は、ボタンの色のままにする */
+.fe-app a:not(.btn) {
+  color: var(--fe-accent);
+}
+
+/* ---- Bootstrap の部品を、変数の色に合わせる ---- */
+
+.fe-app .form-select,
+.fe-app .form-control {
+  background-color: var(--fe-surface-2);
+  border-color: var(--fe-border);
+  color: var(--fe-text);
+}
+
+.fe-app .form-label {
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--fe-muted);
+}
+
+.fe-app .form-check-input {
+  background-color: var(--fe-surface-2);
+  border-color: #4a525c;
+}
+
+/* :indeterminate はチェックボックスだけ（どれも選ばれていないラジオボタンも :indeterminate に当たる） */
+.fe-app .form-check-input:checked,
+.fe-app .form-check-input[type="checkbox"]:indeterminate {
+  background-color: #3d6fbf;
+  border-color: #3d6fbf;
+}
+
+.fe-app .btn-primary {
+  --bs-btn-bg: #3d6fbf;
+  --bs-btn-border-color: #3d6fbf;
+  --bs-btn-hover-bg: #4a7ccc;
+  --bs-btn-hover-border-color: #4a7ccc;
+  --bs-btn-active-bg: #5a8ad6;
+  --bs-btn-active-border-color: #5a8ad6;
+  --bs-btn-disabled-bg: #2c4d80;
+  --bs-btn-disabled-border-color: #2c4d80;
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+}
+
+.fe-app .btn-outline-primary {
+  --bs-btn-color: var(--fe-accent);
+  --bs-btn-border-color: #3b5378;
+  --bs-btn-hover-color: var(--fe-bg);
+  --bs-btn-hover-bg: var(--fe-accent);
+  --bs-btn-hover-border-color: var(--fe-accent);
+  --bs-btn-active-color: var(--fe-bg);
+  --bs-btn-active-bg: var(--fe-accent);
+  --bs-btn-active-border-color: var(--fe-accent);
+  --bs-btn-disabled-color: #5a6b85;
+  --bs-btn-disabled-border-color: #2e3a4c;
+  --bs-btn-bg: transparent;
+}
+
+.fe-app .btn-outline-secondary {
+  --bs-btn-color: var(--fe-muted);
+  --bs-btn-border-color: var(--fe-border);
+  --bs-btn-hover-color: var(--fe-text);
+  --bs-btn-hover-bg: var(--fe-surface-2);
+  --bs-btn-hover-border-color: #4a525c;
+  /* 選んでいる速さなど（.active）。オンは青 */
+  --bs-btn-active-color: var(--fe-bg);
+  --bs-btn-active-bg: var(--fe-accent);
+  --bs-btn-active-border-color: var(--fe-accent);
+  --bs-btn-bg: transparent;
+}
+
+.fe-app .btn-link {
+  color: var(--fe-accent);
+}
+
+/* ボタンの色の決まり（useButtonFlash.ts）。
+   スマホ（マウスの無い端末）では、指で押したボタンが「マウスが乗っている」状態のまま残り、
+   塗りが消えない。そこでマウスの無い端末では、乗っているときの塗りを出さない。
+   オンの塗り（.active）と、押した瞬間の塗り（.fe-flash）は残す。 */
+@media (hover: none) {
+  .fe-app .btn:hover:not(.active):not(.fe-flash) {
+    color: var(--bs-btn-color);
+    background-color: var(--bs-btn-bg);
+    border-color: var(--bs-btn-border-color);
+  }
+}
+
+.fe-app .btn.fe-flash {
+  color: var(--bs-btn-active-color);
+  background-color: var(--bs-btn-active-bg);
+  border-color: var(--bs-btn-active-border-color);
+  transition: none;
+}
+
+/* ---- 枠組み。中身の幅を絞って、横の空きを減らす（countdown と同じ） ---- */
+
+.fe-main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.fe-header {
+  background-color: #1f3f70;
+}
+
+.fe-header-inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  color: #fff;
+}
+
+.fe-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.fe-app .fe-title a {
+  color: #fff;
+  text-decoration: none;
+}
+
+.fe-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.fe-app .fe-nav a {
+  color: #fff;
+  text-decoration: none;
+  opacity: 0.9;
+}
+
+/* いまの画面は薄くする（押しても同じ画面なので） */
+.fe-app .fe-nav a.active {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.fe-body {
+  padding-top: 2.25rem;
+  padding-bottom: 2.5rem;
+}
+
+.fe-section {
+  margin-bottom: var(--fe-section-gap);
+}
+
+.fe-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--fe-muted);
+  margin-bottom: 0.75rem;
+}
+
+.fe-card {
+  padding: var(--fe-pad);
+  margin-bottom: var(--fe-gap);
+  background: var(--fe-surface);
+  border: 1px solid var(--fe-border);
+  border-radius: 0.75rem;
+  box-shadow: var(--fe-shadow);
+}
+
+.fe-card-title {
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.fe-warning {
+  padding: 0.75rem 1rem;
+  border-radius: 0.6rem;
+  background: var(--fe-warn-soft);
+  color: var(--fe-warn);
+}
+
+.fe-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--fe-bad);
+}
+
+.fe-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--fe-surface-2);
+  border: 1px solid var(--fe-border);
+  color: var(--fe-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.fe-badge-strong {
+  background: var(--fe-accent-soft);
+  border-color: #3b5378;
+  color: var(--fe-accent);
+}
+
+.fe-badge-bad {
+  background: var(--fe-bad-soft);
+  border-color: #6b3632;
+  color: var(--fe-bad);
+}
+
+.fe-good { color: var(--fe-good); }
+.fe-warn { color: var(--fe-warn); font-weight: 700; }
+.fe-bad { color: var(--fe-bad); font-weight: 700; }
+
+/* 正答率の帯 */
+.fe-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fe-surface-2);
+  overflow: hidden;
+}
+
+.fe-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fe-accent);
+}
+
+.fe-bar > span.fe-bar-bad { background: var(--fe-bad); }
+.fe-bar > span.fe-bar-warn { background: var(--fe-warn); }
+.fe-bar > span.fe-bar-good { background: var(--fe-good); }
+
+/* ---- 出題設定 ---- */
+
+.fe-settings {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1.2fr auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.fe-settings-submit {
+  min-width: 5rem;
+}
+
+/* ダッシュボードの「いまの設定で解く」「学習モード」 */
+.fe-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* ---- ダッシュボード ---- */
+
+.fe-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--fe-gap);
+}
+
+.fe-tiles .fe-card {
+  margin-bottom: 0;
+}
+
+.fe-tile-label {
+  font-size: 0.8rem;
+  color: var(--fe-muted);
+}
+
+.fe-tile-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--fe-accent);
+  line-height: 1.3;
+}
+
+.fe-tile-value small {
+  font-size: 0.85rem;
+}
+
+.fe-tile-sub {
+  font-size: 0.8rem;
+  color: var(--fe-muted);
+}
+
+.fe-weak-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.fe-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fe-chip {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--fe-surface);
+  border: 1px solid var(--fe-border);
+  font-size: 0.8rem;
+}
+
+.fe-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--fe-gap);
+}
+
+.fe-fields .fe-card {
+  margin-bottom: 0;
+}
+
+.fe-daily {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  height: 120px;
+}
+
+.fe-daily-col {
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.fe-daily-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--fe-accent);
+}
+
+.fe-daily-day {
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  color: var(--fe-muted);
+}
+
+/* ---- 正答率の表 ---- */
+
+.fe-table-wrap {
+  overflow-x: auto;
+  padding: 0.5rem 0.75rem;
+}
+
+.fe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  /* 表はページの文字色を引き継がないことがある（互換モード）ので、はっきり付ける */
+  color: var(--fe-text);
+}
+
+.fe-table th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--fe-muted);
+  padding: 0.4rem 0.35rem;
+  border-bottom: 1px solid var(--fe-border);
+  white-space: nowrap;
+}
+
+.fe-table td {
+  padding: 0.5rem 0.35rem;
+  border-bottom: 1px solid var(--fe-border);
+  vertical-align: middle;
+}
+
+.fe-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.fe-row-weak td {
+  background: var(--fe-warn-soft);
+}
+
+.fe-col-bar {
+  width: 18%;
+  min-width: 4rem;
+}
+
+/* ---- 履歴 ---- */
+
+.fe-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fe-gap);
+}
+
+.fe-mark {
+  display: inline-block;
+  min-width: 1.4rem;
+  margin-right: 0.4rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 800;
+}
+
+.fe-mark-good { background: var(--fe-good-soft); color: var(--fe-good); }
+.fe-mark-bad { background: var(--fe-bad-soft); color: var(--fe-bad); }
+
+.fe-history-stem {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fe-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+/* ---- 1問1答 ---- */
+
+.fe-quiz-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.fe-stem {
+  white-space: pre-wrap;
+  line-height: 1.9;
+  font-size: 1.02rem;
+}
+
+.fe-verdict {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.fe-verdict-mark {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-right: 0.6rem;
+}
+
+.fe-verdict-good { background: var(--fe-good-soft); border-color: #2f5a3b; color: var(--fe-good); }
+.fe-verdict-bad { background: var(--fe-bad-soft); border-color: #6b3632; color: var(--fe-bad); }
+
+.fe-choices {
+  border: 1px solid var(--fe-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+  background: var(--fe-surface);
+}
+
+.fe-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  margin: 0;
+  border-bottom: 1px solid var(--fe-border);
+  cursor: pointer;
+}
+
+.fe-choice:last-child {
+  border-bottom: 0;
+}
+
+.fe-choice .form-check-input {
+  flex: 0 0 auto;
+  margin-top: 0.3rem;
+}
+
+.fe-choice-label {
+  flex: 0 0 auto;
+  min-width: 1.8rem;
+  font-weight: 700;
+  color: var(--fe-accent);
+}
+
+.fe-choice-text {
+  flex: 1 1 auto;
+  line-height: 1.7;
+}
+
+.fe-choice-note {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.fe-choice-picked { background: var(--fe-accent-soft); }
+.fe-choice-good { background: var(--fe-good-soft); color: var(--fe-good); }
+.fe-choice-good .fe-choice-label { color: var(--fe-good); }
+.fe-choice-bad { background: var(--fe-bad-soft); color: var(--fe-bad); }
+.fe-choice-bad .fe-choice-label { color: var(--fe-bad); }
+
+@media (hover: hover) {
+  .fe-choice:hover { background: var(--fe-surface-2); }
+}
+
+.fe-source {
+  font-size: 0.82rem;
+  color: var(--fe-muted);
+  margin-bottom: 1.5rem;
+}
+
+.fe-explanation {
+  padding-left: 1rem;
+  margin-bottom: 1.5rem;
+  border-left: 4px solid #3d6fbf;
+  line-height: 1.9;
+}
+
+.fe-explanation-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--fe-accent);
+}
+
+.fe-quiz-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+/* 再生バー（1問1答） */
+.fe-player-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.fe-player-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--fe-accent);
+}
+
+.fe-rates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* ---- 聞き流し ---- */
+
+.fe-listen {
+  text-align: center;
+  padding: 2rem 1.25rem;
+}
+
+.fe-listen-phase {
+  min-height: 2.2rem;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--fe-accent);
+}
+
+.fe-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fe-controls-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.fe-listen-rates {
+  margin-top: 1.75rem;
+}
+
+.fe-pick-field {
+  padding: 0.75rem 0;
+}
+
+.fe-pick-field + .fe-pick-field {
+  border-top: 1px solid var(--fe-border);
+}
+
+.fe-pick-category {
+  margin: 0.4rem 0 0 1.5rem;
+}
+
+.fe-pick-questions {
+  margin: 0.25rem 0 0.25rem 0.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--fe-border);
+}
+
+/* ---- 読み込み中（スケルトン） ---- */
+
+.fe-skeleton {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.fe-bone {
+  height: 0.85rem;
+  border-radius: 0.3rem;
+  background: linear-gradient(90deg, var(--fe-surface-2) 25%, #2b313a 37%, var(--fe-surface-2) 63%);
+  background-size: 400% 100%;
+  animation: fe-shimmer 1.4s ease infinite;
+}
+
+@keyframes fe-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* ---- トースト（countdown と同じ） ---- */
+
+.fe-toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.fe-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem 0.7rem;
+  overflow: hidden;
+  border: 1px solid var(--fe-border);
+  border-radius: 0.6rem;
+  background: #262b33;
+  color: #f1f3f5;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  pointer-events: auto;
+  animation: fe-toast-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fe-toast-icon { flex: 0 0 auto; }
+.fe-toast-success .fe-toast-icon { color: #7bd88f; }
+.fe-toast-info .fe-toast-icon { color: #8fb3ec; }
+.fe-toast-danger .fe-toast-icon { color: #ff8a80; }
+
+.fe-toast-text {
+  flex: 1 1 auto;
+  font-size: 0.88rem;
+}
+
+.fe-toast-action {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #8fb3ec;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.fe-toast-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #adb5bd;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.fe-toast-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: rgb(255 255 255 / 0.35);
+  transform-origin: left;
+  animation-name: fe-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes fe-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes fe-toast-in {
+  from { transform: translateY(1rem); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* ---- スマホ ---- */
+
+@media (max-width: 767.98px) {
+  .fe-main {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .fe-body {
+    padding-top: 1.75rem;
+  }
+
+  /* スマホは画面が狭いので、余白は少しだけ控えめにする */
+  :root {
+    --fe-gap: 0.875rem;
+    --fe-section-gap: 2.25rem;
+    --fe-pad: 1.1rem;
+  }
+
+  .fe-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .fe-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .fe-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .fe-choice {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .fe-toasts {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+  }
+}
+
+/* ================================================================ fe だけで使う部品 */
+
+.fe-accent { color: var(--fe-accent); }
+
+.fe-rule {
+  margin: 1rem 0;
+  border-color: var(--fe-border);
+  opacity: 1;
+}
+
+.fe-rule-wide {
+  margin: 3rem 0 2rem;
+}
+
+/* 見出しの右の、いまの ID */
+.fe-id {
+  display: inline-flex;
+  align-items: center;
+  color: #c3d6ee;
+}
+
+.fe-id strong {
+  color: #fff;
+  margin-left: 0.25rem;
+}
+
+.fe-app .fe-id a.btn {
+  font-size: 0.75rem;
+}
+
+.fe-page-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+
+/* 読み物の幅。ID の入力欄は狭く、学習モードは少し広く */
+.fe-narrow {
+  max-width: 34rem;
+  margin: 0 auto;
+}
+
+.fe-narrow-wide {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+/* 補足の囲み（明るい色の注記の代わり） */
+.fe-note {
+  padding: 0.75rem 1rem;
+  margin-bottom: var(--fe-gap);
+  border: 1px solid var(--fe-border);
+  border-radius: 0.6rem;
+  background: var(--fe-surface-2);
+}
+
+.fe-note-info {
+  background: var(--fe-accent-soft);
+  border-color: #3b5378;
+  color: var(--fe-accent);
+}
+
+.fe-prose p:last-of-type {
+  margin-bottom: 0;
+}
+
+.fe-prose p + .btn {
+  margin-top: 1rem;
+}
+
+.fe-prose p {
+  line-height: 1.85;
+}
+
+.fe-label-strong {
+  font-weight: 700;
+  color: var(--fe-text) !important;
+  font-size: 0.95rem !important;
+}
+
+.fe-field-error {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--fe-bad);
+}
+
+.fe-app .form-control.is-invalid {
+  border-color: var(--fe-bad);
+}
+
+/* ---- ダッシュボード ---- */
+
+.fe-invite {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background: var(--fe-accent-soft);
+  border-color: #3b5378;
+}
+
+.fe-invite-title {
+  font-weight: 700;
+  color: var(--fe-accent);
+  margin-bottom: 0.25rem;
+}
+
+.fe-invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fe-tiles + .fe-card {
+  margin-top: var(--fe-gap);
+}
+
+.fe-pass {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fe-pass-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fe-mail-email {
+  max-width: 24rem;
+}
+
+/* ダッシュボードの「1問1答」「学習モード」。「ID を作って記録を残す」と同じ小さいボタンを縦に並べ、
+   右にそれぞれの短い説明を添える。ボタンは同じ幅にそろえる。スマホでは説明をボタンの下に回す */
+.fe-start-list {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+  margin: 0 auto;
+}
+
+.fe-start-row {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (max-width: 575.98px) {
+  .fe-start-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+}
+
+/* ---- 1問1答・学習モードの問題 ---- */
+
+/* 1問1答の冒頭の「出題設定」。左端に、ふつうの字の倍の大きさで */
+.fe-quiz-top {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.fe-app .fe-quiz-top .btn {
+  font-size: 1.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fe-stem-b {
+  font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+  font-size: 0.95rem;
+}
+
+.fe-stem-small {
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+/* 図は冊子のまま白地で見せる（反転すると読めない） */
+.fe-figure {
+  margin: 1rem 0 0;
+}
+
+.fe-figure img,
+.fe-choice-figure {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  padding: 0.5rem;
+  background: #fff;
+  border-radius: 0.4rem;
+}
+
+.fe-choice-figure {
+  margin-top: 0.5rem;
+  padding: 0.25rem;
+}
+
+.fe-choice {
+  cursor: default;
+}
+
+.fe-choice-pickable {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .fe-choice:not(.fe-choice-pickable):hover { background: inherit; }
+  .fe-choice-good:hover { background: var(--fe-good-soft) !important; }
+  .fe-choice-bad:hover { background: var(--fe-bad-soft) !important; }
+}
+
+.fe-learn-explanation {
+  background: var(--fe-accent-soft);
+  border-color: #3b5378;
+}
+
+/* ---- 分野別正答率 ---- */
+
+.fe-subject-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ---- このアプリについて ---- */
+
+.fe-notice ul {
+  padding-left: 1.2rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--fe-text);
+}
+
+.fe-notice li {
+  margin-bottom: 0.5rem;
+  line-height: 1.75;
+}
+
+.fe-notice-title {
+  font-weight: 700;
+}
+
+.fe-notice .small {
+  color: var(--fe-muted);
+  line-height: 1.75;
+}
+
+/* ---- 学習モード：入口 ---- */
+
+.fe-pick {
+  border: 1px solid var(--fe-border);
+  border-radius: 0.6rem;
+  overflow: hidden;
+}
+
+.fe-pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.fe-pick-auto {
+  padding: 0.8rem 0.9rem;
+  border-bottom: 1px solid var(--fe-border);
+}
+
+.fe-pick-off {
+  color: var(--fe-muted);
+  cursor: default;
+}
+
+/* 選んでいる行は目立たせる */
+.fe-pick-on {
+  background: var(--fe-accent-soft);
+  box-shadow: inset 3px 0 0 var(--fe-accent);
+  font-weight: 700;
+}
+
+.fe-pick-group + .fe-pick-group {
+  border-top: 1px solid var(--fe-border);
+}
+
+.fe-pick-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  border: 0;
+  background: transparent;
+  color: var(--fe-text);
+  text-align: left;
+}
+
+/* 選んだ行を含む中分類も目立たせる（畳んでいても分かるように） */
+.fe-pick-here > .fe-pick-summary {
+  background: var(--fe-surface-2);
+}
+
+.fe-pick-entries {
+  background: var(--fe-bg);
+}
+
+@media (hover: hover) {
+  .fe-pick-row:not(.fe-pick-off):hover,
+  .fe-pick-summary:hover {
+    background: var(--fe-surface-2);
+  }
+}
+
+.fe-minutes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.fe-rounds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.fe-rounds li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--fe-border);
+}
+
+.fe-rounds li:last-child {
+  border-bottom: 0;
+}
+
+.fe-app .fe-rounds a {
+  text-decoration: none;
+}
+
+/* ---- 学習モード：読む ---- */
+
+.fe-timer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+
+/* 読み進めても残り時間が見えるよう、上に貼り付ける */
+.fe-sticky {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 10;
+}
+
+.fe-timer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.fe-timer {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--fe-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.fe-note-article {
+  margin-top: 1.5rem;
+}
+
+.fe-note-next {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--fe-border);
+}
+
+.fe-note-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+
+.fe-note-audio {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.fe-note-body {
+  white-space: pre-wrap;
+  line-height: 2;
+  font-size: 1.02rem;
+}
+
+.fe-note-source {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--fe-border);
+}
+
+/* ---- 学習モード：解く・結果 ---- */
+
+.fe-round-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.fe-round-bar {
+  margin-bottom: 1.5rem;
+}
+
+.fe-abandon {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--fe-border);
+}
+
+.fe-result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background: var(--fe-accent-soft);
+  border-color: #3b5378;
+}
+
+.fe-result-score {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--fe-accent);
+  line-height: 1.2;
+}
+
+.fe-result-score small {
+  font-size: 1.1rem;
+}
+
+@media (max-width: 767.98px) {
+  .fe-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .fe-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 動きを減らす設定のときは、動きを止める */
+@media (prefers-reduced-motion: reduce) {
+  .fe-app *,
+  .fe-toast {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
