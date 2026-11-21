@@ -98,3 +98,16 @@ def summary(days=30):
         ],
         'grand_total': sum(t['with_id'] + t['without_id'] for t in totals.values()),
     }
+
+
+def console_counts(day):
+    """運営コンソール（console.views）に出す、その日の画面ごとの回数。[(画面の名前, 回数), …]
+
+    学習の画面は React の中で切りかわり、サイト全体のページビュー（パスごと）では数えきれないので、
+    コンソールはこちらの数を使う。ID の有無は足し合わせる。
+    """
+    counts = {page: 0 for page in PAGES}
+    for row in PageViewCount.objects.filter(date=day):
+        if row.page in counts:
+            counts[row.page] += row.count
+    return [(label, counts[page]) for page, label in PAGES.items()]

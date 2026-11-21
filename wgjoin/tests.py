@@ -189,6 +189,15 @@ class JoinFlowTests(TestCase):
         check.assert_not_called()
         self.assertEqual(len(outbox.outbox), 2)
 
+    def test_buttons_are_counted_per_wg(self):
+        """押された回数だけを WG ごとに数える（コンソールのページビュー）。誰が押したかは残さない。"""
+        from console.models import ActionCount
+        self.submit()
+        self.submit(email='someone@gmail.com')  # 通らなくても押された回数には入る
+        self.client.post(reverse('wgjoin:verify', args=[make_link_token(self.wg.pk)]))
+        counts = dict(ActionCount.objects.values_list('name', 'count'))
+        self.assertEqual(counts, {f'wg_join_send:{self.wg.pk}': 2, f'wg_join_confirm:{self.wg.pk}': 1})
+
     def test_link_opens_a_confirmation_and_the_button_goes_to_github(self):
         self.submit()
         # 開いただけでは何もしない（メールのリンクを先に開いて確かめる仕組みのため）

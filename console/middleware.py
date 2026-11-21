@@ -1,5 +1,6 @@
 # console/middleware.py
 
+import html
 import logging
 import re
 
@@ -29,6 +30,8 @@ class PageViewMiddleware:
         re.IGNORECASE,
     )
 
+    TITLE_PATTERN = re.compile(rb'<title[^>]*>(.*?)</title>', re.IGNORECASE | re.DOTALL)
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -36,10 +39,20 @@ class PageViewMiddleware:
         response = self.get_response(request)
         if self.should_count(request, response):
             try:
-                PageView.record(timezone.localdate(), request.path[:255])
+                PageView.record(timezone.localdate(), request.path[:255], self.title_of(response))
             except Exception:
                 logger.exception('ページビューの記録に失敗しました')
         return response
+
+    def title_of(self, response):
+        """HTML の <title>。コンソールでページ名にする。取れなければ空。"""
+        if getattr(response, 'streaming', False):
+            return ''
+        match = self.TITLE_PATTERN.search(response.content[:20000])
+        if not match:
+            return ''
+        text = match.group(1).decode(response.charset or 'utf-8', errors='replace')
+        return ' '.join(html.unescape(text).split())
 
     def should_count(self, request, response):
         if request.method != 'GET' or response.status_code != 200:

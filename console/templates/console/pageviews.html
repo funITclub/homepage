@@ -11,98 +11,80 @@
         </div>
 
         <p class="editor-note">
-            公開ページが表示された回数です。ログイン中の運営の閲覧・クローラー・エラーのページは数えていません。<br>
-            誰が見たか（IP など）は記録していません。
+            今日（{{ day|date:"Y-m-d (D)" }}）、公開ページが表示された回数です。合計 <strong>{{ total }}</strong> 回。<br>
+            WG・成果物は、これまでに見られたことのあるページをすべて出します（今日まだのページは 0）。<br>
+            ログイン中の運営の閲覧・クローラー・エラーのページは数えていません。誰が見たか（IP など）は記録していません。
         </p>
 
-        <nav class="pv-periods" aria-label="期間">
-            {% for p in periods %}
-            <a href="?days={{ p }}" {% if p == days %}class="is-active" aria-current="page"{% endif %}>{{ p }}日</a>
-            {% endfor %}
-        </nav>
-
-        <div class="grid-3 pv-summary">
-            <div class="card menu-card">
-                <span class="menu-label">// 合計（{{ days }}日）</span>
-                <span class="menu-count">{{ total }}</span>
-                <span class="menu-desc">{{ start|date:"Y-m-d" }} 〜 {{ end|date:"Y-m-d" }}</span>
-            </div>
-            <div class="card menu-card">
-                <span class="menu-label">// 1日あたり</span>
-                <span class="menu-count">{{ average }}</span>
-                <span class="menu-desc">今日は {{ today }} 回</span>
-            </div>
-            <div class="card menu-card">
-                <span class="menu-label">// 見られたページ</span>
-                <span class="menu-count">{{ page_count }}</span>
-                <span class="menu-desc">期間中に1回以上表示されたパスの数</span>
-            </div>
-        </div>
-
-        <h2 class="pv-heading">WG と成果物（{{ days }}日）</h2>
-        <p class="editor-note">
-            {{ start|date:"Y-m-d" }} 〜 {{ end|date:"Y-m-d" }} の {{ days }}日分です。
-            WG・成果物のアプリ（wg/・works/ に載っているもの）ごとに、その下のページの回数をまとめています。
-            名前は WG一覧・成果物一覧に登録した URL から引いています。
-        </p>
-        {% for label, app_rows in app_groups %}
-        <h3 class="pv-subheading">{{ label }}・{{ days }}日</h3>
-        <div class="card">
-            {% include "console/_app_views.html" %}
-        </div>
-        {% endfor %}
-
-        <h2 class="pv-heading">ページごと（{{ days }}日）</h2>
-        <p class="editor-note">
-            {{ start|date:"Y-m-d" }} 〜 {{ end|date:"Y-m-d" }} の {{ days }}日分です。
-        </p>
-        <div class="card">
-            {% if ranking %}
-            <div class="editor-table-wrap">
-                <table class="editor-table">
-                    <thead>
-                        <tr>
-                            <th>順</th>
-                            <th>パス</th>
-                            <th class="pv-num">回数（{{ days }}日）</th>
-                            <th class="pv-bar-col"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in ranking %}
-                        <tr>
-                            <td class="editor-date">{{ forloop.counter }}</td>
-                            <td class="editor-date pv-path"><a href="{{ row.path }}" target="_blank" rel="noopener">{{ row.path }}</a></td>
-                            <td class="editor-date pv-num">{{ row.n }}</td>
-                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ row.percent }}%"></span></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="editor-empty">この期間の記録はまだありません。</p>
-            {% endif %}
-        </div>
-
-        <h2 class="pv-heading">日ごと</h2>
         <div class="card">
             <div class="editor-table-wrap">
-                <table class="editor-table">
+                <table class="editor-table pv-table">
                     <thead>
                         <tr>
-                            <th>日付</th>
+                            <th>ページ</th>
                             <th class="pv-num">回数</th>
                             <th class="pv-bar-col"></th>
                         </tr>
                     </thead>
+
                     <tbody>
-                        {% for row in daily %}
+                        <tr class="pv-section"><th colspan="3">クラブへの参加</th></tr>
+                        {% for page in join_pages %}
                         <tr>
-                            <td class="editor-date">{{ row.date|date:"Y-m-d (D)" }}</td>
-                            <td class="editor-date pv-num">{{ row.count }}</td>
-                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ row.percent }}%"></span></td>
+                            <td class="pv-page">{{ page.name }}</td>
+                            <td class="editor-date pv-num">{{ page.n }}</td>
+                            <td class="pv-bar-col"></td>
                         </tr>
+                        {% endfor %}
+                        <tr>
+                            <td class="pv-page">「申し込む」ボタンが押された回数</td>
+                            <td class="editor-date pv-num">{{ join_applied }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                    </tbody>
+
+                    {% for label, groups in app_groups %}
+                    <tbody>
+                        <tr class="pv-section"><th colspan="3">{{ label }}</th></tr>
+                        {% for group in groups %}
+                        <tr class="pv-group">
+                            <td>{{ group.title }}</td>
+                            <td class="editor-date pv-num">{{ group.n }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                        {% for row in group.join %}
+                        <tr{% if not row.n %} class="pv-zero"{% endif %}>
+                            <td class="pv-page">参加：{{ row.name }}</td>
+                            <td class="editor-date pv-num">{{ row.n }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                        {% endfor %}
+                        {% for app in group.apps %}{% for page in app.pages %}
+                        <tr{% if not page.n %} class="pv-zero"{% endif %}>
+                            <td class="pv-page">{{ page.name }}</td>
+                            <td class="editor-date pv-num">{{ page.n }}</td>
+                            <td class="pv-bar-col">{% if page.n %}<span class="pv-bar" style="width: {{ page.percent }}%"></span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}{% endfor %}
+                        {% if not group.page_count and group.apps %}
+                        <tr class="pv-zero"><td class="pv-page" colspan="3">まだ見られたページがありません。</td></tr>
+                        {% endif %}
+                        {% empty %}
+                        <tr><td class="pv-page editor-empty" colspan="3">いま載っているアプリはありません。</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+
+                    <tbody>
+                        <tr class="pv-section"><th colspan="3">そのほかのページ</th></tr>
+                        {% for page in site_pages %}
+                        <tr>
+                            <td class="pv-page">{{ page.name }}</td>
+                            <td class="editor-date pv-num">{{ page.n }}</td>
+                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ page.percent }}%"></span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td class="pv-page editor-empty" colspan="3">まだ見られていません。</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

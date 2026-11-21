@@ -208,15 +208,24 @@ python manage.py createsuperuser --settings=config.settings_dev
 **アカウントは `/edit/` と共通**（同じユーザー・同じパスワード、セッションも共通）。ログイン画面は
 `/console/login/`。レイアウトは `console/base.html` で、公開サイトとは相互にリンクしない。
 
-- ページビュー（`/console/pageviews/`）… 公開ページが表示された回数。期間（7・30・90・365 日）の合計、
-  WG と成果物ごと、ページごとの順位、日ごとの推移を出す。
-- WG と成果物ごとの回数は、`wg/`・`works/` に載っているアプリ（`config/subapps.py`）の URL の下にある
-  ページの回数を足したもの。入れ子（`/welfare/` と `/welfare/activity/`）は長いほうに数える。
-  記録を別に持つのではなく、パスごとの記録を画面を開いたときにまとめている。
-  アプリの名前は、WG一覧・成果物一覧に登録した URL（`Wg.app_url`・`Wg.link_url`・`Work.url`）から引く。
+- ページビュー（`/console/pageviews/`）… 今日、公開ページが表示された回数だけを出す（経過は出さない）。
+  クラブへの参加（参加案内・申し込みページ・受付完了の回数と、「申し込む」ボタンが押された回数）、
+  WG ごと・成果物ごとのページ別の回数、そのほかのページの回数。どれも URL ではなくページの名前で出す。
+  WG・成果物は、これまでに見られたことのある（題名の分かる）ページをすべて出し、今日まだのページは 0 回とする。
+- ページの名前は、数えるときに残したページの `<title>` の「 — fun IT club」などの区切りより前（`console.views.page_name`）。
+  トップページだけは `PAGE_NAMES` で名前を決めている。題名の同じページ（カウントダウンのボードごとの一覧など）は足し合わせる。
+- WG・成果物は、`wg/`・`works/` に載っているアプリ（`config/subapps.py`）の URL の下のページをまとめたもの。
+  入れ子（`/welfare/` と `/welfare/activity/`）は長いほうに数え、一覧に登録した名前（`Wg.app_url`・`Wg.link_url`・
+  `Work.url`）が同じアプリは 1 つの WG・成果物にまとめる。
+- 画面がブラウザの中で切りかわるアプリ（React の fe など）は、パスごとの記録では数えきれない。アプリに
+  `pageviews.py` の `console_counts(day)`（`[(画面の名前, 回数), …]` を返す）があれば、そちらの数を使う。
+- 「申し込む」ボタンの回数は `console.ActionCount`。`/join/apply/` への POST を、通ったかどうかに関わらず数える。
+- WG の欄には、参加を受け付けている WG ごとに、参加ページ（`/wg/<pk>/join/`）の表示回数と、「確認のメールを送る」
+  「GitHub でログインして登録する」ボタンが押された回数も出す（`ActionCount` の `wg_join_send:<pk>`・`wg_join_confirm:<pk>`）。
+  参加の画面（`/wg/…/join/…`）は、そのほかのページには出さない。
 - 数えるのは `console.middleware.PageViewMiddleware`。GET で 200 を返した HTML だけを数え、
   `/edit/`・`/console/`・`/admin/`・静的ファイル、ログイン中の運営、クローラー、ブラウザの先読みは除く。
-- 記録は日付・パス・回数だけ（`console.PageView`）。**IP や User-Agent は残さない。**
+- 記録は日付・パス・ページの題名・回数（`console.PageView`）と、日付・ボタン・回数（`console.ActionCount`）だけ。**IP や User-Agent は残さない。**
 - 画面を足すときは `console/urls.py` の `protected()` で包む（未ログインを `/console/login/` に回すため）。
 
 ## 管理画面（`/admin/`）
