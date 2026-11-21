@@ -2,6 +2,7 @@
 
 import importlib
 import importlib.util
+import re
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -152,6 +153,35 @@ def views_by_app(day, rows):
     return result, rest
 
 
+#: WG への参加の画面（/wg/<pk>/join/…、/wg/join/verify/<トークン>/ など）。そのほかのページには出さない
+WG_JOIN_PATH = re.compile(r'^/wg/(\d+/)?join/')
+
+
+def add_wg_join(groups, per_path, actions):
+    """WG の並び（views_by_app の 'wg'）に、WG ごとの参加の回数（join）を足す。
+
+    参加を受け付けている WG はアプリが無くても並べる。join は
+    [{'name', 'n'}, …]（参加ページの表示・「確認のメールを送る」・「GitHub でログインして登録する」）。
+    """
+    by_title = {group['title']: group for group in groups}
+    for wg in Wg.objects.published().order_by('code'):
+        if not wg.accepts_join:
+            continue
+        title = f'{wg.code} {wg.name}'
+        group = by_title.get(title)
+        if group is None:
+            group = {'title': title, 'n': 0, 'page_count': 0, 'apps': []}
+            by_title[title] = group
+            groups.append(group)
+        views = per_path.get(f'/wg/{wg.pk}/join/', 0)
+        group['n'] += views
+        group['join'] = [{'name': '参加ページ（アドレスの入力）', 'n': views}] + [
+            {'name': label, 'n': actions.get(f'{key}:{wg.pk}', 0)}
+            for key, label in ActionCount.WG_JOIN_ACTIONS.items()
+        ]
+    groups.sort(key=lambda group: (-group['n'], group['title']))
+
+
 class ConsoleMixin(LoginRequiredMixin):
     """コンソールのビュー共通。ログイン必須＋ナビの現在地。"""
 
@@ -195,6 +225,7 @@ class PageViewsView(ConsoleMixin, TemplateView):
         apps, rest = views_by_app(day, rows)
         join_paths = {path for path, _label in JOIN_PAGES}
         actions = dict(ActionCount.objects.filter(date=day).values_list('name', 'count'))
+        add_wg_join(apps['wg'], per_path, actions)
 
         context.update({
             'day': day,
@@ -205,6 +236,7 @@ class PageViewsView(ConsoleMixin, TemplateView):
             'apps': apps,
             'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])],
             'site_pages': with_percent(
-                count_by_name([row for row in rest if row[0] not in join_paths])),
+                count_by_name([row for row in rest
+                               if row[0] not in join_paths and not WG_JOIN_PATH.match(row[0])])),
         })
         return context

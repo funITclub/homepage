@@ -52,6 +52,13 @@
                             <td class="editor-date pv-num">{{ group.n }}</td>
                             <td class="pv-bar-col"></td>
                         </tr>
+                        {% for row in group.join %}
+                        <tr{% if not row.n %} class="pv-zero"{% endif %}>
+                            <td class="pv-page">参加：{{ row.name }}</td>
+                            <td class="editor-date pv-num">{{ row.n }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                        {% endfor %}
                         {% for app in group.apps %}{% for page in app.pages %}
                         <tr{% if not page.n %} class="pv-zero"{% endif %}>
                             <td class="pv-page">{{ page.name }}</td>
@@ -59,7 +66,7 @@
                             <td class="pv-bar-col">{% if page.n %}<span class="pv-bar" style="width: {{ page.percent }}%"></span>{% endif %}</td>
                         </tr>
                         {% endfor %}{% endfor %}
-                        {% if not group.page_count %}
+                        {% if not group.page_count and group.apps %}
                         <tr class="pv-zero"><td class="pv-page" colspan="3">まだ見られたページがありません。</td></tr>
                         {% endif %}
                         {% empty %}

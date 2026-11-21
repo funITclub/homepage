@@ -220,6 +220,9 @@ python manage.py createsuperuser --settings=config.settings_dev
 - 画面がブラウザの中で切りかわるアプリ（React の fe など）は、パスごとの記録では数えきれない。アプリに
   `pageviews.py` の `console_counts(day)`（`[(画面の名前, 回数), …]` を返す）があれば、そちらの数を使う。
 - 「申し込む」ボタンの回数は `console.ActionCount`。`/join/apply/` への POST を、通ったかどうかに関わらず数える。
+- WG の欄には、参加を受け付けている WG ごとに、参加ページ（`/wg/<pk>/join/`）の表示回数と、「確認のメールを送る」
+  「GitHub でログインして登録する」ボタンが押された回数も出す（`ActionCount` の `wg_join_send:<pk>`・`wg_join_confirm:<pk>`）。
+  参加の画面（`/wg/…/join/…`）は、そのほかのページには出さない。
 - 数えるのは `console.middleware.PageViewMiddleware`。GET で 200 を返した HTML だけを数え、
   `/edit/`・`/console/`・`/admin/`・静的ファイル、ログイン中の運営、クローラー、ブラウザの先読みは除く。
 - 記録は日付・パス・ページの題名・回数（`console.PageView`）と、日付・ボタン・回数（`console.ActionCount`）だけ。**IP や User-Agent は残さない。**

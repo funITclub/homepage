@@ -150,6 +150,45 @@ class PageViewsPageTests(TestCase):
         self.assertEqual(response.context['today_views'], 11)
 
 
+class WgJoinTests(TestCase):
+    """WG ごとに、参加ページの表示と参加のボタンの回数を出す。"""
+
+    def setUp(self):
+        from catalog.models import Wg
+        self.client.force_login(User.objects.create_user('funitclub', password='x'))
+        today = timezone.localdate()
+        self.wg = Wg.objects.create(code='WG-04', name='カウントダウン', description='x',
+                                    status=Wg.ACTIVE, github_team='wg-countdown')
+        Wg.objects.create(code='WG-09', name='受付なし', description='x', status=Wg.ACTIVE)
+        pk = self.wg.pk
+        PageView.objects.create(date=today, path=f'/wg/{pk}/join/', title='カウントダウン に参加 — fun IT club', count=6)
+        PageView.objects.create(date=today, path='/wg/join/verify/abc/', title='カウントダウン に参加 — fun IT club', count=2)
+        PageView.objects.create(date=today, path='/wg/', title='WG一覧 — fun IT club', count=3)
+        ActionCount.objects.create(date=today, name=f'wg_join_send:{pk}', count=4)
+        ActionCount.objects.create(date=today, name=f'wg_join_confirm:{pk}', count=1)
+        ActionCount.objects.create(date=today - timedelta(days=1), name=f'wg_join_send:{pk}', count=9)
+
+    def test_join_counts_per_wg(self):
+        context = self.client.get(reverse('console:pageviews')).context
+        groups = {g['title']: g for g in context['apps']['wg']}
+        self.assertNotIn('WG-09 受付なし', groups)  # 参加を受け付けていない WG は出さない
+        self.assertEqual([(r['name'], r['n']) for r in groups['WG-04 カウントダウン']['join']], [
+            ('参加ページ（アドレスの入力）', 6),
+            ('「確認のメールを送る」ボタン', 4),
+            ('「GitHub でログインして登録する」ボタン', 1),
+        ])
+        self.assertEqual(groups['WG-04 カウントダウン']['n'], 6)  # 参加ページの表示も WG の回数に入れる
+
+    def test_join_rows_are_shown(self):
+        response = self.client.get(reverse('console:pageviews'))
+        self.assertContains(response, 'WG-04 カウントダウン')
+        self.assertContains(response, '参加：「確認のメールを送る」ボタン')
+
+    def test_join_screens_are_not_in_other_pages(self):
+        context = self.client.get(reverse('console:pageviews')).context
+        self.assertEqual([(p['name'], p['n']) for p in context['site_pages']], [('WG一覧', 3)])
+
+
 class PageNameTests(TestCase):
 
     def test_site_name_after_the_separator_is_dropped(self):

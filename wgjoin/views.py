@@ -38,6 +38,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from catalog.models import Wg
+from console.models import ActionCount
 from home.netutils import client_ip
 
 from . import github, google, mail
@@ -88,6 +89,9 @@ def _result(request, wg, outcome, status=200, **extra):
 @login_not_required
 def start(request, pk):
     wg = _wg_or_404(pk)
+    if request.method == 'POST':
+        # 「確認のメールを送る」が押された回数（コンソールのページビューに出す）。通ったかどうかは問わない
+        ActionCount.record_now(request, f'wg_join_send:{wg.pk}')
     form = JoinEmailForm(request.POST or None)
     if request.method != 'POST' or not form.is_valid():
         return _page(request, 'wgjoin/start.html', wg, form=form)
@@ -142,6 +146,9 @@ def verify(request, token):
 
     if request.method != 'POST':
         return _page(request, 'wgjoin/confirm.html', wg, token=token)
+
+    # 「GitHub でログインして登録する」が押された回数（コンソールのページビューに出す）
+    ActionCount.record_now(request, f'wg_join_confirm:{wg.pk}')
 
     chat = None  # Chat スペースのない WG（授業のリンクから本人が入る）
     if wg.chat_space and email:

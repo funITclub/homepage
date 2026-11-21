@@ -5,8 +5,13 @@
 # 誰が見たか（IP・User-Agent・Cookie）は残さない。個人情報をシステムに持たない方針なので、
 # 数えるのに要らないものは最初から受け取らない。
 
+import logging
+
 from django.db import IntegrityError, models, transaction
 from django.db.models import F
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class PageView(models.Model):
@@ -43,6 +48,22 @@ class ActionCount(models.Model):
     ACTIONS = {
         'join_apply': '申し込みページの「申し込む」ボタン',
     }
+
+    #: WG への参加のボタン（name は「<キー>:<WG の pk>」）。値はコンソールに出す名前
+    WG_JOIN_ACTIONS = {
+        'wg_join_send': '「確認のメールを送る」ボタン',
+        'wg_join_confirm': '「GitHub でログインして登録する」ボタン',
+    }
+
+    @classmethod
+    def record_now(cls, request, name):
+        """今日の分として数える。ログイン中の運営は数えない。失敗してもページの処理は止めない。"""
+        if request.user.is_authenticated:
+            return
+        try:
+            cls.record(timezone.localdate(), name)
+        except Exception:
+            logger.exception('ボタンの回数の記録に失敗しました')
 
     date = models.DateField('日付')
     name = models.CharField('ボタン', max_length=50)

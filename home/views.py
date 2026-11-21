@@ -250,11 +250,7 @@ class JoinApplyView(NavMixin, FormView):
 
     def post(self, request, *args, **kwargs):
         # 「申し込む」が押された回数（コンソールのページビューに出す）。通ったかどうかは問わない
-        if not request.user.is_authenticated:
-            try:
-                ActionCount.record(timezone.localdate(), 'join_apply')
-            except Exception:
-                logger.exception('ボタンの回数の記録に失敗しました')
+        ActionCount.record_now(request, 'join_apply')
         return super().post(request, *args, **kwargs)
 
     def form_valid(self, form):
