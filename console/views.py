@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 from django.views.generic import TemplateView
 
@@ -83,10 +83,27 @@ def app_counter(folder, name):
     return getattr(importlib.import_module(module_name), 'console_counts', None)
 
 
+def known_titles(prefixes):
+    """prefixes の下で、これまでに1回でも見られた（題名の分かる）ページ。{パス: いちばん新しい題名}。"""
+    query = Q()
+    for prefix in prefixes:
+        query |= Q(path__startswith=prefix)
+    if not prefixes:
+        return {}
+    # 題名を残す前の記録（題名が空）は使わない。パスに ID などが入っていることがあり、
+    # 名前の無いページを URL のまま並べたくないため
+    titles = {}
+    rows = PageView.objects.filter(query).exclude(title='').order_by('date')
+    for path, title in rows.values_list('path', 'title'):
+        titles[path] = title
+    return titles
+
+
 def views_by_app(day, rows):
     """その日の回数を、サブアプリ（wg/・works/ の配下）ごと・ページの名前ごとにまとめる。
 
-    rows は [(パス, 題名, 回数), …]。入れ子のとき（/welfare/ と /welfare/activity/）は、
+    rows は [(パス, 題名, 回数), …]。アプリのページは、今日見られていなくても、これまでに
+    見られたことがあれば 0 回として出す（ページごとの回数を一覧で見られるように）。入れ子のとき（/welfare/ と /welfare/activity/）は、
     長いほうの URL に数える。同じ WG・成果物のアプリ（一覧に登録した名前が同じもの）は1つにまとめる。
 
     戻り値は ({'wg': [WG, …], 'works': [成果物, …]}, どのアプリにも入らなかった行)。
@@ -97,12 +114,18 @@ def views_by_app(day, rows):
         for folder, name, url in installed_apps()
     ]
     by_length = sorted(apps, key=lambda app: len(app['prefix']), reverse=True)
+    today = {row[0] for row in rows}
+    rows = list(rows) + [
+        (path, title, 0)
+        for path, title in known_titles([app['prefix'] for app in apps]).items()
+        if path not in today
+    ]
     rest = []
     for row in rows:
         app = next((app for app in by_length if row[0].startswith(app['prefix'])), None)
         if app:
             app['rows'].append(row)
-        else:
+        elif row[0] in today:
             rest.append(row)
 
     titles = catalog_titles()
@@ -115,8 +138,10 @@ def views_by_app(day, rows):
         app['pages'] = with_percent(pages)
         title = next(
             (title for path, title in titles if path.startswith(app['prefix'])), app['name'])
-        group = grouped[app['folder']].setdefault(title, {'title': title, 'n': 0, 'apps': []})
+        group = grouped[app['folder']].setdefault(
+            title, {'title': title, 'n': 0, 'page_count': 0, 'apps': []})
         group['n'] += app['n']
+        group['page_count'] += len(app['pages'])
         group['apps'].append(app)
 
     result = {}

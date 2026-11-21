@@ -218,6 +218,18 @@ class ViewsByAppTests(TestCase):
             [('/welfare/', [('福祉 WG', 2)]),
              ('/welfare/activity/', [('トップ', 4), ('チケット', 1)])])
 
+    def test_pages_seen_before_are_listed_with_zero(self):
+        PageView.objects.create(date=timezone.localdate() - timedelta(days=3),
+                                path='/welfare/activity/members/', title='メンバー — 福祉 WG', count=2)
+        wg = self.groups()['wg'][0]
+        pages = [(p['name'], p['n']) for p in wg['apps'][1]['pages']]
+        self.assertEqual(pages, [('トップ', 4), ('チケット', 1), ('メンバー', 0)])
+        self.assertEqual(wg['n'], 7)
+        # そのほかのページには、今日見られたものしか出さない
+        PageView.objects.create(date=timezone.localdate() - timedelta(days=3), path='/old/', count=1)
+        context = self.client.get(reverse('console:pageviews')).context
+        self.assertNotIn('/old/', [p['name'] for p in context['site_pages']])
+
     def test_pages_of_a_work_are_counted_by_name(self):
         works = {g['title']: g for g in self.groups()['works']}
         countdown = works['countdown']['apps'][0]['pages']

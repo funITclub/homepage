@@ -12,6 +12,7 @@
 
         <p class="editor-note">
             今日（{{ day|date:"Y-m-d (D)" }}）、公開ページが表示された回数です。合計 <strong>{{ total }}</strong> 回。<br>
+            WG・成果物は、これまでに見られたことのあるページをすべて出します（今日まだのページは 0）。<br>
             ログイン中の運営の閲覧・クローラー・エラーのページは数えていません。誰が見たか（IP など）は記録していません。
         </p>
 
@@ -51,13 +52,16 @@
                             <td class="editor-date pv-num">{{ group.n }}</td>
                             <td class="pv-bar-col"></td>
                         </tr>
-                        {% for app in group.apps %}{% for page in app.pages %}{% if page.n %}
-                        <tr>
+                        {% for app in group.apps %}{% for page in app.pages %}
+                        <tr{% if not page.n %} class="pv-zero"{% endif %}>
                             <td class="pv-page">{{ page.name }}</td>
                             <td class="editor-date pv-num">{{ page.n }}</td>
-                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ page.percent }}%"></span></td>
+                            <td class="pv-bar-col">{% if page.n %}<span class="pv-bar" style="width: {{ page.percent }}%"></span>{% endif %}</td>
                         </tr>
-                        {% endif %}{% endfor %}{% endfor %}
+                        {% endfor %}{% endfor %}
+                        {% if not group.page_count %}
+                        <tr class="pv-zero"><td class="pv-page" colspan="3">まだ見られたページがありません。</td></tr>
+                        {% endif %}
                         {% empty %}
                         <tr><td class="pv-page editor-empty" colspan="3">いま載っているアプリはありません。</td></tr>
                         {% endfor %}
