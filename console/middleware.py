@@ -28,7 +28,7 @@ VISITOR_COOKIE = 'fic_visited'
 
 BOT_PATTERN = re.compile(
     r'bot|crawl|spider|slurp|preview|monitor|curl|wget|python|headless|scan|checker|dataprovider|'
-    r'warmup|healthcheck|alwayson|compatible;(?! ?MSIE)',
+    r'warmup|healthcheck|alwayson|funitclub-actions|compatible;(?! ?MSIE)',
     re.IGNORECASE,
 )
 
@@ -62,7 +62,7 @@ class SuspiciousAccessMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
         try:
-            suspicious.check_request(request)
+            suspicious.check_request(request, response)
         except Exception:
             logger.exception('不審なアクセスの確認に失敗しました')
         return response

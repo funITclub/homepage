@@ -214,7 +214,8 @@ jobs:
         id: health
         run: |
           for i in $(seq 1 20); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://funitclub.org/ || true)
+            # 名乗り（-A）は、サイトの不審なアクセスの判定から外すため（console.suspicious.OWN_AGENT_PREFIX）
+            code=$(curl -s -o /dev/null -w '%{http_code}' -A 'funitclub-actions/deploy-check' https://funitclub.org/ || true)
             echo "($i) $code"
             [ "$code" = "200" ] && exit 0
             sleep 15

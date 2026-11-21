@@ -29,6 +29,8 @@ jobs:
         env:
           COUNTDOWN_NOTIFY_TOKEN: ${{ secrets.COUNTDOWN_NOTIFY_TOKEN }}
         run: |
+          # 名乗り（-A）は、サイトの不審なアクセスの判定から外すため（console.suspicious.OWN_AGENT_PREFIX）
           curl --fail-with-body --silent --show-error --max-time 300 --retry 3 --retry-delay 30 \
+            -A 'funitclub-actions/countdown-notify' \
             -X POST -H "Authorization: Bearer ${COUNTDOWN_NOTIFY_TOKEN}" \
             https://funitclub.org/countdown/notify/run/

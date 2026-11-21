@@ -666,3 +666,45 @@ class SuspiciousCoverageTests(TestCase):
         response = self.client.get(reverse('console:suspicious'))
         self.assertEqual(response.context['pending_count'], 1)
         self.assertContains(response, '判定待ち')
+
+
+class OwnAutomationTests(TestCase):
+    """自分たちの GitHub Actions（定期実行・デプロイ後の確認）は不審に数えない。"""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def kinds(self):
+        from .models import SuspiciousAccess
+        return list(SuspiciousAccess.objects.values_list('kind', 'path'))
+
+    @override_settings(FE_MAIL_TOKEN='fe-secret')
+    def test_fe_mail_task_with_the_right_token_is_not_suspicious(self):
+        with mock.patch('works.fe.mail.send_slot', return_value={'sent': 0}):
+            ok = self.client.post('/fe/tasks/send-mails/', {'slot': 'h09'},
+                                  headers={'User-Agent': 'curl/8.18.0', 'X-Fe-Mail-Token': 'fe-secret'})
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(self.kinds(), [])
+        # 合言葉が違えば、これまでどおり残す
+        self.client.post('/fe/tasks/send-mails/', {'slot': 'h09'},
+                         headers={'User-Agent': 'curl/8.18.0', 'X-Fe-Mail-Token': 'wrong'})
+        self.assertEqual(self.kinds(), [('scanner', '/fe/tasks/send-mails/')])
+
+    @override_settings(COUNTDOWN_NOTIFY_TOKEN='cd-secret')
+    def test_countdown_notify_with_the_right_token_is_not_suspicious(self):
+        with mock.patch('works.countdown.notify.send_daily', return_value=0):
+            ok = self.client.post('/countdown/notify/run/',
+                                  headers={'User-Agent': 'curl/8.18.0', 'Authorization': 'Bearer cd-secret'})
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(self.kinds(), [])
+
+    def test_deploy_check_is_neither_scanner_nor_pending(self):
+        from .models import PendingView
+        self.client.get('/', headers={'User-Agent': 'funitclub-actions/deploy-check'})
+        self.assertEqual(self.kinds(), [])
+        self.assertFalse(PendingView.objects.exists())
+
+    def test_the_name_does_not_hide_probes(self):
+        self.client.get('/.env', headers={'User-Agent': 'funitclub-actions/deploy-check'})
+        self.assertEqual(self.kinds(), [('probe', '/.env')])
