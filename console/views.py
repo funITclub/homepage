@@ -1,6 +1,7 @@
 # console/views.py
 
-from datetime import date, timedelta
+import importlib
+import importlib.util
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -12,7 +13,7 @@ from django.views.generic import TemplateView
 from catalog.models import Wg, Work
 from config import subapps
 
-from .models import PageView
+from .models import ActionCount, PageView
 
 
 def installed_apps():
@@ -29,38 +30,101 @@ def catalog_titles():
     return [(urlsplit(url).path, title) for url, title in titles if url]
 
 
-def views_by_app(per_path):
-    """パスごとの回数を、サブアプリ（wg/・works/ の配下）ごとにまとめる。
+#: パスの決まったページの名前（<title> から取ると分かりにくいもの）
+PAGE_NAMES = {
+    '/': 'トップページ',
+}
 
-    入れ子のとき（/welfare/ と /welfare/activity/）は、長いほうの URL に数える。
-    期間中に1回も見られていないアプリも 0 回として出す。
-    戻り値は {'wg': [行, …], 'works': [行, …]}。行は回数の多い順。
+#: クラブへの参加（/join/）のページ。並びは画面の並び
+JOIN_PAGES = (
+    ('/join/', '参加案内（参加する）'),
+    ('/join/apply/', '申し込みページ'),
+    ('/join/apply/done/', '受付完了ページ'),
+)
+
+
+def page_name(path, title):
+    """ページの名前。<title> の「 — fun IT club」などの後ろを落としたもの。題名が無ければパス。"""
+    if path in PAGE_NAMES:
+        return PAGE_NAMES[path]
+    for separator in (' — ', ' | ', ' - '):
+        title = title.split(separator)[0]
+    return title.strip() or path
+
+
+def count_by_name(rows):
+    """[(パス, 題名, 回数), …] を、ページの名前ごとに足して回数の多い順に並べる。"""
+    counts = {}
+    for path, title, n in rows:
+        name = page_name(path, title)
+        counts[name] = counts.get(name, 0) + n
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
+def with_percent(pages):
+    """[(名前, 回数), …] → 表の行。棒の長さはいちばん多いページを 100 とする。"""
+    top = max((n for _name, n in pages), default=0)
+    return [{'name': name, 'n': n, 'percent': round(n * 100 / top) if top else 0}
+            for name, n in pages]
+
+
+def app_counter(folder, name):
+    """アプリが自分で数えている画面ごとの回数（<アプリ>/pageviews.py の console_counts）。
+
+    React などで画面がブラウザの中で切りかわるアプリは、パスごとの記録では数えきれないので、
+    これがあればそちらを使う。無ければ None。
+    """
+    module_name = f'{folder}.{name}.pageviews'
+    try:
+        if importlib.util.find_spec(module_name) is None:
+            return None
+    except ModuleNotFoundError:
+        return None
+    return getattr(importlib.import_module(module_name), 'console_counts', None)
+
+
+def views_by_app(day, rows):
+    """その日の回数を、サブアプリ（wg/・works/ の配下）ごと・ページの名前ごとにまとめる。
+
+    rows は [(パス, 題名, 回数), …]。入れ子のとき（/welfare/ と /welfare/activity/）は、
+    長いほうの URL に数える。同じ WG・成果物のアプリ（一覧に登録した名前が同じもの）は1つにまとめる。
+
+    戻り値は ({'wg': [WG, …], 'works': [成果物, …]}, どのアプリにも入らなかった行)。
+    WG・成果物は {'title', 'n', 'apps': [{'name', 'prefix', 'n', 'pages'}, …]} で、回数の多い順。
     """
     apps = [
-        {'folder': folder, 'name': name, 'prefix': f'/{url}/', 'n': 0, 'pages': 0}
+        {'folder': folder, 'name': name, 'prefix': f'/{url}/', 'rows': []}
         for folder, name, url in installed_apps()
     ]
-    # 長い URL から当てる
     by_length = sorted(apps, key=lambda app: len(app['prefix']), reverse=True)
-    for path, n in per_path.items():
-        for app in by_length:
-            if path.startswith(app['prefix']):
-                app['n'] += n
-                app['pages'] += 1
-                break
+    rest = []
+    for row in rows:
+        app = next((app for app in by_length if row[0].startswith(app['prefix'])), None)
+        if app:
+            app['rows'].append(row)
+        else:
+            rest.append(row)
 
     titles = catalog_titles()
-    grouped = {folder: [] for folder in subapps.FOLDERS}
+    grouped = {folder: {} for folder in subapps.FOLDERS}
     for app in apps:
-        app['title'] = next(
-            (title for path, title in titles if path.startswith(app['prefix'])), '')
-        grouped[app['folder']].append(app)
-    for rows in grouped.values():
-        rows.sort(key=lambda app: (-app['n'], app['prefix']))
-        top = rows[0]['n'] if rows else 0
-        for app in rows:
-            app['percent'] = round(app['n'] * 100 / top) if top else 0
-    return grouped
+        counter = app_counter(app['folder'], app['name'])
+        pages = counter(day) if counter else count_by_name(app.pop('rows'))
+        app.pop('rows', None)
+        app['n'] = sum(n for _name, n in pages)
+        app['pages'] = with_percent(pages)
+        title = next(
+            (title for path, title in titles if path.startswith(app['prefix'])), app['name'])
+        group = grouped[app['folder']].setdefault(title, {'title': title, 'n': 0, 'apps': []})
+        group['n'] += app['n']
+        group['apps'].append(app)
+
+    result = {}
+    for folder, groups in grouped.items():
+        for group in groups.values():
+            group['apps'].sort(key=lambda app: app['prefix'])
+        result[folder] = sorted(groups.values(), key=lambda group: (-group['n'], group['title']))
+    return result, rest
 
 
 class ConsoleMixin(LoginRequiredMixin):
@@ -92,92 +156,30 @@ class IndexView(ConsoleMixin, TemplateView):
 
 
 class PageViewsView(ConsoleMixin, TemplateView):
-    """ページビュー数。その日の詳細（WG と成果物ごと・ページごと）を主に、下に日ごとの経過を出す。
-
-    その日は既定で今日。?date=YYYY-MM-DD で経過の範囲内の別の日を見られる（経過の表の日付から飛ぶ）。
-    """
+    """今日のページビュー。クラブへの参加・WG ごと・成果物ごと・そのほかのページを、ページの名前で出す。"""
 
     template_name = 'console/pageviews.html'
     section = 'pageviews'
 
-    #: 経過で選べる期間（日数）。ボタンはこの順（少ない順）に並ぶ。
-    PERIODS = (7, 30, 90, 365)
-
-    #: 経過の既定の期間（日数）
-    DEFAULT_DAYS = 30
-
-    #: 順位表に出すページの数
-    RANKING_LIMIT = 50
-
-    def get_days(self):
-        try:
-            days = int(self.request.GET.get('days', ''))
-        except ValueError:
-            return self.DEFAULT_DAYS
-        return days if days in self.PERIODS else self.DEFAULT_DAYS
-
-    def get_day(self, today):
-        """詳細を出す日。今日から PERIODS の最大日数までさかのぼれる。それ以外は今日。"""
-        try:
-            day = date.fromisoformat(self.request.GET.get('date', ''))
-        except ValueError:
-            return today
-        earliest = today - timedelta(days=max(self.PERIODS) - 1)
-        return day if earliest <= day <= today else today
-
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        end = timezone.localdate()
+        day = timezone.localdate()
+        rows = list(PageView.objects.filter(date=day).values_list('path', 'title', 'count'))
+        per_path = {path: n for path, _title, n in rows}
 
-        # その日の詳細
-        day = self.get_day(end)
-        per_path = dict(
-            PageView.objects.filter(date=day)
-            .values('path').annotate(n=Sum('count')).values_list('path', 'n'))
-        ranking = [
-            {'path': path, 'n': n}
-            for path, n in sorted(per_path.items(), key=lambda item: (-item[1], item[0]))
-        ][:self.RANKING_LIMIT]
-        top = ranking[0]['n'] if ranking else 0
-        for row in ranking:
-            row['percent'] = round(row['n'] * 100 / top) if top else 0
-        apps = views_by_app(per_path)
-        previous_day = day - timedelta(days=1)
-        previous = PageView.objects.filter(date=previous_day).aggregate(n=Sum('count'))['n'] or 0
-
-        # 経過（日ごと）
-        days = self.get_days()
-        start = end - timedelta(days=days - 1)
-        per_day = dict(
-            PageView.objects.filter(date__range=(start, end))
-            .values('date').annotate(n=Sum('count')).values_list('date', 'n'))
-        peak = max(per_day.values(), default=0)
-        daily = []
-        for offset in range(days):
-            d = end - timedelta(days=offset)
-            count = per_day.get(d, 0)
-            daily.append({
-                'date': d,
-                'count': count,
-                'percent': round(count * 100 / peak) if peak else 0,
-            })
+        apps, rest = views_by_app(day, rows)
+        join_paths = {path for path, _label in JOIN_PAGES}
+        actions = dict(ActionCount.objects.filter(date=day).values_list('name', 'count'))
 
         context.update({
             'day': day,
-            'is_today': day == end,
-            'day_total': sum(per_path.values()),
-            'previous_day': previous_day,
-            'previous': previous,
-            'page_count': len(per_path),
-            'ranking': ranking,
+            'total': sum(per_path.values()),
+            'join_pages': [{'name': label, 'n': per_path.get(path, 0)} for path, label in JOIN_PAGES],
+            'join_applied': actions.get('join_apply', 0),
+            'join_apply_label': ActionCount.ACTIONS['join_apply'],
             'apps': apps,
             'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])],
-            'days': days,
-            'periods': self.PERIODS,
-            'start': start,
-            'end': end,
-            'total': sum(per_day.values()),
-            'average': round(sum(per_day.values()) / days, 1),
-            'daily': daily,
+            'site_pages': with_percent(
+                count_by_name([row for row in rest if row[0] not in join_paths])),
         })
         return context

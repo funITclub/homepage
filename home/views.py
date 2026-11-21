@@ -24,6 +24,7 @@ from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView
 
 from catalog.models import Wg, Work
+from console.models import ActionCount
 from news.models import News
 from wgjoin import google
 from wgjoin.config import can_add_to_club_chat, can_invite_to_club, club_chat_space, club_course_id
@@ -246,6 +247,15 @@ class JoinApplyView(NavMixin, FormView):
         context['classroom_invite'] = can_invite_to_club()
         context['club_chat'] = can_add_to_club_chat()
         return context
+
+    def post(self, request, *args, **kwargs):
+        # 「申し込む」が押された回数（コンソールのページビューに出す）。通ったかどうかは問わない
+        if not request.user.is_authenticated:
+            try:
+                ActionCount.record(timezone.localdate(), 'join_apply')
+            except Exception:
+                logger.exception('ボタンの回数の記録に失敗しました')
+        return super().post(request, *args, **kwargs)
 
     def form_valid(self, form):
         detect_and_block_burst_submissions(self.request)

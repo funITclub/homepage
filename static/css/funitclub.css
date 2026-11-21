@@ -1315,33 +1315,6 @@ a:hover {
 
 /* 運営コンソール（/console/）のページビュー */
 
-.pv-periods {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 0 0 20px;
-}
-
-.pv-periods a {
-    font-family: var(--mono);
-    font-size: .8rem;
-    padding: 4px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: #FFFFFF;
-}
-
-.pv-periods a:hover {
-    text-decoration: none;
-    border-color: var(--accent);
-}
-
-.pv-periods a.is-active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--navy);
-}
-
 .pv-summary {
     margin-bottom: 32px;
 }
@@ -1353,29 +1326,31 @@ a:hover {
     margin: 32px 0 12px;
 }
 
-.pv-heading-trend {
-    margin-top: 56px;
-    padding-top: 24px;
-    border-top: 1px solid var(--line);
+.pv-app {
+    margin-bottom: 12px;
 }
 
-.pv-selected td {
-    background: rgba(91, 184, 255, .14);
+.pv-app-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
 }
 
-.pv-subheading {
-    font-size: .85rem;
+.pv-app-title {
     font-weight: 600;
-    margin: 20px 0 8px;
 }
 
-.pv-path {
-    word-break: break-all;
-    white-space: normal;
+.pv-app-total {
+    font-family: var(--mono);
+    font-size: .9rem;
 }
 
-.pv-path a {
-    color: var(--accent-ink);
+.pv-app-sub {
+    font-family: var(--mono);
+    font-size: .75rem;
+    margin: 12px 0 4px;
 }
 
 .pv-num {

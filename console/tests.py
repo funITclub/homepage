@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import PageView
+from .models import ActionCount, PageView
 
 
 def views_of(path):
@@ -62,10 +62,21 @@ class PageViewCountingTests(TestCase):
         self.client.head('/', headers={'User-Agent': self.BROWSER})
         self.assertFalse(PageView.objects.exists())
 
+    def test_page_title_is_kept(self):
+        self.get('/join/')
+        self.assertEqual(PageView.objects.get(path='/join/').title, '参加する — fun IT club')
+
     def test_nothing_about_the_visitor_is_stored(self):
-        """個人情報を持たない。数えるのは日付・パス・回数だけ。"""
+        """個人情報を持たない。数えるのは日付・パス・ページの題名・回数だけ。"""
         fields = {f.name for f in PageView._meta.get_fields()}
-        self.assertEqual(fields, {'id', 'date', 'path', 'count'})
+        self.assertEqual(fields, {'id', 'date', 'path', 'title', 'count'})
+        fields = {f.name for f in ActionCount._meta.get_fields()}
+        self.assertEqual(fields, {'id', 'date', 'name', 'count'})
+
+    def test_join_apply_button_is_counted(self):
+        self.client.post('/join/apply/', {}, headers={'User-Agent': self.BROWSER})
+        self.client.post('/join/apply/', {}, headers={'User-Agent': self.BROWSER})
+        self.assertEqual(ActionCount.objects.get(name='join_apply').count, 2)
 
 
 class ConsoleAccessTests(TestCase):
@@ -100,75 +111,58 @@ class ConsoleAccessTests(TestCase):
 
 
 class PageViewsPageTests(TestCase):
+    """今日の分だけを、ページの名前で出す。"""
 
     def setUp(self):
         self.client.force_login(User.objects.create_user('funitclub', password='x'))
         self.today = timezone.localdate()
-        PageView.objects.create(date=self.today, path='/', count=5)
-        PageView.objects.create(date=self.today, path='/news/', count=2)
-        PageView.objects.create(date=self.today - timedelta(days=3), path='/', count=4)
-        PageView.objects.create(date=self.today - timedelta(days=40), path='/old/', count=99)
+        PageView.objects.create(date=self.today, path='/', title='fun IT club — 佛教大学', count=5)
+        PageView.objects.create(date=self.today, path='/news/', title='お知らせ — fun IT club', count=2)
+        PageView.objects.create(date=self.today, path='/join/', title='参加する — fun IT club', count=3)
+        PageView.objects.create(date=self.today, path='/join/apply/', count=1)
+        PageView.objects.create(date=self.today - timedelta(days=1), path='/', count=40)
+        ActionCount.objects.create(date=self.today, name='join_apply', count=1)
+        ActionCount.objects.create(date=self.today - timedelta(days=1), name='join_apply', count=9)
 
-    def test_details_are_for_today_by_default(self):
-        context = self.client.get(reverse('console:pageviews')).context
-        self.assertEqual(context['day'], self.today)
-        self.assertTrue(context['is_today'])
-        self.assertEqual(context['day_total'], 7)
-        self.assertEqual(context['page_count'], 2)
-        self.assertEqual([(r['path'], r['n']) for r in context['ranking']],
-                         [('/', 5), ('/news/', 2)])
+    def context(self):
+        return self.client.get(reverse('console:pageviews')).context
 
-    def test_another_day_can_be_picked(self):
-        day = self.today - timedelta(days=3)
-        context = self.client.get(reverse('console:pageviews'), {'date': day.isoformat()}).context
-        self.assertEqual(context['day'], day)
-        self.assertFalse(context['is_today'])
-        self.assertEqual(context['day_total'], 4)
-        self.assertEqual([(r['path'], r['n']) for r in context['ranking']], [('/', 4)])
+    def test_only_today_is_counted(self):
+        self.assertEqual(self.context()['total'], 11)
 
-    def test_previous_day_is_shown(self):
-        PageView.objects.create(date=self.today - timedelta(days=1), path='/', count=6)
-        context = self.client.get(reverse('console:pageviews')).context
-        self.assertEqual(context['previous'], 6)
+    def test_join_pages_and_apply_button(self):
+        context = self.context()
+        self.assertEqual([(p['name'], p['n']) for p in context['join_pages']],
+                         [('参加案内（参加する）', 3), ('申し込みページ', 1), ('受付完了ページ', 0)])
+        self.assertEqual(context['join_applied'], 1)
 
-    def test_bad_or_out_of_range_date_falls_back_to_today(self):
-        for value in ('abc', (self.today + timedelta(days=1)).isoformat(),
-                      (self.today - timedelta(days=365)).isoformat()):
-            context = self.client.get(reverse('console:pageviews'), {'date': value}).context
-            self.assertEqual(context['day'], self.today, value)
+    def test_other_pages_are_shown_by_name(self):
+        self.assertEqual([(p['name'], p['n']) for p in self.context()['site_pages']],
+                         [('トップページ', 5), ('お知らせ', 2)])
 
-    def test_trend_for_the_default_period(self):
-        context = self.client.get(reverse('console:pageviews')).context
-        self.assertEqual(context['days'], 30)
-        self.assertEqual(context['total'], 11)
-        self.assertEqual(len(context['daily']), 30)
-
-    def test_period_can_be_changed(self):
-        context = self.client.get(reverse('console:pageviews'), {'days': 90}).context
-        self.assertEqual(context['total'], 110)
-
-    def test_period_buttons_are_in_ascending_order(self):
-        context = self.client.get(reverse('console:pageviews')).context
-        self.assertEqual(list(context['periods']), [7, 30, 90, 365])
-
-    def test_unknown_period_falls_back_to_default(self):
-        context = self.client.get(reverse('console:pageviews'), {'days': 'abc'}).context
-        self.assertEqual(context['days'], 30)
-        context = self.client.get(reverse('console:pageviews'), {'days': 9999}).context
-        self.assertEqual(context['days'], 30)
-
-    def test_trend_is_the_only_period_section(self):
-        response = self.client.get(reverse('console:pageviews'), {'days': 7})
-        self.assertContains(response, '経過（7日）', count=1)
-        self.assertNotContains(response, '回数（7日）')
+    def test_no_period_or_trend(self):
+        response = self.client.get(reverse('console:pageviews'))
+        self.assertNotContains(response, '経過')
+        self.assertNotContains(response, '?days=')
 
     def test_index_shows_todays_views(self):
         response = self.client.get(reverse('console:index'))
-        self.assertEqual(response.context['today_views'], 7)
+        self.assertEqual(response.context['today_views'], 11)
+
+
+class PageNameTests(TestCase):
+
+    def test_site_name_after_the_separator_is_dropped(self):
+        from .views import page_name
+        self.assertEqual(page_name('/news/', 'お知らせ — fun IT club'), 'お知らせ')
+        self.assertEqual(page_name('/fe/x/', '問題メール | FE 基本情報対策 | fun IT club'), '問題メール')
+        self.assertEqual(page_name('/x/', 'JSONを取り込む - FE 基本情報対策 | fun IT club'), 'JSONを取り込む')
+        self.assertEqual(page_name('/', 'fun IT club — 佛教大学'), 'トップページ')
+        self.assertEqual(page_name('/old/', ''), '/old/')
 
 
 class ViewsByAppTests(TestCase):
-    """WG・成果物のアプリ（wg/・works/ の配下）ごとにまとめる。"""
+    """WG・成果物ごとに、ページの名前ごとの回数をまとめる。"""
 
     APPS = [
         ('wg', 'welfare', 'welfare'),
@@ -182,6 +176,7 @@ class ViewsByAppTests(TestCase):
         from unittest import mock
 
         from catalog.models import Wg, Work
+        from works.fe.models import PageViewCount
 
         patcher = mock.patch('console.views.installed_apps', return_value=self.APPS)
         patcher.start()
@@ -189,46 +184,56 @@ class ViewsByAppTests(TestCase):
 
         self.client.force_login(User.objects.create_user('funitclub', password='x'))
         today = timezone.localdate()
-        for path, count in [
-            ('/', 3),
-            ('/fe/', 10), ('/fe/quiz/', 5),
-            ('/welfare/', 2),
-            ('/welfare/activity/', 4), ('/welfare/activity/tickets/', 1),
-            ('/fe-other/', 7),  # /fe/ ではない
+        for path, title, count in [
+            ('/', '', 3),
+            ('/welfare/', '福祉 WG', 2),
+            ('/welfare/activity/', 'トップ — 福祉 WG', 4),
+            ('/welfare/activity/tickets/', 'チケット — 福祉 WG', 1),
+            ('/countdown/abc/', '一覧 — カウントアップ＆ダウン', 6),
+            ('/countdown/xyz/', '一覧 — カウントアップ＆ダウン', 1),
+            ('/countdown/', 'カウントアップ＆ダウン — fun IT club', 2),
+            ('/fe/', 'FE 基本情報対策 | fun IT club', 10),  # React の画面は fe が自分で数えた数を使う
+            ('/fe-other/', 'ほか', 7),  # /fe/ ではない
         ]:
-            PageView.objects.create(date=today, path=path, count=count)
-        PageView.objects.create(date=today - timedelta(days=40), path='/countdown/', count=50)
+            PageView.objects.create(date=today, path=path, title=title, count=count)
+        PageView.objects.create(date=today - timedelta(days=1), path='/countdown/', count=50)
+        PageViewCount.objects.create(date=today, page='quiz', with_id=True, count=4)
+        PageViewCount.objects.create(date=today, page='quiz', with_id=False, count=1)
+        PageViewCount.objects.create(date=today - timedelta(days=1), page='stats', with_id=True, count=8)
 
         Wg.objects.create(code='WG-05', name='福祉', description='x',
                           app_url='https://example.com/welfare/activity/')
         Work.objects.create(category='Web App', title='FE 対策', description='x',
                             url='https://example.com/fe/')
 
-    def apps(self, **params):
-        context = self.client.get(reverse('console:pageviews'), params).context
-        return {folder: [(a['prefix'], a['n'], a['pages'], a['title']) for a in rows]
-                for folder, rows in context['apps'].items()}
+    def groups(self):
+        return self.client.get(reverse('console:pageviews')).context['apps']
 
-    def test_counts_are_grouped_per_app_and_nested_urls_go_to_the_longer_one(self):
-        apps = self.apps()
-        self.assertEqual(apps['wg'], [
-            ('/welfare/activity/', 5, 2, 'WG-05 福祉'),
-            ('/welfare/', 2, 1, 'WG-05 福祉'),  # 同じ WG のアプリ
-            ('/protein/activity/', 0, 0, ''),
-        ])
-        self.assertEqual(apps['works'], [
-            ('/fe/', 15, 2, 'FE 対策'),
-            ('/countdown/', 0, 0, ''),
-        ])
+    def test_apps_of_one_wg_are_put_together(self):
+        wg = self.groups()['wg']
+        self.assertEqual([(g['title'], g['n']) for g in wg],
+                         [('WG-05 福祉', 7), ('protein_activity', 0)])
+        self.assertEqual(
+            [(app['prefix'], [(p['name'], p['n']) for p in app['pages']]) for app in wg[0]['apps']],
+            [('/welfare/', [('福祉 WG', 2)]),
+             ('/welfare/activity/', [('トップ', 4), ('チケット', 1)])])
 
-    def test_counts_are_for_the_picked_day(self):
-        day = timezone.localdate() - timedelta(days=40)
-        apps = self.apps(date=day.isoformat())
-        self.assertEqual(apps['works'][0][:2], ('/countdown/', 50))
-        self.assertEqual(apps['wg'][0][1], 0)
+    def test_pages_of_a_work_are_counted_by_name(self):
+        works = {g['title']: g for g in self.groups()['works']}
+        countdown = works['countdown']['apps'][0]['pages']
+        self.assertEqual([(p['name'], p['n']) for p in countdown],
+                         [('一覧', 7), ('カウントアップ＆ダウン', 2)])
 
-    def test_page_shows_app_names(self):
+    def test_an_app_that_counts_its_own_screens_uses_them(self):
+        fe = {g['title']: g for g in self.groups()['works']}['FE 対策']
+        pages = dict((p['name'], p['n']) for p in fe['apps'][0]['pages'])
+        self.assertEqual(pages['1問1答'], 5)
+        self.assertEqual(pages['分野別正答率'], 0)  # 昨日の分は入れない
+        self.assertEqual(fe['n'], 5)
+
+    def test_page_shows_names_not_urls(self):
         response = self.client.get(reverse('console:pageviews'))
-        self.assertContains(response, 'WG と成果物')
-        self.assertContains(response, 'FE 対策')
-        self.assertContains(response, 'protein_activity')
+        self.assertContains(response, 'WG-05 福祉')
+        self.assertContains(response, 'チケット')
+        self.assertContains(response, '1問1答')
+        self.assertNotContains(response, '/welfare/activity/tickets/')
