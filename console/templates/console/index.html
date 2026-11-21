@@ -12,13 +12,13 @@
             サイトの様子を見る画面です。掲載内容の編集は編集画面（/edit/）で行います。
         </p>
 
-        <div class="grid-3">
+        <a class="card visitors-hero" href="{% url 'console:pageviews' %}">
+            <span class="visitors-label">// 今日の訪問者数</span>
+            <span class="visitors-count">{{ today_visitors }}<small> 人</small></span>
+            <span class="visitors-desc">今日サイトを訪れた人の数（同じブラウザは1日1人・人だけを数える）。WG・成果物のページごとの表示回数を見られます。</span>
+        </a>
 
-            <a class="card menu-card" href="{% url 'console:pageviews' %}">
-                <span class="menu-label">// 訪問者数（今日）</span>
-                <span class="menu-count">{{ today_visitors }}</span>
-                <span class="menu-desc">今日サイトを訪れた人の数（同じブラウザは1日1人）。WG・成果物のページごとの表示回数を見られます。</span>
-            </a>
+        <div class="grid-3">
 
             <a class="card menu-card" href="{% url 'console:members' %}">
                 <span class="menu-label">// 会員数</span>

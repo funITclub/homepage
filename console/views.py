@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
 from django.db.models import Count, Max, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -254,8 +255,8 @@ class SuspiciousView(ConsoleMixin, TemplateView):
     template_name = 'console/suspicious.html'
     section = 'suspicious'
 
-    #: 一覧に出す件数
-    LIMIT = 500
+    #: 一覧の1ページの件数（記録はすべて残し、ページを分けて全部見られるようにする）
+    PER_PAGE = 200
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -285,9 +286,7 @@ class SuspiciousView(ConsoleMixin, TemplateView):
             'kind': kind,
             'ip': ip,
             'top_ips': top_ips,
-            'rows': rows[:self.LIMIT],
-            'count': rows.count(),
-            'limit': self.LIMIT,
+            'page': Paginator(rows, self.PER_PAGE).get_page(self.request.GET.get('page')),
             'keep_days': SuspiciousAccess.KEEP_DAYS,
         })
         return context

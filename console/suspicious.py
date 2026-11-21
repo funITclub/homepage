@@ -14,7 +14,7 @@
 #
 # 「個人情報をシステムに持たない」方針の例外として、不審なものだけ IP・User-Agent・パス・日時を残し、
 # SuspiciousAccess.KEEP_DAYS で消す。ログイン中の運営のアクセスは残さない。
-# 記録に失敗してもページは返す。同じ IP・同じ種類は1日 DAILY_LIMIT 件までにする（表が埋まらないように）。
+# 記録に失敗してもページは返す。回数に上限はなく、不審なアクセスはすべて残す。
 
 import ipaddress
 import logging
@@ -30,9 +30,6 @@ from home.netutils import client_ip
 from .models import PendingView, SuspiciousAccess
 
 logger = logging.getLogger(__name__)
-
-#: 同じ IP・同じ種類を1日に残す件数
-DAILY_LIMIT = 50
 
 #: 知らせを待つ時間（秒）。これを過ぎても知らせが無ければ「人のふりをしたロボット」とする
 PENDING_SECONDS = 30 * 60
@@ -72,15 +69,11 @@ def _agent(request):
 
 
 def record(request, kind, ip=None, path=None):
-    """1件残す。ログイン中の運営と、1日の上限を超えた分は残さない。"""
+    """1件残す。ログイン中の運営は残さない。回数に上限は設けない。"""
     if is_staff(request):
         return
     ip = ip or client_ip(request) or None
     try:
-        key = f'suspicious:{timezone.localdate()}:{kind}:{ip}'
-        if cache.get(key, 0) >= DAILY_LIMIT:
-            return
-        cache.set(key, cache.get(key, 0) + 1, 24 * 60 * 60)
         SuspiciousAccess.objects.create(
             created_at=timezone.now(), kind=kind, ip=ip, user_agent=_agent(request),
             method=request.method[:10], path=(path or request.path)[:255])
