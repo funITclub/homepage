@@ -136,9 +136,10 @@ class PageViewsPageTests(TestCase):
                          [('参加案内（参加する）', 3), ('申し込みページ', 1), ('受付完了ページ', 0)])
         self.assertEqual(context['join_applied'], 1)
 
-    def test_other_pages_are_shown_by_name(self):
-        self.assertEqual([(p['name'], p['n']) for p in self.context()['site_pages']],
-                         [('トップページ', 5), ('お知らせ', 2)])
+    def test_other_pages_are_not_listed(self):
+        response = self.client.get(reverse('console:pageviews'))
+        self.assertNotContains(response, 'そのほかのページ')
+        self.assertNotContains(response, 'お知らせ')
 
     def test_no_period_or_trend(self):
         response = self.client.get(reverse('console:pageviews'))
@@ -184,10 +185,6 @@ class WgJoinTests(TestCase):
         self.assertContains(response, 'WG-04 カウントダウン')
         self.assertContains(response, '参加：「確認のメールを送る」ボタン')
 
-    def test_join_screens_are_not_in_other_pages(self):
-        context = self.client.get(reverse('console:pageviews')).context
-        self.assertEqual([(p['name'], p['n']) for p in context['site_pages']], [('WG一覧', 3)])
-
 
 class PageNameTests(TestCase):
 
@@ -196,7 +193,6 @@ class PageNameTests(TestCase):
         self.assertEqual(page_name('/news/', 'お知らせ — fun IT club'), 'お知らせ')
         self.assertEqual(page_name('/fe/x/', '問題メール | FE 基本情報対策 | fun IT club'), '問題メール')
         self.assertEqual(page_name('/x/', 'JSONを取り込む - FE 基本情報対策 | fun IT club'), 'JSONを取り込む')
-        self.assertEqual(page_name('/', 'fun IT club — 佛教大学'), 'トップページ')
         self.assertEqual(page_name('/old/', ''), '/old/')
 
 
@@ -264,10 +260,6 @@ class ViewsByAppTests(TestCase):
         pages = [(p['name'], p['n']) for p in wg['apps'][1]['pages']]
         self.assertEqual(pages, [('トップ', 4), ('チケット', 1), ('メンバー', 0)])
         self.assertEqual(wg['n'], 7)
-        # そのほかのページには、今日見られたものしか出さない
-        PageView.objects.create(date=timezone.localdate() - timedelta(days=3), path='/old/', count=1)
-        context = self.client.get(reverse('console:pageviews')).context
-        self.assertNotIn('/old/', [p['name'] for p in context['site_pages']])
 
     def test_pages_of_a_work_are_counted_by_name(self):
         works = {g['title']: g for g in self.groups()['works']}

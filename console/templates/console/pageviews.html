@@ -75,18 +75,6 @@
                     </tbody>
                     {% endfor %}
 
-                    <tbody>
-                        <tr class="pv-section"><th colspan="3">そのほかのページ</th></tr>
-                        {% for page in site_pages %}
-                        <tr>
-                            <td class="pv-page">{{ page.name }}</td>
-                            <td class="editor-date pv-num">{{ page.n }}</td>
-                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ page.percent }}%"></span></td>
-                        </tr>
-                        {% empty %}
-                        <tr><td class="pv-page editor-empty" colspan="3">まだ見られていません。</td></tr>
-                        {% endfor %}
-                    </tbody>
                 </table>
             </div>
         </div>
