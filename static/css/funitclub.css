@@ -1315,42 +1315,34 @@ a:hover {
 
 /* 運営コンソール（/console/）のページビュー */
 
-.pv-summary {
-    margin-bottom: 32px;
+.pv-table {
+    /* 3 列だけなので、狭い画面でも横スクロールさせずに収める */
+    min-width: 0;
 }
 
-.pv-heading {
+.pv-table td {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.pv-table .pv-section th {
+    padding-top: 20px;
     font-family: var(--mono);
-    font-size: .9rem;
+    font-size: .8rem;
     letter-spacing: .05em;
-    margin: 32px 0 12px;
+    color: var(--accent-ink);
 }
 
-.pv-app {
-    margin-bottom: 12px;
+.pv-table tbody:first-of-type .pv-section th {
+    padding-top: 8px;
 }
 
-.pv-app-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 8px;
-}
-
-.pv-app-title {
+.pv-group td {
     font-weight: 600;
 }
 
-.pv-app-total {
-    font-family: var(--mono);
-    font-size: .9rem;
-}
-
-.pv-app-sub {
-    font-family: var(--mono);
-    font-size: .75rem;
-    margin: 12px 0 4px;
+.pv-page {
+    padding-left: 1.5em !important;
 }
 
 .pv-num {
@@ -1358,7 +1350,13 @@ a:hover {
 }
 
 .pv-bar-col {
-    width: 40%;
+    width: 35%;
+}
+
+@media (max-width: 600px) {
+    .pv-bar-col {
+        display: none;
+    }
 }
 
 .pv-bar {

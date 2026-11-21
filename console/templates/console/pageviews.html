@@ -11,43 +11,73 @@
         </div>
 
         <p class="editor-note">
-            今日（{{ day|date:"Y-m-d (D)" }}）、公開ページが表示された回数です。
-            ログイン中の運営の閲覧・クローラー・エラーのページは数えていません。<br>
-            誰が見たか（IP など）は記録していません。ページの名前は、そのページの題名から取っています。
+            今日（{{ day|date:"Y-m-d (D)" }}）、公開ページが表示された回数です。合計 <strong>{{ total }}</strong> 回。<br>
+            ログイン中の運営の閲覧・クローラー・エラーのページは数えていません。誰が見たか（IP など）は記録していません。
         </p>
 
-        <div class="grid-3 pv-summary">
-            <div class="card menu-card">
-                <span class="menu-label">// 今日の合計</span>
-                <span class="menu-count">{{ total }}</span>
-                <span class="menu-desc">サイト全体で表示された回数</span>
-            </div>
-        </div>
-
-        <h2 class="pv-heading">クラブへの参加</h2>
-        <div class="grid-3 pv-summary">
-            {% for page in join_pages %}
-            <div class="card menu-card">
-                <span class="menu-label">// {{ page.name }}</span>
-                <span class="menu-count">{{ page.n }}</span>
-                <span class="menu-desc">表示された回数</span>
-            </div>
-            {% endfor %}
-            <div class="card menu-card">
-                <span class="menu-label">// 申し込むボタン</span>
-                <span class="menu-count">{{ join_applied }}</span>
-                <span class="menu-desc">{{ join_apply_label }}が押された回数（受け付けたかは問わない）</span>
-            </div>
-        </div>
-
-        {% for label, groups in app_groups %}
-        <h2 class="pv-heading">{{ label }}</h2>
-        {% include "console/_app_views.html" %}
-        {% endfor %}
-
-        <h2 class="pv-heading">そのほかのページ</h2>
         <div class="card">
-            {% include "console/_pages.html" with pages=site_pages empty="今日はまだ見られていません。" %}
+            <div class="editor-table-wrap">
+                <table class="editor-table pv-table">
+                    <thead>
+                        <tr>
+                            <th>ページ</th>
+                            <th class="pv-num">回数</th>
+                            <th class="pv-bar-col"></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr class="pv-section"><th colspan="3">クラブへの参加</th></tr>
+                        {% for page in join_pages %}
+                        <tr>
+                            <td class="pv-page">{{ page.name }}</td>
+                            <td class="editor-date pv-num">{{ page.n }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                            <td class="pv-page">「申し込む」ボタンが押された回数</td>
+                            <td class="editor-date pv-num">{{ join_applied }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                    </tbody>
+
+                    {% for label, groups in app_groups %}
+                    <tbody>
+                        <tr class="pv-section"><th colspan="3">{{ label }}</th></tr>
+                        {% for group in groups %}
+                        <tr class="pv-group">
+                            <td>{{ group.title }}</td>
+                            <td class="editor-date pv-num">{{ group.n }}</td>
+                            <td class="pv-bar-col"></td>
+                        </tr>
+                        {% for app in group.apps %}{% for page in app.pages %}{% if page.n %}
+                        <tr>
+                            <td class="pv-page">{{ page.name }}</td>
+                            <td class="editor-date pv-num">{{ page.n }}</td>
+                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ page.percent }}%"></span></td>
+                        </tr>
+                        {% endif %}{% endfor %}{% endfor %}
+                        {% empty %}
+                        <tr><td class="pv-page editor-empty" colspan="3">いま載っているアプリはありません。</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+
+                    <tbody>
+                        <tr class="pv-section"><th colspan="3">そのほかのページ</th></tr>
+                        {% for page in site_pages %}
+                        <tr>
+                            <td class="pv-page">{{ page.name }}</td>
+                            <td class="editor-date pv-num">{{ page.n }}</td>
+                            <td class="pv-bar-col"><span class="pv-bar" style="width: {{ page.percent }}%"></span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td class="pv-page editor-empty" colspan="3">まだ見られていません。</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
     </section>
