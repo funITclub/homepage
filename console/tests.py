@@ -127,8 +127,9 @@ class PageViewsPageTests(TestCase):
     def context(self):
         return self.client.get(reverse('console:pageviews')).context
 
-    def test_only_today_is_counted(self):
-        self.assertEqual(self.context()['total'], 11)
+    def test_total_is_only_the_pages_in_the_table(self):
+        # 今日の /join/ 3 と /join/apply/ 1。トップ・お知らせ（表に出さない）と昨日の分は入れない
+        self.assertEqual(self.context()['total'], 4)
 
     def test_join_pages_and_apply_button(self):
         context = self.context()
@@ -148,7 +149,8 @@ class PageViewsPageTests(TestCase):
 
     def test_index_shows_todays_views(self):
         response = self.client.get(reverse('console:index'))
-        self.assertEqual(response.context['today_views'], 11)
+        self.assertEqual(response.context['today_views'], 4)
+        self.assertNotContains(response, '推移')
 
 
 class WgJoinTests(TestCase):
@@ -179,6 +181,7 @@ class WgJoinTests(TestCase):
             ('「GitHub でログインして登録する」ボタン', 1),
         ])
         self.assertEqual(groups['WG-04 カウントダウン']['n'], 6)  # 参加ページの表示も WG の回数に入れる
+        self.assertEqual(context['total'], 6)  # ボタンの回数・参加の確認の画面・WG一覧は入れない
 
     def test_join_rows_are_shown(self):
         response = self.client.get(reverse('console:pageviews'))
