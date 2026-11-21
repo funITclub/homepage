@@ -1,6 +1,6 @@
 # console/views.py
 
-from datetime import timedelta
+from datetime import date, timedelta
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -92,15 +92,18 @@ class IndexView(ConsoleMixin, TemplateView):
 
 
 class PageViewsView(ConsoleMixin, TemplateView):
-    """ページビュー数。期間の合計・WG と成果物ごと・ページごとの順位・日ごとの推移を出す。"""
+    """ページビュー数。その日の詳細（WG と成果物ごと・ページごと）を主に、下に日ごとの経過を出す。
+
+    その日は既定で今日。?date=YYYY-MM-DD で経過の範囲内の別の日を見られる（経過の表の日付から飛ぶ）。
+    """
 
     template_name = 'console/pageviews.html'
     section = 'pageviews'
 
-    #: 選べる期間（日数）。ボタンはこの順（少ない順）に並ぶ。
+    #: 経過で選べる期間（日数）。ボタンはこの順（少ない順）に並ぶ。
     PERIODS = (7, 30, 90, 365)
 
-    #: 既定の期間（日数）
+    #: 経過の既定の期間（日数）
     DEFAULT_DAYS = 30
 
     #: 順位表に出すページの数
@@ -113,47 +116,68 @@ class PageViewsView(ConsoleMixin, TemplateView):
             return self.DEFAULT_DAYS
         return days if days in self.PERIODS else self.DEFAULT_DAYS
 
+    def get_day(self, today):
+        """詳細を出す日。今日から PERIODS の最大日数までさかのぼれる。それ以外は今日。"""
+        try:
+            day = date.fromisoformat(self.request.GET.get('date', ''))
+        except ValueError:
+            return today
+        earliest = today - timedelta(days=max(self.PERIODS) - 1)
+        return day if earliest <= day <= today else today
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        days = self.get_days()
         end = timezone.localdate()
-        start = end - timedelta(days=days - 1)
-        rows = PageView.objects.filter(date__range=(start, end))
 
-        per_day = dict(rows.values('date').annotate(n=Sum('count')).values_list('date', 'n'))
-        peak = max(per_day.values(), default=0)
-        daily = []
-        for offset in range(days):
-            day = end - timedelta(days=offset)
-            count = per_day.get(day, 0)
-            daily.append({
-                'date': day,
-                'count': count,
-                'percent': round(count * 100 / peak) if peak else 0,
-            })
-
-        per_path = dict(rows.values('path').annotate(n=Sum('count')).values_list('path', 'n'))
+        # その日の詳細
+        day = self.get_day(end)
+        per_path = dict(
+            PageView.objects.filter(date=day)
+            .values('path').annotate(n=Sum('count')).values_list('path', 'n'))
         ranking = [
             {'path': path, 'n': n}
             for path, n in sorted(per_path.items(), key=lambda item: (-item[1], item[0]))
         ][:self.RANKING_LIMIT]
         top = ranking[0]['n'] if ranking else 0
-        apps = views_by_app(per_path)
         for row in ranking:
             row['percent'] = round(row['n'] * 100 / top) if top else 0
+        apps = views_by_app(per_path)
+        previous_day = day - timedelta(days=1)
+        previous = PageView.objects.filter(date=previous_day).aggregate(n=Sum('count'))['n'] or 0
+
+        # 経過（日ごと）
+        days = self.get_days()
+        start = end - timedelta(days=days - 1)
+        per_day = dict(
+            PageView.objects.filter(date__range=(start, end))
+            .values('date').annotate(n=Sum('count')).values_list('date', 'n'))
+        peak = max(per_day.values(), default=0)
+        daily = []
+        for offset in range(days):
+            d = end - timedelta(days=offset)
+            count = per_day.get(d, 0)
+            daily.append({
+                'date': d,
+                'count': count,
+                'percent': round(count * 100 / peak) if peak else 0,
+            })
 
         context.update({
+            'day': day,
+            'is_today': day == end,
+            'day_total': sum(per_path.values()),
+            'previous_day': previous_day,
+            'previous': previous,
+            'page_count': len(per_path),
+            'ranking': ranking,
+            'apps': apps,
+            'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])],
             'days': days,
             'periods': self.PERIODS,
             'start': start,
             'end': end,
             'total': sum(per_day.values()),
-            'today': per_day.get(end, 0),
             'average': round(sum(per_day.values()) / days, 1),
             'daily': daily,
-            'ranking': ranking,
-            'page_count': len(per_path),
-            'apps': apps,
-            'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])],
         })
         return context

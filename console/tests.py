@@ -109,15 +109,39 @@ class PageViewsPageTests(TestCase):
         PageView.objects.create(date=self.today - timedelta(days=3), path='/', count=4)
         PageView.objects.create(date=self.today - timedelta(days=40), path='/old/', count=99)
 
-    def test_totals_for_the_default_period(self):
+    def test_details_are_for_today_by_default(self):
+        context = self.client.get(reverse('console:pageviews')).context
+        self.assertEqual(context['day'], self.today)
+        self.assertTrue(context['is_today'])
+        self.assertEqual(context['day_total'], 7)
+        self.assertEqual(context['page_count'], 2)
+        self.assertEqual([(r['path'], r['n']) for r in context['ranking']],
+                         [('/', 5), ('/news/', 2)])
+
+    def test_another_day_can_be_picked(self):
+        day = self.today - timedelta(days=3)
+        context = self.client.get(reverse('console:pageviews'), {'date': day.isoformat()}).context
+        self.assertEqual(context['day'], day)
+        self.assertFalse(context['is_today'])
+        self.assertEqual(context['day_total'], 4)
+        self.assertEqual([(r['path'], r['n']) for r in context['ranking']], [('/', 4)])
+
+    def test_previous_day_is_shown(self):
+        PageView.objects.create(date=self.today - timedelta(days=1), path='/', count=6)
+        context = self.client.get(reverse('console:pageviews')).context
+        self.assertEqual(context['previous'], 6)
+
+    def test_bad_or_out_of_range_date_falls_back_to_today(self):
+        for value in ('abc', (self.today + timedelta(days=1)).isoformat(),
+                      (self.today - timedelta(days=365)).isoformat()):
+            context = self.client.get(reverse('console:pageviews'), {'date': value}).context
+            self.assertEqual(context['day'], self.today, value)
+
+    def test_trend_for_the_default_period(self):
         context = self.client.get(reverse('console:pageviews')).context
         self.assertEqual(context['days'], 30)
         self.assertEqual(context['total'], 11)
-        self.assertEqual(context['today'], 7)
-        self.assertEqual(context['page_count'], 2)
         self.assertEqual(len(context['daily']), 30)
-        self.assertEqual([(r['path'], r['n']) for r in context['ranking']],
-                         [('/', 9), ('/news/', 2)])
 
     def test_period_can_be_changed(self):
         context = self.client.get(reverse('console:pageviews'), {'days': 90}).context
@@ -132,6 +156,11 @@ class PageViewsPageTests(TestCase):
         self.assertEqual(context['days'], 30)
         context = self.client.get(reverse('console:pageviews'), {'days': 9999}).context
         self.assertEqual(context['days'], 30)
+
+    def test_trend_is_the_only_period_section(self):
+        response = self.client.get(reverse('console:pageviews'), {'days': 7})
+        self.assertContains(response, '経過（7日）', count=1)
+        self.assertNotContains(response, '回数（7日）')
 
     def test_index_shows_todays_views(self):
         response = self.client.get(reverse('console:index'))
@@ -192,20 +221,11 @@ class ViewsByAppTests(TestCase):
             ('/countdown/', 0, 0, ''),
         ])
 
-    def test_period_applies(self):
-        apps = self.apps(days=90)
+    def test_counts_are_for_the_picked_day(self):
+        day = timezone.localdate() - timedelta(days=40)
+        apps = self.apps(date=day.isoformat())
         self.assertEqual(apps['works'][0][:2], ('/countdown/', 50))
-
-    def test_tables_show_how_many_days(self):
-        response = self.client.get(reverse('console:pageviews'), {'days': 7})
-        self.assertContains(response, 'WG と成果物（7日）')
-        self.assertContains(response, 'WG（作っている途中）・7日')
-        self.assertContains(response, '成果物（公表したもの）・7日')
-        self.assertContains(response, '回数（7日）', count=3)  # WG・成果物・ページごと
-
-    def test_ranking_shows_how_many_days(self):
-        response = self.client.get(reverse('console:pageviews'), {'days': 90})
-        self.assertContains(response, 'ページごと（90日）')
+        self.assertEqual(apps['wg'][0][1], 0)
 
     def test_page_shows_app_names(self):
         response = self.client.get(reverse('console:pageviews'))

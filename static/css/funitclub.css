@@ -1353,6 +1353,16 @@ a:hover {
     margin: 32px 0 12px;
 }
 
+.pv-heading-trend {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+}
+
+.pv-selected td {
+    background: rgba(91, 184, 255, .14);
+}
+
 .pv-subheading {
     font-size: .85rem;
     font-weight: 600;
