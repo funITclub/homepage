@@ -21,6 +21,8 @@ urlpatterns = [
     path('', protected(views.IndexView.as_view()), name='index'),
     path('pageviews/', protected(views.PageViewsView.as_view()), name='pageviews'),
     path('members/', protected(views.MembersView.as_view()), name='members'),
+    # 公開ページのブラウザからの知らせ（ページビュー・訪問者を数える）。ログイン不要
+    path('pv/', views.beacon, name='beacon'),
 
     path('login/', auth_views.LoginView.as_view(
         template_name='console/login.html',

@@ -5,15 +5,20 @@ import importlib.util
 from urllib.parse import urlsplit
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
+from django.http import HttpResponse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
 from catalog.models import Wg, Work
 from config import subapps
 
 from . import members
+from .middleware import record_beacon
 from .models import ActionCount, DailyVisitors, PageView
 
 
@@ -244,3 +249,17 @@ class MembersView(ConsoleMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         context['members'] = members.summary(refresh='refresh' in self.request.GET)
         return context
+
+
+@login_not_required
+@csrf_exempt
+@require_POST
+def beacon(request):
+    """公開ページを開いたブラウザからの知らせ（console.middleware の差し込んだスクリプト）。
+
+    サイトが署名した合言葉が付いていれば、そのページのページビューと訪問者を数える。
+    中身を返す必要はないので、いつも 204 を返す（数えたかどうかも教えない）。
+    """
+    response = HttpResponse(status=204)
+    record_beacon(request, response)
+    return response

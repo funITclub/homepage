@@ -229,8 +229,12 @@ python manage.py createsuperuser --settings=config.settings_dev
 - 「申し込む」ボタンの回数は `console.ActionCount`。`/join/apply/` への POST を、通ったかどうかに関わらず数える。
 - WG の欄には、参加を受け付けている WG ごとに、参加ページ（`/wg/<pk>/join/`）の表示回数と、「確認のメールを送る」
   「GitHub でログインして登録する」ボタンが押された回数も出す（`ActionCount` の `wg_join_send:<pk>`・`wg_join_confirm:<pk>`）。
-- 数えるのは `console.middleware.PageViewMiddleware`。GET で 200 を返した HTML だけを数え、
-  `/edit/`・`/console/`・`/admin/`・静的ファイル、ログイン中の運営、クローラー、ブラウザの先読みは除く。
+- 数えるのは人が開いたときだけ。`console.middleware.PageViewMiddleware` は、GET で 200 を返した HTML のうち、
+  `/edit/`・`/console/`・`/admin/`・静的ファイル、ログイン中の運営、名乗っている巡回ロボット・スキャナー、
+  ブラウザの先読みを除いたものに、終わりに小さなスクリプトを差し込むだけで、ここでは数えない。
+  ブラウザがそのスクリプトを動かし、画面が見えたときに `/console/pv/`（`console.views.beacon`）へ知らせてきたら数える。
+  JavaScript を動かさない巡回ロボット（人のふりをしたものも）と、自動で動かしているブラウザ（`navigator.webdriver`）は数えない。
+  知らせにはサイトが署名した合言葉（パスと題名、6 時間で切れる）を付けるので、出していないページは数えられない。
 - 記録は日付・パス・ページの題名・回数（`console.PageView`）と、日付・ボタン・回数（`console.ActionCount`）だけ。**IP や User-Agent は残さない。**
 - 画面を足すときは `console/urls.py` の `protected()` で包む（未ログインを `/console/login/` に回すため）。
 
