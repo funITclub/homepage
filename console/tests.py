@@ -1,4 +1,8 @@
+import json
+import re
+import time
 from datetime import timedelta
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
@@ -12,13 +16,62 @@ def views_of(path):
     return sum(PageView.objects.filter(path=path).values_list('count', flat=True))
 
 
+TOKEN_IN_PAGE = re.compile(r'URLSearchParams\(\{t:("[^"]+")\}\)')
+
+
 class PageViewCountingTests(TestCase):
-    """公開ページを人が開いたときだけ数える。"""
+    """公開ページを人が開いたときだけ数える。
+
+    ページを取りに来ただけでは数えず、ブラウザが差し込んだスクリプトを動かして知らせてきたら数える。
+    get() はブラウザの代わりに、ページを開いてスクリプトの知らせまで送る。
+    """
 
     BROWSER = 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36'
 
     def get(self, path, **headers):
-        return self.client.get(path, headers={'User-Agent': self.BROWSER, **headers})
+        headers = {'User-Agent': self.BROWSER, **headers}
+        response = self.client.get(path, headers=headers)
+        match = TOKEN_IN_PAGE.search(response.content.decode('utf-8', errors='replace'))
+        if match:
+            self.client.post(reverse('console:beacon'), {'t': json.loads(match.group(1))}, headers=headers)
+        return response
+
+    def test_fetching_the_page_alone_is_not_counted(self):
+        """JavaScript を動かさない巡回ロボット（人のふりをしたものも）は数えない。"""
+        response = self.client.get('/', headers={'User-Agent': self.BROWSER})
+        self.assertContains(response, reverse('console:beacon'))
+        self.assertFalse(PageView.objects.exists())
+        self.assertFalse(DailyVisitors.objects.exists())
+
+    def test_script_is_put_just_before_the_end_of_body(self):
+        content = self.client.get('/', headers={'User-Agent': self.BROWSER}).content
+        self.assertTrue(content.rstrip().endswith(b'</script></body>\n</html>')
+                        or b'</script></body>' in content)
+
+    def test_forged_or_old_notice_is_not_counted(self):
+        from django.core import signing
+        self.client.post(reverse('console:beacon'), {'t': 'forged'}, headers={'User-Agent': self.BROWSER})
+        self.client.post(reverse('console:beacon'), {'t': signing.dumps({'p': '/x/', 't': ''})},
+                         headers={'User-Agent': self.BROWSER})  # salt が違う（サイトが出したものでない）
+        self.assertFalse(PageView.objects.exists())
+        with mock.patch('django.core.signing.time.time', return_value=time.time() - 7 * 3600):
+            response = self.client.get('/', headers={'User-Agent': self.BROWSER})
+        token = json.loads(TOKEN_IN_PAGE.search(response.content.decode()).group(1))
+        self.client.post(reverse('console:beacon'), {'t': token}, headers={'User-Agent': self.BROWSER})
+        self.assertFalse(PageView.objects.exists())
+
+    def test_beacon_answers_the_same_either_way(self):
+        response = self.client.post(reverse('console:beacon'), {'t': 'forged'})
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.client.get(reverse('console:beacon')).status_code, 405)
+
+    def test_disguised_scanners_get_no_script(self):
+        for agent in ('Mozilla/5.0 (compatible; Dataprovider.com)',
+                      'Mozilla/5.0 (compatible; AdmakeChecker/2pass-dyn; +https://example.com)',
+                      'visionheight.com/scan Mozilla/5.0 (Macintosh) Chrome/126.0.0.0 Safari/537.36',
+                      'python-requests/2.32.3'):
+            response = self.client.get('/', headers={'User-Agent': agent})
+            self.assertNotContains(response, reverse('console:beacon'), msg_prefix=agent)
 
     def test_public_page_is_counted_per_day_and_path(self):
         self.get('/')
@@ -77,6 +130,13 @@ class PageViewCountingTests(TestCase):
         self.client.cookies['fic_visited'] = (today - timedelta(days=1)).isoformat()
         self.get('/')
         self.assertEqual(DailyVisitors.on(today), 3)
+
+    def test_notice_from_logged_in_staff_is_not_counted(self):
+        response = self.client.get('/', headers={'User-Agent': self.BROWSER})
+        token = json.loads(TOKEN_IN_PAGE.search(response.content.decode()).group(1))
+        self.client.force_login(User.objects.create_user('staff', password='pw-for-tests-only'))
+        self.client.post(reverse('console:beacon'), {'t': token}, headers={'User-Agent': self.BROWSER})
+        self.assertFalse(PageView.objects.exists())
 
     def test_visitor_is_not_counted_for_staff_crawlers_or_errors(self):
         self.client.get('/', headers={'User-Agent': 'Googlebot/2.1'})
