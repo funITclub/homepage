@@ -239,7 +239,8 @@ class PageViewsPageTests(TestCase):
         with mock.patch('console.members.summary', return_value={'configured': True, 'total': 42}):
             response = self.client.get(reverse('console:index'))
         self.assertEqual(response.context['today_visitors'], 3)
-        self.assertContains(response, '訪問者数（今日）')
+        self.assertContains(response, '今日の訪問者数')
+        self.assertContains(response, 'visitors-hero')
         self.assertContains(response, '会員数')
         self.assertContains(response, '42')
         self.assertNotContains(response, '推移')
@@ -507,12 +508,10 @@ class SuspiciousAccessTests(TestCase):
         self.client.get('/news/', headers={'User-Agent': self.BROWSER})
         self.assertEqual(self.kinds(), [('blocked', '127.0.0.1', '/news/')])
 
-    def test_daily_limit_per_ip_and_kind(self):
-        from . import suspicious
-        with mock.patch.object(suspicious, 'DAILY_LIMIT', 3):
-            for _ in range(5):
-                self.client.get('/wp-login.php')
-        self.assertEqual(len(self.kinds()), 3)
+    def test_every_access_is_recorded_no_matter_how_many(self):
+        for _ in range(60):
+            self.client.get('/wp-login.php')
+        self.assertEqual(len(self.kinds()), 60)
 
     def test_old_records_are_purged(self):
         from datetime import timedelta as td
@@ -540,9 +539,22 @@ class SuspiciousAccessTests(TestCase):
         self.assertContains(response, '/wp-login.php')
         self.assertContains(response, 'zgrab/0.x')
         response = self.client.get(reverse('console:suspicious'), {'ip': '203.0.113.9'})
-        self.assertEqual(response.context['count'], 1)
+        self.assertEqual(response.context['page'].paginator.count, 1)
         response = self.client.get(reverse('console:suspicious'), {'kind': 'probe'})
-        self.assertEqual([r.path for r in response.context['rows']], ['/wp-login.php'])
+        self.assertEqual([r.path for r in response.context['page'].object_list], ['/wp-login.php'])
+
+    def test_list_shows_everything_across_pages(self):
+        from .models import SuspiciousAccess
+        from .views import SuspiciousView
+        SuspiciousAccess.objects.bulk_create([
+            SuspiciousAccess(created_at=timezone.now(), kind='probe', ip='20.30.40.60', path=f'/x{i}.php')
+            for i in range(SuspiciousView.PER_PAGE + 5)])
+        self.client.force_login(User.objects.create_user('funitclub', password='x'))
+        first = self.client.get(reverse('console:suspicious'))
+        self.assertEqual(len(first.context['page'].object_list), SuspiciousView.PER_PAGE)
+        self.assertContains(first, '古い 200 件')
+        second = self.client.get(reverse('console:suspicious'), {'page': 2})
+        self.assertEqual(len(second.context['page'].object_list), 5)
 
 
 @override_settings(SUSPICIOUS_BLOCK_RULES=[(3, 600), (5, 86400)])

@@ -10,8 +10,13 @@
             <p class="section-label">// ページビュー</p>
         </div>
 
+        <div class="card visitors-hero">
+            <span class="visitors-label">// 今日（{{ day|date:"Y-m-d (D)" }}）の訪問者数</span>
+            <span class="visitors-count">{{ visitors }}<small> 人</small></span>
+            <span class="visitors-desc">サイトのどのページを開いても数えます（下の表に出ないトップページなども）。同じブラウザは1日1人、人だけを数えます。</span>
+        </div>
+
         <p class="editor-note">
-            今日（{{ day|date:"Y-m-d (D)" }}）の訪問者は <strong>{{ visitors }}</strong> 人です（同じブラウザは1日1人）。<br>
             下の表は、クラブへの参加・WG・成果物のページが表示された回数です。合計 <strong>{{ total }}</strong> 回（ボタンの回数は含みません）。<br>
             WG・成果物は、これまでに見られたことのあるページをすべて出します（今日まだのページは 0）。<br>
             ログイン中の運営の閲覧・クローラー・エラーのページは数えていません。誰が見たか（IP など）は記録していません。

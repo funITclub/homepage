@@ -29,9 +29,9 @@
         <p class="editor-note">IP {{ ip }} だけを出しています。<a href="?{% if kind %}kind={{ kind }}{% endif %}">絞り込みをやめる</a></p>
         {% endif %}
 
-        <h2 class="pv-heading">アクセス元（{{ count }} 件{% if count > limit %}・新しい {{ limit }} 件を表示{% endif %}）</h2>
+        <h2 class="pv-heading">アクセス元（{{ page.paginator.count }} 件{% if page.paginator.num_pages > 1 %}・{{ page.number }} / {{ page.paginator.num_pages }} ページ{% endif %}）</h2>
         <div class="card">
-            {% if rows %}
+            {% if page.object_list %}
             <div class="editor-table-wrap">
                 <table class="editor-table sa-table">
                     <thead>
@@ -44,7 +44,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for row in rows %}
+                        {% for row in page.object_list %}
                         <tr>
                             <td class="editor-date">{{ row.created_at|date:"m-d H:i:s" }}</td>
                             <td>{{ row.get_kind_display }}</td>
@@ -60,6 +60,12 @@
             <p class="editor-empty">記録はありません。</p>
             {% endif %}
         </div>
+        {% if page.paginator.num_pages > 1 %}
+        <nav class="pv-filter sa-pages" aria-label="ページ">
+            {% if page.has_previous %}<a href="?{% if kind %}kind={{ kind }}&amp;{% endif %}{% if ip %}ip={{ ip|urlencode }}&amp;{% endif %}page={{ page.previous_page_number }}">← 新しい {{ page.paginator.per_page }} 件</a>{% endif %}
+            {% if page.has_next %}<a href="?{% if kind %}kind={{ kind }}&amp;{% endif %}{% if ip %}ip={{ ip|urlencode }}&amp;{% endif %}page={{ page.next_page_number }}">古い {{ page.paginator.per_page }} 件 →</a>{% endif %}
+        </nav>
+        {% endif %}
 
         <h2 class="pv-heading">件数の多い IP（{{ keep_days }} 日分）</h2>
         <div class="card">
