@@ -8,6 +8,8 @@ from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponseForbidden, HttpResponsePermanentRedirect
 from django.template.loader import render_to_string
 
+from console import suspicious
+from console.models import SuspiciousAccess
 from edit.checks import run_daily_checks
 from edit.models import public_contact_email
 from home.models import BlockedIp
@@ -70,6 +72,7 @@ class BlockedIpMiddleware:
             blocked = self.blocked_ips()
             if ip in blocked:
                 logger.warning('遮断中の IP からのアクセスを拒否しました: IP=%s', ip)
+                suspicious.record(request, SuspiciousAccess.BLOCKED, ip=ip)
                 # 遮断中は静的ファイルも返さないので、CSS を埋め込んだ1枚で返す
                 return HttpResponseForbidden(render_to_string('home/blocked.html', {
                     'contact': public_contact_email(),

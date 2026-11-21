@@ -4,6 +4,7 @@ import html
 import json
 import logging
 import re
+import secrets
 from datetime import timedelta
 
 from django.conf import settings
@@ -11,6 +12,7 @@ from django.core import signing
 from django.urls import reverse
 from django.utils import timezone
 
+from . import suspicious
 from .models import DailyVisitors, PageView
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,7 @@ class PageViewMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
+        suspicious.check_request(request)
         if self.should_count(request, response):
             try:
                 self.add_beacon(request, response)
@@ -82,12 +85,15 @@ class PageViewMiddleware:
         end = body.lower().rfind(b'</body>')
         if end < 0:
             return
-        token = signing.dumps({'p': request.path[:255], 't': self.title_of(response)},
+        nonce = secrets.token_hex(16)
+        token = signing.dumps({'p': request.path[:255], 't': self.title_of(response), 'n': nonce},
                               salt=BEACON_SALT, compress=True)
         script = BEACON_SCRIPT % {'url': json.dumps(reverse('console:beacon')), 'token': json.dumps(token)}
         response.content = body[:end] + script.encode() + body[end:]
         if response.has_header('Content-Length'):
             response['Content-Length'] = str(len(response.content))
+        # 知らせが来なければ「人のふりをしたロボット」として残す（console.suspicious）
+        suspicious.wait_for_beacon(request, nonce)
 
     def title_of(self, response):
         """HTML の <title>。コンソールでページ名にする。取れなければ空。"""
@@ -120,11 +126,15 @@ def record_beacon(request, response):
     訪問者数（DailyVisitors）も同じときに数える。同じブラウザはその日1人とし、数えたことは
     Cookie（VISITOR_COOKIE。中身はその日の日付だけ）で覚える。
     """
-    if is_staff(request) or is_bot(request):
-        return False
     try:
         page = signing.loads(request.POST.get('t', ''), salt=BEACON_SALT, max_age=BEACON_MAX_AGE)
     except signing.BadSignature:
+        return False
+    try:
+        suspicious.beacon_arrived(page.get('n'))
+    except Exception:
+        logger.exception('知らせ待ちの控えを消せませんでした')
+    if is_staff(request) or is_bot(request):
         return False
     today = timezone.localdate()
     try:

@@ -110,6 +110,16 @@ def send_countdown_mails():
     logger.info(out.getvalue().strip())
 
 
+def purge_suspicious_access():
+    """運営コンソールの不審なアクセスのうち、残す日数（30 日）を過ぎたものを消す。
+
+    不審なアクセスは「個人情報を持たない」方針の例外として IP を残しているので、期限で必ず消す。
+    """
+    from console.suspicious import purge_old, sweep_pending
+    sweep_pending()
+    logger.info('不審なアクセスの記録を %s 件消しました（30 日より前）。', purge_old())
+
+
 def run_daily_checks():
     """1日1回だけ点検する。リクエストのたびに走らせないためのゲート。"""
     key = 'daily-checks-done'
@@ -133,4 +143,8 @@ def run_daily_checks():
         send_countdown_mails()
     except Exception:
         logger.exception('カウントダウンのメール通知に失敗しました')
+    try:
+        purge_suspicious_access()
+    except Exception:
+        logger.exception('不審なアクセスの記録の掃除に失敗しました')
     return True

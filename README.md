@@ -74,6 +74,7 @@ docs/                  補足資料（開発の手順・技術設計・セキュ
 | `/console/` | 運営コンソール（サイトの様子を見る） |
 | `/console/pageviews/` | ページビュー数 |
 | `/console/members/` | 会員数 |
+| `/console/suspicious/` | 不審なアクセス |
 | `/admin/` | 管理画面（テーブルの中身を一覧・検索する。遮断IPの解除もここ） |
 
 ## 参加フォーム（`/join/apply/`）
@@ -223,6 +224,14 @@ python manage.py createsuperuser --settings=config.settings_dev
   `pageviews.py` の `console_counts(day)`（`[(画面の名前, 回数), …]` を返す）があれば、そちらの数を使う。
 - 訪問者数（コンソールのトップのカード）… サイトを訪れた人の数。ページビューと同じ条件で、同じブラウザはその日1人と数える
   （`console.DailyVisitors`）。数えたことは Cookie `fic_visited`（中身はその日の日付だけ、その日の終わりまで）で覚える。
+- 不審なアクセス（`/console/suspicious/`）… 攻撃用のパス探し（`/wp-login.php`・`/.env` など）・人のふりをしたロボット
+  （ブラウザを名乗ってページを取ったのに、30 分たっても知らせが来なかったもの）・名乗っているスキャナー（検索エンジンは除く）・
+  遮断中の IP・参加フォームの連続送信を、IP・User-Agent・パス・日時つきで残す（`console.SuspiciousAccess`、`console.suspicious`）。
+  **「個人情報を持たない」方針の例外**として運営が決めたもので、人のアクセスは残さず、30 日より古いものは毎日の点検で消す。
+  知らせ待ちのページは `console.PendingView` に数十分だけ置き、知らせが来たら消す。同じ IP・同じ種類は1日 50 件まで。
+- 攻撃用のパス探し・人のふりをしたロボット・スキャナーが同じ IP から続くと（`SUSPICIOUS_BLOCK_RULES`。10 分で 20 件、
+  または 1 日で 100 件）、自動で遮断する（`home.BlockedIp`。期間・解除・`IP_BLOCK_EXEMPT` は参加フォームの遮断と同じ）。
+  手作業は要らないので事務局にメールは送らない。Azure の内側（169.254.x など）・プライベート・手元の IP は遮断しない。
 - 会員数（`/console/members/`）… クラブの Classroom のクラスの会員（生徒と先生。WG への参加の確認と同じく先生も会員に数える）・招待中の人数と、Chat スペースを登録した WG ごとの
   スペースの人数。名簿は持たないので、そのつど Google に人数だけを聞く（`console.members`・`wgjoin.google.count_*`。
   `fields` で ID と種類だけを受け取り、名前・アドレスは受け取らない）。結果の数は 10 分キャッシュする。

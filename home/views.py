@@ -24,7 +24,8 @@ from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView
 
 from catalog.models import Wg, Work
-from console.models import ActionCount
+from console import suspicious
+from console.models import ActionCount, SuspiciousAccess
 from news.models import News
 from wgjoin import google
 from wgjoin.config import can_add_to_club_chat, can_invite_to_club, club_chat_space, club_course_id
@@ -80,11 +81,14 @@ def detect_and_block_burst_submissions(request):
                 seconds // 60, count, limit, ip,
             )
             block_ip(ip, f'参加フォームの連続送信（{seconds // 60}分間に{count}件）')
+            suspicious.record(request, SuspiciousAccess.BURST, ip=ip)
             return
 
 
-def block_ip(ip, reason):
+def block_ip(ip, reason, notify=True):
     """IP を遮断する。繰り返しているほど期間を延ばす（settings.IP_BLOCK_DURATIONS）。
+
+    notify=False なら事務局に知らせない（不審なアクセスの自動遮断。手作業が要らないため）。
 
     期限切れの行は消さずに残してあるので、再犯なら回数を引き継いで重くできる。
     遮断できなくても申し込み自体は通す（付加機能のために本筋を止めない）。
@@ -115,7 +119,8 @@ def block_ip(ip, reason):
     from config.middleware import BlockedIpMiddleware
     BlockedIpMiddleware.forget_cache()
 
-    send_block_notification(blocked)
+    if notify:
+        send_block_notification(blocked)
 
 
 class NavMixin:

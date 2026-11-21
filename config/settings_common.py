@@ -224,6 +224,11 @@ IP_BLOCK_EXEMPT = [
 # まず短く切って自動で解けるようにし、本当に繰り返す相手だけ恒久に落とす。
 IP_BLOCK_DURATIONS = [24 * 60 * 60, 7 * 24 * 60 * 60, None]
 
+# 執拗な不審なアクセスの自動遮断（console.suspicious.block_if_persistent）。
+# 同じ IP の不審なアクセス（攻撃用のパス探し・人のふりをしたロボット・スキャナー）が
+# (件数, 秒) のどれかに達したら遮断する。期間は上の IP_BLOCK_DURATIONS。事務局には知らせない。
+SUSPICIOUS_BLOCK_RULES = [(20, 10 * 60), (100, 24 * 60 * 60)]
+
 # 管理者への通知（edit.notify）。種類ごとに1時間あたりの通数を制限する。
 # 通知が溢れると読まれなくなるため。
 ADMIN_NOTIFY_MAX_PER_HOUR = 10
