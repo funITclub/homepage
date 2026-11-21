@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ActionCount, DailyVisitors, PageView
+from .models import ActionCount, DailyVisitors, PageView, SuspiciousAccess
 
 
 @admin.register(PageView)
@@ -22,3 +22,11 @@ class ActionCountAdmin(admin.ModelAdmin):
 class DailyVisitorsAdmin(admin.ModelAdmin):
     list_display = ('date', 'count')
     date_hierarchy = 'date'
+
+
+@admin.register(SuspiciousAccess)
+class SuspiciousAccessAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'kind', 'ip', 'method', 'path', 'user_agent')
+    list_filter = ('kind',)
+    search_fields = ('ip', 'path', 'user_agent')
+    date_hierarchy = 'created_at'

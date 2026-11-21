@@ -1371,3 +1371,51 @@ a:hover {
     background: var(--accent);
     border-radius: 2px;
 }
+
+/* 運営コンソールの不審なアクセス */
+
+.pv-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 20px;
+}
+
+.pv-filter a {
+    font-size: .8rem;
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    color: #FFFFFF;
+}
+
+.pv-filter a:hover {
+    text-decoration: none;
+    border-color: var(--accent);
+}
+
+.pv-filter a.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--navy);
+}
+
+.sa-table {
+    min-width: 900px;
+}
+
+.sa-wrap {
+    word-break: break-all;
+    white-space: normal;
+}
+
+.sa-agent {
+    font-size: .76rem;
+}
+
+.pv-heading {
+    font-family: var(--mono);
+    font-size: .9rem;
+    letter-spacing: .05em;
+    margin: 32px 0 12px;
+}

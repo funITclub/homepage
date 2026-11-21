@@ -26,6 +26,12 @@
                 <span class="menu-desc">クラブの Classroom のクラスの生徒と先生の数。招待中の人数と、WG ごとの Chat の人数を見られます。</span>
             </a>
 
+            <a class="card menu-card" href="{% url 'console:suspicious' %}">
+                <span class="menu-label">// 不審なアクセス（今日）</span>
+                <span class="menu-count">{{ suspicious_today }}</span>
+                <span class="menu-desc">攻撃用のパス探し・人のふりをしたロボット・スキャナーなど。アクセス元（IP・User-Agent）の一覧を見られます。</span>
+            </a>
+
         </div>
 
     </section>

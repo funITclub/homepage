@@ -124,3 +124,62 @@ def _count_up(model, key, **fields):
     except IntegrityError:
         # 別のリクエストが先に行を作った
         rows.update(count=F('count') + 1, **fields)
+
+
+class SuspiciousAccess(models.Model):
+    """不審なアクセス（console.suspicious）。人のアクセスは残さない。
+
+    「個人情報をシステムに持たない」方針の例外として、不審と判断したものだけ IP・User-Agent・
+    パス・日時を残す（運営が決めた。遮断や調べものに使うため）。KEEP_DAYS より古いものは毎日消す。
+    """
+
+    PROBE = 'probe'
+    FAKE_BROWSER = 'fake_browser'
+    SCANNER = 'scanner'
+    BLOCKED = 'blocked'
+    BURST = 'burst'
+    KINDS = {
+        PROBE: '攻撃用のパスを探る',
+        FAKE_BROWSER: '人のふりをしたロボット',
+        SCANNER: '名乗っているスキャナー',
+        BLOCKED: '遮断中の IP',
+        BURST: '参加フォームの連続送信',
+    }
+
+    #: 残す日数
+    KEEP_DAYS = 30
+
+    created_at = models.DateTimeField('日時', db_index=True)
+    kind = models.CharField('種類', max_length=20, choices=list(KINDS.items()))
+    ip = models.GenericIPAddressField('IP アドレス', null=True, blank=True)
+    user_agent = models.CharField('User-Agent', max_length=255, blank=True)
+    method = models.CharField('メソッド', max_length=10, blank=True)
+    path = models.CharField('パス', max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'funitclub_suspiciousaccess'
+        ordering = ['-created_at']
+        verbose_name = '不審なアクセス'
+        verbose_name_plural = '不審なアクセス'
+
+    def __str__(self):
+        return f'{self.created_at:%Y-%m-%d %H:%M} {self.kind} {self.ip} {self.path}'
+
+
+class PendingView(models.Model):
+    """ブラウザからの知らせ（beacon）を待っているページ。来なければ「人のふりをしたロボット」とする。
+
+    知らせが来たら消す。PENDING_SECONDS 過ぎても残っていたら SuspiciousAccess に移して消す
+    （console.suspicious.sweep_pending）。人のアクセスはここに数十分いるだけで残らない。
+    """
+
+    created_at = models.DateTimeField('日時', db_index=True)
+    nonce = models.CharField('番号', max_length=32, unique=True)
+    ip = models.GenericIPAddressField('IP アドレス', null=True, blank=True)
+    user_agent = models.CharField('User-Agent', max_length=255, blank=True)
+    path = models.CharField('パス', max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'funitclub_pendingview'
+        verbose_name = '知らせ待ちのページ'
+        verbose_name_plural = '知らせ待ちのページ'

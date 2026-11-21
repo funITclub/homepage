@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Q
+from django.db.models import Count, Max, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -17,9 +17,9 @@ from django.views.generic import TemplateView
 from catalog.models import Wg, Work
 from config import subapps
 
-from . import members
+from . import members, suspicious
 from .middleware import record_beacon
-from .models import ActionCount, DailyVisitors, PageView
+from .models import ActionCount, DailyVisitors, PageView, SuspiciousAccess
 
 
 def installed_apps():
@@ -222,6 +222,7 @@ class IndexView(ConsoleMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         context['today_visitors'] = DailyVisitors.on(timezone.localdate())
         context['members'] = members.summary()
+        context['suspicious_today'] = suspicious_today()
         return context
 
 
@@ -236,6 +237,54 @@ class PageViewsView(ConsoleMixin, TemplateView):
         day = timezone.localdate()
         context.update(today_summary(day))
         context['visitors'] = DailyVisitors.on(day)
+        return context
+
+
+def suspicious_today():
+    """今日の不審なアクセスの件数（見直しの済んでいない知らせ待ちも先に移す）。"""
+    suspicious.sweep_pending()
+    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    return SuspiciousAccess.objects.filter(created_at__gte=start).count()
+
+
+class SuspiciousView(ConsoleMixin, TemplateView):
+    """不審なアクセスの一覧（残している 30 日分、新しい順）。種類と IP で絞れる。"""
+
+    template_name = 'console/suspicious.html'
+    section = 'suspicious'
+
+    #: 一覧に出す件数
+    LIMIT = 500
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        suspicious.sweep_pending()
+        rows = SuspiciousAccess.objects.all()
+        kind = self.request.GET.get('kind', '')
+        if kind in SuspiciousAccess.KINDS:
+            rows = rows.filter(kind=kind)
+        else:
+            kind = ''
+        ip = self.request.GET.get('ip', '').strip()
+        if ip:
+            rows = rows.filter(ip=ip)
+        start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = dict(SuspiciousAccess.objects.filter(created_at__gte=start)
+                     .values('kind').annotate(n=Count('id')).values_list('kind', 'n'))
+        top_ips = (SuspiciousAccess.objects.exclude(ip=None).values('ip')
+                   .annotate(n=Count('id'), last=Max('created_at')).order_by('-n', '-last')[:20])
+        context.update({
+            'kinds': [{'key': key, 'label': label, 'today': today.get(key, 0)}
+                      for key, label in SuspiciousAccess.KINDS.items()],
+            'today_total': sum(today.values()),
+            'kind': kind,
+            'ip': ip,
+            'top_ips': top_ips,
+            'rows': rows[:self.LIMIT],
+            'count': rows.count(),
+            'limit': self.LIMIT,
+            'keep_days': SuspiciousAccess.KEEP_DAYS,
+        })
         return context
 
 

@@ -23,6 +23,7 @@
         <nav class="site-nav">
             <a href="{% url 'console:pageviews' %}" {% if section == 'pageviews' %}class="is-active"{% endif %}>ページビュー</a>
             <a href="{% url 'console:members' %}" {% if section == 'members' %}class="is-active"{% endif %}>会員数</a>
+            <a href="{% url 'console:suspicious' %}" {% if section == 'suspicious' %}class="is-active"{% endif %}>不審なアクセス</a>
         </nav>
 
         <form class="editor-signout" method="post" action="{% url 'console:logout' %}">

@@ -24,7 +24,8 @@ from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView
 
 from catalog.models import Wg, Work
-from console.models import ActionCount
+from console import suspicious
+from console.models import ActionCount, SuspiciousAccess
 from news.models import News
 from wgjoin import google
 from wgjoin.config import can_add_to_club_chat, can_invite_to_club, club_chat_space, club_course_id
@@ -80,6 +81,7 @@ def detect_and_block_burst_submissions(request):
                 seconds // 60, count, limit, ip,
             )
             block_ip(ip, f'参加フォームの連続送信（{seconds // 60}分間に{count}件）')
+            suspicious.record(request, SuspiciousAccess.BURST, ip=ip)
             return
 
 

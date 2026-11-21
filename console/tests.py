@@ -443,3 +443,103 @@ class MembersTests(TestCase):
         response = self.client.get(reverse('console:members'))
         self.assertContains(response, '数えられません')
         self.assertContains(self.client.get(reverse('console:index')), '—')
+
+
+class SuspiciousAccessTests(TestCase):
+    """不審なアクセスだけ、IP・User-Agent・パス・日時を残す。人のアクセスは残さない。"""
+
+    BROWSER = PageViewCountingTests.BROWSER
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def kinds(self):
+        from .models import SuspiciousAccess
+        return list(SuspiciousAccess.objects.order_by('created_at').values_list('kind', 'ip', 'path'))
+
+    def test_probing_attack_paths(self):
+        for path in ('/wp-login.php', '/.env', '/xmlrpc.php', '/phpmyadmin/', '/cgi-bin/x'):
+            self.client.get(path, headers={'User-Agent': self.BROWSER})
+        self.assertEqual([k[0] for k in self.kinds()], ['probe'] * 5)
+        self.assertEqual(self.kinds()[0][1:], ('127.0.0.1', '/wp-login.php'))
+
+    def test_ordinary_pages_are_not_probes(self):
+        for path in ('/', '/news/', '/join/', '/no-such-page/', '/countdown/myboard/', '/robots.txt'):
+            self.client.get(path, headers={'User-Agent': self.BROWSER})
+        self.assertNotIn('probe', [k[0] for k in self.kinds()])
+
+    def test_named_scanners_but_not_search_engines(self):
+        self.client.get('/', headers={'User-Agent': 'Mozilla/5.0 (compatible; Dataprovider.com)'})
+        self.client.get('/', headers={'User-Agent': 'python-requests/2.32.3'})
+        self.client.get('/', headers={'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)'})
+        self.assertEqual([k[0] for k in self.kinds()], ['scanner', 'scanner'])
+
+    def test_person_with_a_browser_leaves_nothing(self):
+        from .models import PendingView
+        PageViewCountingTests.get(self, '/')
+        PageViewCountingTests.get(self, '/news/')
+        self.assertEqual(self.kinds(), [])
+        self.assertFalse(PendingView.objects.exists())
+
+    def test_fake_browser_without_the_notice(self):
+        from datetime import timedelta as td
+
+        from . import suspicious
+        from .models import PendingView
+        self.client.get('/news/', headers={'User-Agent': self.BROWSER})
+        self.assertEqual(PendingView.objects.count(), 1)
+        self.assertEqual(suspicious.sweep_pending(), 0)  # まだ待つ
+        self.assertEqual(suspicious.sweep_pending(timezone.now() + td(minutes=31)), 1)
+        self.assertEqual(self.kinds(), [('fake_browser', '127.0.0.1', '/news/')])
+        self.assertFalse(PendingView.objects.exists())
+
+    def test_staff_is_not_recorded(self):
+        self.client.force_login(User.objects.create_user('staff', password='pw-for-tests-only'))
+        self.client.get('/wp-login.php', headers={'User-Agent': 'python-requests/2.32.3'})
+        self.assertEqual(self.kinds(), [])
+
+    def test_blocked_ip(self):
+        from config.middleware import BlockedIpMiddleware
+        from home.models import BlockedIp
+        BlockedIp.objects.create(ip='127.0.0.1', reason='手動')
+        BlockedIpMiddleware.forget_cache()
+        self.client.get('/news/', headers={'User-Agent': self.BROWSER})
+        self.assertEqual(self.kinds(), [('blocked', '127.0.0.1', '/news/')])
+
+    def test_daily_limit_per_ip_and_kind(self):
+        from . import suspicious
+        with mock.patch.object(suspicious, 'DAILY_LIMIT', 3):
+            for _ in range(5):
+                self.client.get('/wp-login.php')
+        self.assertEqual(len(self.kinds()), 3)
+
+    def test_old_records_are_purged(self):
+        from datetime import timedelta as td
+
+        from . import suspicious
+        from .models import SuspiciousAccess
+        SuspiciousAccess.objects.create(created_at=timezone.now() - td(days=31), kind='probe', ip='1.2.3.4')
+        SuspiciousAccess.objects.create(created_at=timezone.now() - td(days=29), kind='probe', ip='1.2.3.5')
+        self.assertEqual(suspicious.purge_old(), 1)
+        self.assertEqual(list(SuspiciousAccess.objects.values_list('ip', flat=True)), ['1.2.3.5'])
+
+    def test_console_card_and_list(self):
+        from .models import SuspiciousAccess
+        self.client.get('/wp-login.php', headers={'User-Agent': 'zgrab/0.x'})
+        SuspiciousAccess.objects.create(created_at=timezone.now(), kind='scanner', ip='203.0.113.9',
+                                        path='/', user_agent='Dataprovider')
+        self.client.force_login(User.objects.create_user('funitclub', password='x'))
+        with mock.patch('console.members.summary', return_value={'configured': False}):
+            index = self.client.get(reverse('console:index'))
+        self.assertEqual(index.context['suspicious_today'], 2)
+        self.assertContains(index, '不審なアクセス（今日）')
+
+        response = self.client.get(reverse('console:suspicious'))
+        self.assertContains(response, '203.0.113.9')
+        self.assertContains(response, '/wp-login.php')
+        self.assertContains(response, 'zgrab/0.x')
+        response = self.client.get(reverse('console:suspicious'), {'ip': '203.0.113.9'})
+        self.assertEqual(response.context['count'], 1)
+        response = self.client.get(reverse('console:suspicious'), {'kind': 'probe'})
+        self.assertEqual([r.path for r in response.context['rows']], ['/wp-login.php'])
