@@ -636,3 +636,33 @@ class AutoBlockTests(TestCase):
         for _ in range(4):
             self.client.get('/wp-login.php')
         self.assertEqual(self.blocked(), [])
+
+
+class SuspiciousCoverageTests(TestCase):
+    """取りこぼし・入れすぎを防ぐ。"""
+
+    BROWSER = PageViewCountingTests.BROWSER
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_probe_is_recorded_even_when_another_middleware_answers_first(self):
+        from .models import SuspiciousAccess
+        # /countdown/ の下はゲート（config.gate）が一覧へ送り返す。それでも残す
+        response = self.client.get('/countdown/wp-login.php', headers={'User-Agent': self.BROWSER})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(SuspiciousAccess.objects.filter(kind='probe', path='/countdown/wp-login.php').exists())
+
+    def test_azure_warmup_and_health_checks_are_not_pending(self):
+        from .models import PendingView
+        for agent in ('SiteWarmup', 'HealthCheck/1.0', 'AlwaysOn'):
+            self.client.get('/', headers={'User-Agent': agent})
+        self.assertFalse(PendingView.objects.exists())
+
+    def test_pending_count_is_shown(self):
+        self.client.get('/news/', headers={'User-Agent': self.BROWSER})
+        self.client.force_login(User.objects.create_user('funitclub', password='x'))
+        response = self.client.get(reverse('console:suspicious'))
+        self.assertEqual(response.context['pending_count'], 1)
+        self.assertContains(response, '判定待ち')
