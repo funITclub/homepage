@@ -20,6 +20,7 @@ def protected(view):
 urlpatterns = [
     path('', protected(views.IndexView.as_view()), name='index'),
     path('pageviews/', protected(views.PageViewsView.as_view()), name='pageviews'),
+    path('members/', protected(views.MembersView.as_view()), name='members'),
 
     path('login/', auth_views.LoginView.as_view(
         template_name='console/login.html',

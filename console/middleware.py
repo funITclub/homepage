@@ -3,10 +3,12 @@
 import html
 import logging
 import re
+from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone
 
-from .models import PageView
+from .models import DailyVisitors, PageView
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,12 @@ class PageViewMiddleware:
       - 検索エンジンなどのクローラーと、ブラウザの先読みは数えない
 
     IP や User-Agent は記録しない（判定に使うだけ）。記録に失敗してもページは返す。
+
+    訪問者数（DailyVisitors）も同じ条件で数える。同じブラウザはその日1人とし、数えたことは
+    Cookie（VISITOR_COOKIE。中身はその日の日付だけ）で覚える。
     """
+
+    VISITOR_COOKIE = 'fic_visited'
 
     EXCLUDED_PREFIXES = ('/edit/', '/console/', '/admin/', '/static/', '/media/')
 
@@ -38,11 +45,29 @@ class PageViewMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
         if self.should_count(request, response):
+            today = timezone.localdate()
             try:
-                PageView.record(timezone.localdate(), request.path[:255], self.title_of(response))
+                PageView.record(today, request.path[:255], self.title_of(response))
             except Exception:
                 logger.exception('ページビューの記録に失敗しました')
+            self.count_visitor(request, response, today)
         return response
+
+    def count_visitor(self, request, response, today):
+        """このブラウザが今日まだ数えられていなければ、訪問者を1人足して印の Cookie を置く。"""
+        if request.COOKIES.get(self.VISITOR_COOKIE) == today.isoformat():
+            return
+        try:
+            DailyVisitors.record(today)
+        except Exception:
+            logger.exception('訪問者数の記録に失敗しました')
+            return
+        # その日の終わりまで有効にする（日付が変わったら、また1人と数える）
+        now = timezone.localtime()
+        midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        response.set_cookie(self.VISITOR_COOKIE, today.isoformat(),
+                            max_age=int((midnight - now).total_seconds()) + 1,
+                            secure=settings.SESSION_COOKIE_SECURE, httponly=True, samesite='Lax')
 
     def title_of(self, response):
         """HTML の <title>。コンソールでページ名にする。取れなければ空。"""

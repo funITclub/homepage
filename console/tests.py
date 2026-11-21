@@ -1,11 +1,11 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import ActionCount, PageView
+from .models import ActionCount, DailyVisitors, PageView
 
 
 def views_of(path):
@@ -62,6 +62,30 @@ class PageViewCountingTests(TestCase):
         self.client.head('/', headers={'User-Agent': self.BROWSER})
         self.assertFalse(PageView.objects.exists())
 
+    def test_visitor_is_counted_once_a_day_per_browser(self):
+        self.get('/')
+        self.get('/news/')
+        self.get('/')
+        today = timezone.localdate()
+        self.assertEqual(DailyVisitors.on(today), 1)
+        self.assertEqual(self.client.cookies['fic_visited'].value, today.isoformat())
+        # 別のブラウザ
+        self.client.cookies.clear()
+        self.get('/')
+        self.assertEqual(DailyVisitors.on(today), 2)
+        # 前の日の印は数え直す
+        self.client.cookies['fic_visited'] = (today - timedelta(days=1)).isoformat()
+        self.get('/')
+        self.assertEqual(DailyVisitors.on(today), 3)
+
+    def test_visitor_is_not_counted_for_staff_crawlers_or_errors(self):
+        self.client.get('/', headers={'User-Agent': 'Googlebot/2.1'})
+        self.get('/no-such-page/')
+        self.get('/console/login/')
+        self.client.force_login(User.objects.create_user('staff', password='pw-for-tests-only'))
+        self.get('/')
+        self.assertFalse(DailyVisitors.objects.exists())
+
     def test_page_title_is_kept(self):
         self.get('/join/')
         self.assertEqual(PageView.objects.get(path='/join/').title, '参加する — fun IT club')
@@ -72,6 +96,8 @@ class PageViewCountingTests(TestCase):
         self.assertEqual(fields, {'id', 'date', 'path', 'title', 'count'})
         fields = {f.name for f in ActionCount._meta.get_fields()}
         self.assertEqual(fields, {'id', 'date', 'name', 'count'})
+        fields = {f.name for f in DailyVisitors._meta.get_fields()}
+        self.assertEqual(fields, {'id', 'date', 'count'})
 
     def test_join_apply_button_is_counted(self):
         self.client.post('/join/apply/', {}, headers={'User-Agent': self.BROWSER})
@@ -147,9 +173,15 @@ class PageViewsPageTests(TestCase):
         self.assertNotContains(response, '経過')
         self.assertNotContains(response, '?days=')
 
-    def test_index_shows_todays_views(self):
-        response = self.client.get(reverse('console:index'))
-        self.assertEqual(response.context['today_views'], 4)
+    def test_index_shows_visitors_and_members(self):
+        from unittest import mock
+        DailyVisitors.objects.create(date=self.today, count=3)
+        with mock.patch('console.members.summary', return_value={'configured': True, 'students': 42}):
+            response = self.client.get(reverse('console:index'))
+        self.assertEqual(response.context['today_visitors'], 3)
+        self.assertContains(response, '訪問者数（今日）')
+        self.assertContains(response, '会員数')
+        self.assertContains(response, '42')
         self.assertNotContains(response, '推移')
 
 
@@ -283,3 +315,69 @@ class ViewsByAppTests(TestCase):
         self.assertContains(response, 'チケット')
         self.assertContains(response, '1問1答')
         self.assertNotContains(response, '/welfare/activity/tickets/')
+
+
+GOOGLE = dict(
+    CLUB_CLASSROOM_COURSE='987654321098',
+    GOOGLE_OAUTH_CLIENT_ID='google-client', GOOGLE_OAUTH_CLIENT_SECRET='google-secret',
+    GOOGLE_OAUTH_REFRESH_TOKEN='staff-refresh',
+)
+
+
+class MembersTests(TestCase):
+    """会員数は Google に人数だけを聞く。名簿は持たない。"""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        from catalog.models import Wg
+        cache.clear()
+        self.client.force_login(User.objects.create_user('funitclub', password='x'))
+        Wg.objects.create(code='WG-04', name='カウントダウン', description='x', status=Wg.ACTIVE,
+                          chat_space='spaces/AAAA1234')
+        Wg.objects.create(code='WG-05', name='Chat なし', description='x', status=Wg.ACTIVE)
+
+    def patched(self, **counts):
+        from unittest import mock
+
+        from wgjoin import google
+        return mock.patch.multiple(google, **{
+            'count_club_students': mock.Mock(return_value=counts.get('students', 40)),
+            'count_club_invitations': mock.Mock(return_value=counts.get('invited', 3)),
+            'count_chat_members': counts.get('chat', mock.Mock(return_value=7)),
+        })
+
+    @override_settings(**GOOGLE)
+    def test_counts_from_google(self):
+        with self.patched():
+            response = self.client.get(reverse('console:members'))
+        members = response.context['members']
+        self.assertEqual((members['students'], members['invited']), (40, 3))
+        self.assertEqual(members['wgs'], [{'title': 'WG-04 カウントダウン', 'chat': 7}])
+        self.assertContains(response, 'WG-04 カウントダウン')
+        self.assertNotContains(response, 'Chat なし')
+
+    @override_settings(**GOOGLE)
+    def test_counts_are_cached_and_can_be_refreshed(self):
+        with self.patched(students=40):
+            self.client.get(reverse('console:members'))
+        with self.patched(students=41):
+            self.assertEqual(self.client.get(reverse('console:members')).context['members']['students'], 40)
+            response = self.client.get(reverse('console:members'), {'refresh': 1})
+        self.assertEqual(response.context['members']['students'], 41)
+
+    @override_settings(**GOOGLE)
+    def test_failure_is_shown_without_breaking_the_page(self):
+        from unittest import mock
+
+        from wgjoin.http import ServiceError
+        with self.patched(chat=mock.Mock(side_effect=ServiceError('403'))):
+            response = self.client.get(reverse('console:members'))
+        self.assertContains(response, '取得できませんでした')
+        self.assertContains(response, '40')
+
+    @override_settings(GOOGLE_OAUTH_REFRESH_TOKEN='')
+    def test_without_google_settings(self):
+        response = self.client.get(reverse('console:members'))
+        self.assertContains(response, '数えられません')
+        self.assertContains(self.client.get(reverse('console:index')), '—')

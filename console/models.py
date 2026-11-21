@@ -1,6 +1,6 @@
 # console/models.py
 #
-# ページビューの記録。日ごと・パスごとの件数（とページの題名）と、ボタンが押された回数だけを持つ。
+# ページビューの記録。日ごと・パスごとの件数（とページの題名）、日ごとの訪問者数、ボタンが押された回数だけを持つ。
 #
 # 誰が見たか（IP・User-Agent・Cookie）は残さない。個人情報をシステムに持たない方針なので、
 # 数えるのに要らないものは最初から受け取らない。
@@ -39,6 +39,33 @@ class PageView(models.Model):
     def record(cls, date, path, title=''):
         """1回ぶん数える。同時に来ても取りこぼさないよう、足し算は DB にさせる。"""
         _count_up(cls, {'date': date, 'path': path}, title=title[:255])
+
+
+class DailyVisitors(models.Model):
+    """ある日にサイトを訪れた人の数。同じブラウザはその日1人と数える（console.middleware）。
+
+    数えたことはブラウザの Cookie（その日の日付だけ）で覚える。ID・IP は持たない。
+    """
+
+    date = models.DateField('日付', unique=True)
+    count = models.PositiveIntegerField('訪問者数', default=0)
+
+    class Meta:
+        db_table = 'funitclub_dailyvisitors'
+        ordering = ['-date']
+        verbose_name = '訪問者数'
+        verbose_name_plural = '訪問者数'
+
+    def __str__(self):
+        return f'{self.date} {self.count}'
+
+    @classmethod
+    def record(cls, date):
+        _count_up(cls, {'date': date})
+
+    @classmethod
+    def on(cls, date):
+        return cls.objects.filter(date=date).values_list('count', flat=True).first() or 0
 
 
 class ActionCount(models.Model):

@@ -1,0 +1,60 @@
+{% extends "console/base.html" %}
+
+{% block title %}会員数 — fun IT club コンソール{% endblock %}
+
+{% block contents %}
+<div class="container">
+    <section class="editor">
+
+        <div class="section-head">
+            <p class="section-label">// 会員数</p>
+        </div>
+
+        <p class="editor-note">
+            名簿はサイトに持たないので、Google（Classroom・Chat）にそのつど人数だけを聞いています。名前やアドレスは受け取っていません。<br>
+            {{ members.checked_at|date:"Y-m-d H:i" }} 時点の数です（10 分ごとに聞き直します）。
+            <a href="?refresh=1">今すぐ数え直す</a>
+        </p>
+
+        {% if not members.configured %}
+        <div class="card"><p class="editor-empty">Google の設定（クラブのクラスと運営の許可）が無いため、数えられません。</p></div>
+        {% else %}
+        <div class="card">
+            <div class="editor-table-wrap">
+                <table class="editor-table pv-table">
+                    <thead>
+                        <tr>
+                            <th>区分</th>
+                            <th class="pv-num">人数</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="pv-section"><th colspan="2">クラブ（Classroom のクラス）</th></tr>
+                        <tr>
+                            <td class="pv-page">会員（クラスの生徒）</td>
+                            <td class="editor-date pv-num">{% if members.students is not None %}{{ members.students }}{% else %}取得できませんでした{% endif %}</td>
+                        </tr>
+                        <tr>
+                            <td class="pv-page">招待中（まだ「参加」を押していない人）</td>
+                            <td class="editor-date pv-num">{% if members.invited is not None %}{{ members.invited }}{% else %}取得できませんでした{% endif %}</td>
+                        </tr>
+                    </tbody>
+                    <tbody>
+                        <tr class="pv-section"><th colspan="2">WG ごとの Chat スペース</th></tr>
+                        {% for wg in members.wgs %}
+                        <tr>
+                            <td class="pv-page">{{ wg.title }}</td>
+                            <td class="editor-date pv-num">{% if wg.chat is not None %}{{ wg.chat }}{% else %}取得できませんでした{% endif %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td class="pv-page editor-empty" colspan="2">Chat スペースを登録した WG はありません。</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+    </section>
+</div>
+{% endblock %}

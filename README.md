@@ -73,6 +73,7 @@ docs/                  補足資料（開発の手順・技術設計・セキュ
 | `/edit/works/` | 成果物紹介の編集 |
 | `/console/` | 運営コンソール（サイトの様子を見る） |
 | `/console/pageviews/` | ページビュー数 |
+| `/console/members/` | 会員数 |
 | `/admin/` | 管理画面（テーブルの中身を一覧・検索する。遮断IPの解除もここ） |
 
 ## 参加フォーム（`/join/apply/`）
@@ -220,6 +221,11 @@ python manage.py createsuperuser --settings=config.settings_dev
   `Work.url`）が同じアプリは 1 つの WG・成果物にまとめる。
 - 画面がブラウザの中で切りかわるアプリ（React の fe など）は、パスごとの記録では数えきれない。アプリに
   `pageviews.py` の `console_counts(day)`（`[(画面の名前, 回数), …]` を返す）があれば、そちらの数を使う。
+- 訪問者数（コンソールのトップのカード）… サイトを訪れた人の数。ページビューと同じ条件で、同じブラウザはその日1人と数える
+  （`console.DailyVisitors`）。数えたことは Cookie `fic_visited`（中身はその日の日付だけ、その日の終わりまで）で覚える。
+- 会員数（`/console/members/`）… クラブの Classroom のクラスの生徒・招待中の人数と、Chat スペースを登録した WG ごとの
+  スペースの人数。名簿は持たないので、そのつど Google に人数だけを聞く（`console.members`・`wgjoin.google.count_*`。
+  `fields` で ID と種類だけを受け取り、名前・アドレスは受け取らない）。結果の数は 10 分キャッシュする。
 - 「申し込む」ボタンの回数は `console.ActionCount`。`/join/apply/` への POST を、通ったかどうかに関わらず数える。
 - WG の欄には、参加を受け付けている WG ごとに、参加ページ（`/wg/<pk>/join/`）の表示回数と、「確認のメールを送る」
   「GitHub でログインして登録する」ボタンが押された回数も出す（`ActionCount` の `wg_join_send:<pk>`・`wg_join_confirm:<pk>`）。

@@ -13,7 +13,8 @@ from django.views.generic import TemplateView
 from catalog.models import Wg, Work
 from config import subapps
 
-from .models import ActionCount, PageView
+from . import members
+from .models import ActionCount, DailyVisitors, PageView
 
 
 def installed_apps():
@@ -214,7 +215,8 @@ class IndexView(ConsoleMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['today_views'] = today_summary(timezone.localdate())['total']
+        context['today_visitors'] = DailyVisitors.on(timezone.localdate())
+        context['members'] = members.summary()
         return context
 
 
@@ -226,5 +228,19 @@ class PageViewsView(ConsoleMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.update(today_summary(timezone.localdate()))
+        day = timezone.localdate()
+        context.update(today_summary(day))
+        context['visitors'] = DailyVisitors.on(day)
+        return context
+
+
+class MembersView(ConsoleMixin, TemplateView):
+    """会員数。クラブのクラスの生徒・招待中と、WG ごとの Chat スペースの人数（数だけ）。"""
+
+    template_name = 'console/members.html'
+    section = 'members'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['members'] = members.summary(refresh='refresh' in self.request.GET)
         return context
