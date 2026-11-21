@@ -540,3 +540,39 @@ class SaveToEnvTests(SimpleTestCase):
             self.assertEqual(env.read_text(encoding='utf-8').splitlines(), [
                 '# コメント', 'EMAIL_HOST_USER=keep', 'GOOGLE_OAUTH_CLIENT_ID=new', 'GOOGLE_OAUTH_REFRESH_TOKEN=token'])
             self.assertEqual(env.stat().st_mode & 0o777, 0o600)
+
+
+@override_settings(**ENABLED)
+class CountTests(SimpleTestCase):
+    """会員数（コンソール）は人数だけを数える。受け取るのは ID と種類だけ。"""
+
+    def test_counts_pages_and_asks_only_for_ids(self):
+        pages = [
+            (200, {'students': [{'userId': '1'}, {'userId': '2'}], 'nextPageToken': 'p2'}),
+            (200, {'students': [{'userId': '3'}]}),
+        ]
+        with mock.patch.object(google, '_access_token', return_value='t'), \
+                mock.patch.object(google, 'call', side_effect=pages) as api:
+            self.assertEqual(google.count_club_students('987'), 3)
+        first, second = [c.kwargs['params'] for c in api.call_args_list]
+        self.assertEqual(first['fields'], 'nextPageToken,students(userId)')
+        self.assertEqual(second['pageToken'], 'p2')
+
+    def test_chat_counts_only_people(self):
+        body = {'memberships': [{'member': {'type': 'HUMAN'}}, {'member': {'type': 'BOT'}},
+                                {'member': {'type': 'HUMAN'}}]}
+        with mock.patch.object(google, '_access_token', return_value='t'), \
+                mock.patch.object(google, 'call', return_value=(200, body)):
+            self.assertEqual(google.count_chat_members('spaces/AAAA'), 2)
+
+    def test_invitations_count_only_students(self):
+        body = {'invitations': [{'id': '1', 'role': 'STUDENT'}, {'id': '2', 'role': 'TEACHER'}]}
+        with mock.patch.object(google, '_access_token', return_value='t'), \
+                mock.patch.object(google, 'call', return_value=(200, body)):
+            self.assertEqual(google.count_club_invitations('987'), 1)
+
+    def test_error_is_a_service_error(self):
+        with mock.patch.object(google, '_access_token', return_value='t'), \
+                mock.patch.object(google, 'call', return_value=(403, {})):
+            with self.assertRaises(ServiceError):
+                google.count_club_students('987')

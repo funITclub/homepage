@@ -15,9 +15,15 @@
         <div class="grid-3">
 
             <a class="card menu-card" href="{% url 'console:pageviews' %}">
-                <span class="menu-label">// ページビュー（今日）</span>
-                <span class="menu-count">{{ today_views }}</span>
-                <span class="menu-desc">公開ページが表示された回数。日ごとの推移とページごとの順位を見られます。</span>
+                <span class="menu-label">// 訪問者数（今日）</span>
+                <span class="menu-count">{{ today_visitors }}</span>
+                <span class="menu-desc">今日サイトを訪れた人の数（同じブラウザは1日1人）。WG・成果物のページごとの表示回数を見られます。</span>
+            </a>
+
+            <a class="card menu-card" href="{% url 'console:members' %}">
+                <span class="menu-label">// 会員数</span>
+                <span class="menu-count">{% if members.total is not None %}{{ members.total }}{% else %}—{% endif %}</span>
+                <span class="menu-desc">クラブの Classroom のクラスの生徒と先生の数。招待中の人数と、WG ごとの Chat の人数を見られます。</span>
             </a>
 
         </div>

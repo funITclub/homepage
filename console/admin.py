@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ActionCount, PageView
+from .models import ActionCount, DailyVisitors, PageView
 
 
 @admin.register(PageView)
@@ -15,4 +15,10 @@ class PageViewAdmin(admin.ModelAdmin):
 class ActionCountAdmin(admin.ModelAdmin):
     list_display = ('date', 'name', 'count')
     list_filter = ('date', 'name')
+    date_hierarchy = 'date'
+
+
+@admin.register(DailyVisitors)
+class DailyVisitorsAdmin(admin.ModelAdmin):
+    list_display = ('date', 'count')
     date_hierarchy = 'date'

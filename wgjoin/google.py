@@ -13,6 +13,8 @@
 # 「名簿を管理する」（classroom.rosters。見る・招待する）と「Chat のメンバーを管理する」（chat.memberships）。
 #
 # 名簿はアドレスで1人ずつ引くだけで、一覧は取らない。結果もアドレスも保存しない。
+# 運営コンソールの会員数（console.members）だけは人数を数えるために一覧を引くが、受け取るのは
+# Google の内部の ID と種類だけ（fields で絞る。名前・アドレスは受け取らない）で、数えたら捨てる。
 
 import base64
 import hashlib
@@ -92,6 +94,46 @@ def add_to_chat_space(space, email):
     # メンバーを追加できる役割でない、大学の管理者が Chat API を止めている、など。404 なら、
     # スペースの登録が違う。どれかを切り分けられるよう、Google が返した理由を通知に載せる
     raise ServiceError(f'Chat スペースに追加できませんでした（{status} {_google_reason(body)}）')
+
+
+def _count_pages(url, key, fields, params=None, keep=lambda item: True):
+    """一覧の API をページをめくって引き、keep に合う件数を返す。中身は数えるだけで残さない。"""
+    headers = {'Authorization': f'Bearer {_access_token()}'}
+    params = {**(params or {}), 'pageSize': 1000, 'fields': f'nextPageToken,{key}({fields})'}
+    count = 0
+    for _ in range(100):  # 念のための上限（10 万件）
+        status, body = call('GET', url, headers=headers, params=params)
+        if status != 200:
+            raise ServiceError(f'人数を数えられませんでした（{status} {_google_reason(body)}）')
+        count += sum(1 for item in body.get(key) or [] if keep(item))
+        token = body.get('nextPageToken')
+        if not token:
+            break
+        params['pageToken'] = token
+    return count
+
+
+def count_club_students(club_course_id):
+    """クラブのクラスの生徒の数。"""
+    return _count_pages(f'{CLASSROOM_API}/courses/{club_course_id}/students', 'students', 'userId')
+
+
+def count_club_teachers(club_course_id):
+    """クラブのクラスの先生の数（運営など。is_club_member と同じく会員に数える）。"""
+    return _count_pages(f'{CLASSROOM_API}/courses/{club_course_id}/teachers', 'teachers', 'userId')
+
+
+def count_club_invitations(club_course_id):
+    """クラブのクラスに生徒として招待していて、まだ「参加」を押していない人の数。"""
+    return _count_pages(f'{CLASSROOM_API}/invitations', 'invitations', 'id,role',
+                        params={'courseId': club_course_id},
+                        keep=lambda item: item.get('role') == 'STUDENT')
+
+
+def count_chat_members(space):
+    """Chat スペースに入っている人の数（アプリ・招待中の人は数えない）。"""
+    return _count_pages(f'{CHAT_API}/{space}/members', 'memberships', 'member/type',
+                        keep=lambda item: (item.get('member') or {}).get('type') == 'HUMAN')
 
 
 def _google_reason(body):

@@ -6,14 +6,15 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Q, Sum
+from django.db.models import Q
 from django.utils import timezone
 from django.views.generic import TemplateView
 
 from catalog.models import Wg, Work
 from config import subapps
 
-from .models import ActionCount, PageView
+from . import members
+from .models import ActionCount, DailyVisitors, PageView
 
 
 def installed_apps():
@@ -181,6 +182,32 @@ class ConsoleMixin(LoginRequiredMixin):
         return context
 
 
+def today_summary(day):
+    """その日の、クラブへの参加・WG・成果物の回数。コンソールのトップとページビューの画面で使う。
+
+    total は表に出すページの表示回数の合計（ボタンの回数は入れない）。トップ・お知らせなど
+    表に出さないページは入れない（表の数字と合うように）。
+    """
+    rows = list(PageView.objects.filter(date=day).values_list('path', 'title', 'count'))
+    per_path = {path: n for path, _title, n in rows}
+
+    apps = views_by_app(day, rows)
+    actions = dict(ActionCount.objects.filter(date=day).values_list('name', 'count'))
+    add_wg_join(apps['wg'], per_path, actions)
+    join_pages = [{'name': label, 'n': per_path.get(path, 0)} for path, label in JOIN_PAGES]
+
+    total = (sum(page['n'] for page in join_pages)
+             + sum(group['n'] for groups in apps.values() for group in groups))
+    return {
+        'day': day,
+        'total': total,
+        'join_pages': join_pages,
+        'join_applied': actions.get('join_apply', 0),
+        'apps': apps,
+        'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])],
+    }
+
+
 class IndexView(ConsoleMixin, TemplateView):
     """コンソールのメニュー。"""
 
@@ -188,15 +215,13 @@ class IndexView(ConsoleMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        today = timezone.localdate()
-        context['today_views'] = (
-            PageView.objects.filter(date=today).aggregate(n=Sum('count'))['n'] or 0
-        )
+        context['today_visitors'] = DailyVisitors.on(timezone.localdate())
+        context['members'] = members.summary()
         return context
 
 
 class PageViewsView(ConsoleMixin, TemplateView):
-    """今日のページビュー。クラブへの参加・WG ごと・成果物ごと・そのほかのページを、ページの名前で出す。"""
+    """今日のページビュー。クラブへの参加・WG ごと・成果物ごとに、ページの名前で出す。"""
 
     template_name = 'console/pageviews.html'
     section = 'pageviews'
@@ -204,20 +229,18 @@ class PageViewsView(ConsoleMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         day = timezone.localdate()
-        rows = list(PageView.objects.filter(date=day).values_list('path', 'title', 'count'))
-        per_path = {path: n for path, _title, n in rows}
+        context.update(today_summary(day))
+        context['visitors'] = DailyVisitors.on(day)
+        return context
 
-        apps = views_by_app(day, rows)
-        actions = dict(ActionCount.objects.filter(date=day).values_list('name', 'count'))
-        add_wg_join(apps['wg'], per_path, actions)
 
-        context.update({
-            'day': day,
-            'total': sum(per_path.values()),
-            'join_pages': [{'name': label, 'n': per_path.get(path, 0)} for path, label in JOIN_PAGES],
-            'join_applied': actions.get('join_apply', 0),
-            'join_apply_label': ActionCount.ACTIONS['join_apply'],
-            'apps': apps,
-            'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])]
-        })
+class MembersView(ConsoleMixin, TemplateView):
+    """会員数。クラブのクラスの生徒・招待中と、WG ごとの Chat スペースの人数（数だけ）。"""
+
+    template_name = 'console/members.html'
+    section = 'members'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['members'] = members.summary(refresh='refresh' in self.request.GET)
         return context
