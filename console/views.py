@@ -2,7 +2,6 @@
 
 import importlib
 import importlib.util
-import re
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -31,11 +30,6 @@ def catalog_titles():
     return [(urlsplit(url).path, title) for url, title in titles if url]
 
 
-#: パスの決まったページの名前（<title> から取ると分かりにくいもの）
-PAGE_NAMES = {
-    '/': 'トップページ',
-}
-
 #: クラブへの参加（/join/）のページ。並びは画面の並び
 JOIN_PAGES = (
     ('/join/', '参加案内（参加する）'),
@@ -46,8 +40,6 @@ JOIN_PAGES = (
 
 def page_name(path, title):
     """ページの名前。<title> の「 — fun IT club」などの後ろを落としたもの。題名が無ければパス。"""
-    if path in PAGE_NAMES:
-        return PAGE_NAMES[path]
     for separator in (' — ', ' | ', ' - '):
         title = title.split(separator)[0]
     return title.strip() or path
@@ -107,7 +99,7 @@ def views_by_app(day, rows):
     見られたことがあれば 0 回として出す（ページごとの回数を一覧で見られるように）。入れ子のとき（/welfare/ と /welfare/activity/）は、
     長いほうの URL に数える。同じ WG・成果物のアプリ（一覧に登録した名前が同じもの）は1つにまとめる。
 
-    戻り値は ({'wg': [WG, …], 'works': [成果物, …]}, どのアプリにも入らなかった行)。
+    戻り値は {'wg': [WG, …], 'works': [成果物, …]}。どのアプリにも入らないページは捨てる。
     WG・成果物は {'title', 'n', 'apps': [{'name', 'prefix', 'n', 'pages'}, …]} で、回数の多い順。
     """
     apps = [
@@ -121,13 +113,10 @@ def views_by_app(day, rows):
         for path, title in known_titles([app['prefix'] for app in apps]).items()
         if path not in today
     ]
-    rest = []
     for row in rows:
         app = next((app for app in by_length if row[0].startswith(app['prefix'])), None)
         if app:
             app['rows'].append(row)
-        elif row[0] in today:
-            rest.append(row)
 
     titles = catalog_titles()
     grouped = {folder: {} for folder in subapps.FOLDERS}
@@ -150,11 +139,7 @@ def views_by_app(day, rows):
         for group in groups.values():
             group['apps'].sort(key=lambda app: app['prefix'])
         result[folder] = sorted(groups.values(), key=lambda group: (-group['n'], group['title']))
-    return result, rest
-
-
-#: WG への参加の画面（/wg/<pk>/join/…、/wg/join/verify/<トークン>/ など）。そのほかのページには出さない
-WG_JOIN_PATH = re.compile(r'^/wg/(\d+/)?join/')
+    return result
 
 
 def add_wg_join(groups, per_path, actions):
@@ -222,8 +207,7 @@ class PageViewsView(ConsoleMixin, TemplateView):
         rows = list(PageView.objects.filter(date=day).values_list('path', 'title', 'count'))
         per_path = {path: n for path, _title, n in rows}
 
-        apps, rest = views_by_app(day, rows)
-        join_paths = {path for path, _label in JOIN_PAGES}
+        apps = views_by_app(day, rows)
         actions = dict(ActionCount.objects.filter(date=day).values_list('name', 'count'))
         add_wg_join(apps['wg'], per_path, actions)
 
@@ -234,9 +218,6 @@ class PageViewsView(ConsoleMixin, TemplateView):
             'join_applied': actions.get('join_apply', 0),
             'join_apply_label': ActionCount.ACTIONS['join_apply'],
             'apps': apps,
-            'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])],
-            'site_pages': with_percent(
-                count_by_name([row for row in rest
-                               if row[0] not in join_paths and not WG_JOIN_PATH.match(row[0])])),
+            'app_groups': [('WG（作っている途中）', apps['wg']), ('成果物（公表したもの）', apps['works'])]
         })
         return context
