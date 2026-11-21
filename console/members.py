@@ -18,7 +18,7 @@ from wgjoin.links import decode_chat_space
 
 logger = logging.getLogger(__name__)
 
-CACHE_KEY = 'console:members'
+CACHE_KEY = 'console:members:v2'
 CACHE_SECONDS = 10 * 60
 
 
@@ -47,15 +47,23 @@ def collect():
         'configured': True,
         'checked_at': timezone.now(),
         'students': _ask('クラブのクラスの生徒', google.count_club_students, course),
+        'teachers': _ask('クラブのクラスの先生', google.count_club_teachers, course),
         'invited': _ask('クラブのクラスの招待中', google.count_club_invitations, course),
         'wgs': wgs,
     }
 
 
 def summary(refresh=False):
-    """会員数。CACHE_SECONDS のあいだは覚えた数を返す。refresh で聞き直す。"""
+    """会員数。CACHE_SECONDS のあいだは覚えた数を返す。refresh で聞き直す。
+
+    total はクラスの生徒と先生の合計（どちらかを聞けなければ None）。WG への参加の確認
+    （wgjoin.google.is_club_member）と同じく、先生も会員に数える。
+    """
     data = None if refresh else cache.get(CACHE_KEY)
     if data is None:
         data = collect()
         cache.set(CACHE_KEY, data, CACHE_SECONDS)
+    if data.get('configured'):
+        parts = [data.get('students'), data.get('teachers')]
+        data['total'] = None if None in parts else sum(parts)
     return data

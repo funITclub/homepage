@@ -223,7 +223,7 @@ python manage.py createsuperuser --settings=config.settings_dev
   `pageviews.py` の `console_counts(day)`（`[(画面の名前, 回数), …]` を返す）があれば、そちらの数を使う。
 - 訪問者数（コンソールのトップのカード）… サイトを訪れた人の数。ページビューと同じ条件で、同じブラウザはその日1人と数える
   （`console.DailyVisitors`）。数えたことは Cookie `fic_visited`（中身はその日の日付だけ、その日の終わりまで）で覚える。
-- 会員数（`/console/members/`）… クラブの Classroom のクラスの生徒・招待中の人数と、Chat スペースを登録した WG ごとの
+- 会員数（`/console/members/`）… クラブの Classroom のクラスの会員（生徒と先生。WG への参加の確認と同じく先生も会員に数える）・招待中の人数と、Chat スペースを登録した WG ごとの
   スペースの人数。名簿は持たないので、そのつど Google に人数だけを聞く（`console.members`・`wgjoin.google.count_*`。
   `fields` で ID と種類だけを受け取り、名前・アドレスは受け取らない）。結果の数は 10 分キャッシュする。
 - 「申し込む」ボタンの回数は `console.ActionCount`。`/join/apply/` への POST を、通ったかどうかに関わらず数える。

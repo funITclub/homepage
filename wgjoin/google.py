@@ -118,6 +118,11 @@ def count_club_students(club_course_id):
     return _count_pages(f'{CLASSROOM_API}/courses/{club_course_id}/students', 'students', 'userId')
 
 
+def count_club_teachers(club_course_id):
+    """クラブのクラスの先生の数（運営など。is_club_member と同じく会員に数える）。"""
+    return _count_pages(f'{CLASSROOM_API}/courses/{club_course_id}/teachers', 'teachers', 'userId')
+
+
 def count_club_invitations(club_course_id):
     """クラブのクラスに生徒として招待していて、まだ「参加」を押していない人の数。"""
     return _count_pages(f'{CLASSROOM_API}/invitations', 'invitations', 'id,role',

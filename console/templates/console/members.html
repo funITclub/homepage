@@ -30,9 +30,17 @@
                     </thead>
                     <tbody>
                         <tr class="pv-section"><th colspan="2">クラブ（Classroom のクラス）</th></tr>
+                        <tr class="pv-group">
+                            <td>会員（生徒と先生）</td>
+                            <td class="editor-date pv-num">{% if members.total is not None %}{{ members.total }}{% else %}取得できませんでした{% endif %}</td>
+                        </tr>
                         <tr>
-                            <td class="pv-page">会員（クラスの生徒）</td>
+                            <td class="pv-page">生徒</td>
                             <td class="editor-date pv-num">{% if members.students is not None %}{{ members.students }}{% else %}取得できませんでした{% endif %}</td>
+                        </tr>
+                        <tr>
+                            <td class="pv-page">先生（運営など）</td>
+                            <td class="editor-date pv-num">{% if members.teachers is not None %}{{ members.teachers }}{% else %}取得できませんでした{% endif %}</td>
                         </tr>
                         <tr>
                             <td class="pv-page">招待中（まだ「参加」を押していない人）</td>

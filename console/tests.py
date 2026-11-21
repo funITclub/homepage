@@ -176,7 +176,7 @@ class PageViewsPageTests(TestCase):
     def test_index_shows_visitors_and_members(self):
         from unittest import mock
         DailyVisitors.objects.create(date=self.today, count=3)
-        with mock.patch('console.members.summary', return_value={'configured': True, 'students': 42}):
+        with mock.patch('console.members.summary', return_value={'configured': True, 'total': 42}):
             response = self.client.get(reverse('console:index'))
         self.assertEqual(response.context['today_visitors'], 3)
         self.assertContains(response, '訪問者数（今日）')
@@ -343,6 +343,7 @@ class MembersTests(TestCase):
         from wgjoin import google
         return mock.patch.multiple(google, **{
             'count_club_students': mock.Mock(return_value=counts.get('students', 40)),
+            'count_club_teachers': mock.Mock(return_value=counts.get('teachers', 2)),
             'count_club_invitations': mock.Mock(return_value=counts.get('invited', 3)),
             'count_chat_members': counts.get('chat', mock.Mock(return_value=7)),
         })
@@ -352,7 +353,8 @@ class MembersTests(TestCase):
         with self.patched():
             response = self.client.get(reverse('console:members'))
         members = response.context['members']
-        self.assertEqual((members['students'], members['invited']), (40, 3))
+        self.assertEqual((members['students'], members['teachers'], members['invited']), (40, 2, 3))
+        self.assertEqual(members['total'], 42)  # 先生も会員に数える
         self.assertEqual(members['wgs'], [{'title': 'WG-04 カウントダウン', 'chat': 7}])
         self.assertContains(response, 'WG-04 カウントダウン')
         self.assertNotContains(response, 'Chat なし')
@@ -374,7 +376,7 @@ class MembersTests(TestCase):
         with self.patched(chat=mock.Mock(side_effect=ServiceError('403'))):
             response = self.client.get(reverse('console:members'))
         self.assertContains(response, '取得できませんでした')
-        self.assertContains(response, '40')
+        self.assertContains(response, '42')
 
     @override_settings(GOOGLE_OAUTH_REFRESH_TOKEN='')
     def test_without_google_settings(self):
