@@ -65,7 +65,8 @@ jobs:
           fi
           echo "時間帯 ${SLOT} ${DATE}"
           # 図の多い問題を何通も送ると時間がかかるので、待ち時間は長めにする
-          curl --fail-with-body --silent --show-error --max-time 600 \
+          # 名乗り（-A）は、サイトの不審なアクセスの判定から外すため（console.suspicious.OWN_AGENT_PREFIX）
+          curl --fail-with-body --silent --show-error --max-time 600 -A 'funitclub-actions/fe-mails' \
             --retry 3 --retry-delay 30 --retry-all-errors \
             -X POST -H "X-Fe-Mail-Token: ${FE_MAIL_TOKEN}" \
             --data-urlencode "slot=${SLOT}" \

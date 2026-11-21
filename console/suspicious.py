@@ -123,12 +123,31 @@ def block_if_persistent(ip):
     return False
 
 
-def check_request(request):
+#: 自分たちの GitHub Actions が合言葉付きで呼ぶ定期実行の入口。合言葉が通った（200 を返した）ときは残さない。
+#: 合言葉が違えば 403・404 になるので、これまでどおり残る
+OWN_TASK_PATHS = ('/fe/tasks/send-mails/', '/countdown/notify/run/')
+
+#: 自分たちの GitHub Actions が名乗る User-Agent の頭（.github/workflows の curl に -A で付ける）。
+#: 攻撃用のパスでなければ、スキャナーには数えない（名乗りは誰でも付けられるので、パス探しは見逃さない）
+OWN_AGENT_PREFIX = 'funitclub-actions/'
+
+
+def is_own_automation(request, response=None):
+    """自分たちの GitHub Actions（定期実行・デプロイ後の確認）からのアクセスか。"""
+    if (response is not None and response.status_code == 200
+            and request.method == 'POST' and request.path in OWN_TASK_PATHS):
+        return True
+    return _agent(request).startswith(OWN_AGENT_PREFIX)
+
+
+def check_request(request, response=None):
     """パスと User-Agent から、攻撃用のパス探し・スキャナーを見つけて残す。"""
     if request.path.startswith('/static/') or is_staff(request):
         return
     if PROBE_PATTERN.search(request.path):
         record(request, SuspiciousAccess.PROBE)
+        return
+    if is_own_automation(request, response):
         return
     agent = _agent(request)
     if SCANNER_PATTERN.search(agent) and not SEARCH_ENGINES.search(agent):
