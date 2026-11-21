@@ -229,6 +229,9 @@ python manage.py createsuperuser --settings=config.settings_dev
   遮断中の IP・参加フォームの連続送信を、IP・User-Agent・パス・日時つきで残す（`console.SuspiciousAccess`、`console.suspicious`）。
   **「個人情報を持たない」方針の例外**として運営が決めたもので、人のアクセスは残さず、30 日より古いものは毎日の点検で消す。
   知らせ待ちのページは `console.PendingView` に数十分だけ置き、知らせが来たら消す。同じ IP・同じ種類は1日 50 件まで。
+- 攻撃用のパス探し・人のふりをしたロボット・スキャナーが同じ IP から続くと（`SUSPICIOUS_BLOCK_RULES`。10 分で 20 件、
+  または 1 日で 100 件）、自動で遮断する（`home.BlockedIp`。期間・解除・`IP_BLOCK_EXEMPT` は参加フォームの遮断と同じ）。
+  手作業は要らないので事務局にメールは送らない。Azure の内側（169.254.x など）・プライベート・手元の IP は遮断しない。
 - 会員数（`/console/members/`）… クラブの Classroom のクラスの会員（生徒と先生。WG への参加の確認と同じく先生も会員に数える）・招待中の人数と、Chat スペースを登録した WG ごとの
   スペースの人数。名簿は持たないので、そのつど Google に人数だけを聞く（`console.members`・`wgjoin.google.count_*`。
   `fields` で ID と種類だけを受け取り、名前・アドレスは受け取らない）。結果の数は 10 分キャッシュする。

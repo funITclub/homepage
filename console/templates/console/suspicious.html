@@ -14,7 +14,9 @@
             不審と判断したアクセスだけ、アクセス元（IP・User-Agent）・パス・日時を残しています。人のアクセスは残しません。<br>
             {{ keep_days }} 日より古いものは自動で消えます。今日は <strong>{{ today_total }}</strong> 件です。
             「人のふりをしたロボット」は、ページを取ってから 30 分たっても知らせ（JavaScript）が来なかったものです。
-            JavaScript を切っている人や、裏のタブで開いたまま見なかった人も入ることがあります。
+            JavaScript を切っている人や、裏のタブで開いたまま見なかった人も入ることがあります。<br>
+            攻撃用のパス探し・人のふり・スキャナーが同じ IP から続く（10 分で 20 件、または 1 日で 100 件）と、自動で遮断します（メールは送りません）。
+            期間は 24 時間 → 7 日 → 恒久で、解除は admin（遮断した IP）からできます。
         </p>
 
         <nav class="pv-filter" aria-label="種類">
@@ -69,6 +71,7 @@
                             <th>IP</th>
                             <th class="pv-num">件数</th>
                             <th>最後</th>
+                            <th>遮断</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -77,6 +80,7 @@
                             <td class="editor-date"><a href="?ip={{ row.ip|urlencode }}">{{ row.ip }}</a></td>
                             <td class="editor-date pv-num">{{ row.n }}</td>
                             <td class="editor-date">{{ row.last|date:"m-d H:i" }}</td>
+                            <td>{% if row.blocked %}遮断中（{% if row.until %}{{ row.until|date:"m-d H:i" }} まで{% else %}恒久{% endif %}）{% else %}—{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

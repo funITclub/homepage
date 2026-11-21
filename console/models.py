@@ -138,13 +138,18 @@ class SuspiciousAccess(models.Model):
     SCANNER = 'scanner'
     BLOCKED = 'blocked'
     BURST = 'burst'
+    AUTO_BLOCK = 'auto_block'
     KINDS = {
         PROBE: '攻撃用のパスを探る',
         FAKE_BROWSER: '人のふりをしたロボット',
         SCANNER: '名乗っているスキャナー',
         BLOCKED: '遮断中の IP',
         BURST: '参加フォームの連続送信',
+        AUTO_BLOCK: '執拗なので自動で遮断',
     }
+
+    #: 執拗かどうかを数える種類（自動遮断の対象）
+    WATCHED = (PROBE, FAKE_BROWSER, SCANNER)
 
     #: 残す日数
     KEEP_DAYS = 30

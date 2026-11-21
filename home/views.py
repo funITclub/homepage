@@ -85,8 +85,10 @@ def detect_and_block_burst_submissions(request):
             return
 
 
-def block_ip(ip, reason):
+def block_ip(ip, reason, notify=True):
     """IP を遮断する。繰り返しているほど期間を延ばす（settings.IP_BLOCK_DURATIONS）。
+
+    notify=False なら事務局に知らせない（不審なアクセスの自動遮断。手作業が要らないため）。
 
     期限切れの行は消さずに残してあるので、再犯なら回数を引き継いで重くできる。
     遮断できなくても申し込み自体は通す（付加機能のために本筋を止めない）。
@@ -117,7 +119,8 @@ def block_ip(ip, reason):
     from config.middleware import BlockedIpMiddleware
     BlockedIpMiddleware.forget_cache()
 
-    send_block_notification(blocked)
+    if notify:
+        send_block_notification(blocked)
 
 
 class NavMixin:

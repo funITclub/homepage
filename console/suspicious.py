@@ -7,15 +7,21 @@
 #   名乗っているスキャナー  … User-Agent でスキャナー・チェッカー・道具を名乗っている（検索エンジンは除く）
 #   遮断中の IP             … 遮断リスト（home.BlockedIp）の IP からのアクセス
 #   参加フォームの連続送信  … 参加フォームの連続送信で遮断した
+#   執拗なので自動で遮断    … 上の3つ（攻撃用のパス・人のふり・スキャナー）が同じ IP から続いたので遮断した
+#
+# 執拗な IP は settings.SUSPICIOUS_BLOCK_RULES で自動で遮断する（home.BlockedIp。期間・解除・除外は
+# 参加フォームの遮断と同じ）。手作業は要らないので、事務局にメールは送らない。
 #
 # 「個人情報をシステムに持たない」方針の例外として、不審なものだけ IP・User-Agent・パス・日時を残し、
 # SuspiciousAccess.KEEP_DAYS で消す。ログイン中の運営のアクセスは残さない。
 # 記録に失敗してもページは返す。同じ IP・同じ種類は1日 DAILY_LIMIT 件までにする（表が埋まらないように）。
 
+import ipaddress
 import logging
 import re
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -80,6 +86,48 @@ def record(request, kind, ip=None, path=None):
             method=request.method[:10], path=(path or request.path)[:255])
     except Exception:
         logger.exception('不審なアクセスの記録に失敗しました')
+        return
+    if kind in SuspiciousAccess.WATCHED:
+        block_if_persistent(ip)
+
+
+def is_internal(ip):
+    """Azure の内側（死活監視・ウォームアップ）や手元からのアクセス。自動遮断しない。"""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return True
+    return address.is_private or address.is_loopback or address.is_link_local
+
+
+def block_if_persistent(ip):
+    """同じ IP の不審なアクセスが SUSPICIOUS_BLOCK_RULES に達していたら遮断する。遮断したら True。
+
+    件数は、その IP のいちばん新しい記録から数えて (秒) さかのぼった分。人のふりをしたロボットは
+    30 分遅れて記録されるので、今の時刻からではなく記録の時刻で数える。
+    """
+    if not ip or not settings.IP_BLOCK_ENABLED or ip in settings.IP_BLOCK_EXEMPT or is_internal(ip):
+        return False
+    from home.models import BlockedIp
+    from home.views import block_ip  # home.views がこのモジュールを読むので、ここで読む
+    try:
+        if BlockedIp.objects.active().filter(ip=ip).exists():
+            return False
+        rows = SuspiciousAccess.objects.filter(ip=ip, kind__in=SuspiciousAccess.WATCHED)
+        latest = rows.order_by('-created_at').values_list('created_at', flat=True).first()
+        if latest is None:
+            return False
+        for limit, seconds in settings.SUSPICIOUS_BLOCK_RULES:
+            count = rows.filter(created_at__gt=latest - timedelta(seconds=seconds)).count()
+            if count >= limit:
+                span = f'{seconds // 60}分' if seconds < 3600 else f'{seconds // 3600}時間'
+                block_ip(ip, f'執拗な不審なアクセス（{span}に{count}件）', notify=False)
+                SuspiciousAccess.objects.create(created_at=timezone.now(), kind=SuspiciousAccess.AUTO_BLOCK,
+                                                ip=ip, path=f'{span}に{count}件')
+                return True
+    except Exception:
+        logger.exception('執拗な IP の遮断に失敗しました: IP=%s', ip)
+    return False
 
 
 def check_request(request):
@@ -120,6 +168,8 @@ def sweep_pending(now=None):
         SuspiciousAccess(kind=SuspiciousAccess.FAKE_BROWSER, method='GET', **row) for row in rows
     ])
     stale.delete()
+    for ip in {row['ip'] for row in rows if row['ip']}:
+        block_if_persistent(ip)
     return len(rows)
 
 

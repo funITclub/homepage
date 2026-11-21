@@ -543,3 +543,84 @@ class SuspiciousAccessTests(TestCase):
         self.assertEqual(response.context['count'], 1)
         response = self.client.get(reverse('console:suspicious'), {'kind': 'probe'})
         self.assertEqual([r.path for r in response.context['rows']], ['/wp-login.php'])
+
+
+@override_settings(SUSPICIOUS_BLOCK_RULES=[(3, 600), (5, 86400)])
+class AutoBlockTests(TestCase):
+    """執拗な不審なアクセスは自動で遮断する。メールは送らない。"""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        from config.middleware import BlockedIpMiddleware
+        cache.clear()
+        BlockedIpMiddleware.forget_cache()
+        self.client.defaults['REMOTE_ADDR'] = '20.30.40.50'
+
+    def blocked(self):
+        from home.models import BlockedIp
+        return list(BlockedIp.objects.active().values_list('ip', flat=True))
+
+    def test_persistent_probing_is_blocked_without_mail(self):
+        from django.core import mail
+
+        from .models import SuspiciousAccess
+        for _ in range(2):
+            self.client.get('/wp-login.php')
+        self.assertEqual(self.blocked(), [])
+        self.client.get('/.env')
+        self.assertEqual(self.blocked(), ['20.30.40.50'])
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertTrue(SuspiciousAccess.objects.filter(kind='auto_block', ip='20.30.40.50').exists())
+        # 遮断が効く（次から 403）
+        self.assertEqual(self.client.get('/').status_code, 403)
+
+    def test_fake_browsers_count_too(self):
+        from datetime import timedelta as td
+
+        from . import suspicious
+        for path in ('/', '/news/', '/join/'):
+            self.client.get(path, headers={'User-Agent': PageViewCountingTests.BROWSER})
+        self.assertEqual(self.blocked(), [])
+        suspicious.sweep_pending(timezone.now() + td(minutes=31))
+        self.assertEqual(self.blocked(), ['20.30.40.50'])
+
+    def test_slow_but_steady_is_blocked_by_the_daily_rule(self):
+        from datetime import timedelta as td
+
+        from . import suspicious
+        from .models import SuspiciousAccess
+        now = timezone.now()
+        for hours in (9, 7, 5, 3):
+            SuspiciousAccess.objects.create(created_at=now - td(hours=hours), kind='scanner', ip='20.30.40.51')
+        self.assertFalse(suspicious.block_if_persistent('20.30.40.51'))
+        SuspiciousAccess.objects.create(created_at=now, kind='probe', ip='20.30.40.51')
+        self.assertTrue(suspicious.block_if_persistent('20.30.40.51'))
+
+    def test_other_kinds_do_not_count(self):
+        from . import suspicious
+        from .models import SuspiciousAccess
+        for _ in range(6):
+            SuspiciousAccess.objects.create(created_at=timezone.now(), kind='blocked', ip='20.30.40.52')
+        self.assertFalse(suspicious.block_if_persistent('20.30.40.52'))
+
+    @override_settings(IP_BLOCK_EXEMPT=['20.30.40.50'])
+    def test_exempt_ip_is_not_blocked(self):
+        for _ in range(4):
+            self.client.get('/wp-login.php')
+        self.assertEqual(self.blocked(), [])
+
+    def test_internal_addresses_are_never_blocked(self):
+        """Azure の内側（169.254.x の死活監視など）と手元は遮断しない。"""
+        from . import suspicious
+        from .models import SuspiciousAccess
+        for ip in ('169.254.130.1', '10.0.0.4', '127.0.0.1'):
+            for _ in range(6):
+                SuspiciousAccess.objects.create(created_at=timezone.now(), kind='probe', ip=ip)
+            self.assertFalse(suspicious.block_if_persistent(ip), ip)
+
+    def test_staff_never_triggers_it(self):
+        self.client.force_login(User.objects.create_user('staff', password='pw-for-tests-only'))
+        for _ in range(4):
+            self.client.get('/wp-login.php')
+        self.assertEqual(self.blocked(), [])

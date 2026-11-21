@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
 from catalog.models import Wg, Work
+from home.models import BlockedIp
 from config import subapps
 
 from . import members, suspicious
@@ -271,8 +272,12 @@ class SuspiciousView(ConsoleMixin, TemplateView):
         start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
         today = dict(SuspiciousAccess.objects.filter(created_at__gte=start)
                      .values('kind').annotate(n=Count('id')).values_list('kind', 'n'))
-        top_ips = (SuspiciousAccess.objects.exclude(ip=None).values('ip')
-                   .annotate(n=Count('id'), last=Max('created_at')).order_by('-n', '-last')[:20])
+        blocked = dict(BlockedIp.objects.active().values_list('ip', 'expires_at'))
+        top_ips = list(SuspiciousAccess.objects.exclude(ip=None).values('ip')
+                       .annotate(n=Count('id'), last=Max('created_at')).order_by('-n', '-last')[:20])
+        for row in top_ips:
+            row['blocked'] = row['ip'] in blocked
+            row['until'] = blocked.get(row['ip'])
         context.update({
             'kinds': [{'key': key, 'label': label, 'today': today.get(key, 0)}
                       for key, label in SuspiciousAccess.KINDS.items()],
