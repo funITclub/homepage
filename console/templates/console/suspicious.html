@@ -19,6 +19,13 @@
             期間は 24 時間 → 7 日 → 恒久で、解除は admin（遮断した IP）からできます。
         </p>
 
+        <p class="editor-note">
+            判定待ち：<strong>{{ pending_count }}</strong> 件
+            {% if pending_count %}（いちばん古いもの {{ pending_oldest|date:"H:i" }}）{% endif %}。
+            ブラウザを名乗ってページを取ったもので、知らせが来るのを {{ pending_minutes }} 分待っています。
+            人なら知らせが来た時点で消え（何も残りません）、来なければ {{ pending_minutes }} 分後に「人のふりをしたロボット」として一覧に入ります。
+        </p>
+
         <nav class="pv-filter" aria-label="種類">
             <a href="?" {% if not kind %}class="is-active"{% endif %}>すべて</a>
             {% for k in kinds %}

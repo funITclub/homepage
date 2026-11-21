@@ -21,7 +21,7 @@ from config import subapps
 
 from . import members, suspicious
 from .middleware import record_beacon
-from .models import ActionCount, DailyVisitors, PageView, SuspiciousAccess
+from .models import ActionCount, DailyVisitors, PageView, PendingView, SuspiciousAccess
 
 
 def installed_apps():
@@ -279,7 +279,11 @@ class SuspiciousView(ConsoleMixin, TemplateView):
         for row in top_ips:
             row['blocked'] = row['ip'] in blocked
             row['until'] = blocked.get(row['ip'])
+        pending = PendingView.objects.order_by('created_at')
         context.update({
+            'pending_count': pending.count(),
+            'pending_oldest': pending.values_list('created_at', flat=True).first(),
+            'pending_minutes': suspicious.PENDING_SECONDS // 60,
             'kinds': [{'key': key, 'label': label, 'today': today.get(key, 0)}
                       for key, label in SuspiciousAccess.KINDS.items()],
             'today_total': sum(today.values()),

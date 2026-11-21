@@ -28,7 +28,7 @@ VISITOR_COOKIE = 'fic_visited'
 
 BOT_PATTERN = re.compile(
     r'bot|crawl|spider|slurp|preview|monitor|curl|wget|python|headless|scan|checker|dataprovider|'
-    r'compatible;(?! ?MSIE)',
+    r'warmup|healthcheck|alwayson|compatible;(?! ?MSIE)',
     re.IGNORECASE,
 )
 
@@ -46,6 +46,26 @@ def is_bot(request):
 def is_staff(request):
     user = getattr(request, 'user', None)
     return user is not None and user.is_authenticated
+
+
+class SuspiciousAccessMiddleware:
+    """攻撃用のパス探し・名乗っているスキャナーを残す（console.suspicious.check_request）。
+
+    ほかのミドルウェアが途中で返したもの（リダイレクト・ゲートで送り返したものなど）も取りこぼさない
+    よう、遮断の次（いちばん外側に近いところ）に置く。ログイン中かどうかは、応答を作り終えた後に
+    request.user で見る（認証はこれより内側で付くため）。
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        try:
+            suspicious.check_request(request)
+        except Exception:
+            logger.exception('不審なアクセスの確認に失敗しました')
+        return response
 
 
 class PageViewMiddleware:
@@ -72,7 +92,6 @@ class PageViewMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
-        suspicious.check_request(request)
         if self.should_count(request, response):
             try:
                 self.add_beacon(request, response)

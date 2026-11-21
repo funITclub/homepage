@@ -48,6 +48,8 @@ INSTALLED_APPS += subapps.installed(BASE_DIR)
 MIDDLEWARE = [
     # 遮断リストの IP を最初に弾く。静的ファイルも含めて何も返さないよう先頭に置く。
     'config.middleware.BlockedIpMiddleware',
+    # 不審なアクセス（攻撃用のパス探し・スキャナー）を残す。途中で返る応答も取りこぼさないよう外側に置く
+    'console.middleware.SuspiciousAccessMiddleware',
     # 1日1回の定期点検（SMTP のシークレット期限）。遮断済みの相手では動かさない。
     'config.middleware.DailyCheckMiddleware',
     'django.middleware.security.SecurityMiddleware',
