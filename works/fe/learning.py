@@ -16,12 +16,12 @@ from django.db import transaction
 from django.db.models import Count
 
 from .data.categories import topic_rank
-from .models import LearningItem, LearningNote, LearningRound, Question
+from .models import LearningItem, LearningNote, LearningRound, Question, StudyPlanPass
 from .stats import category_stats
 
 
 @transaction.atomic
-def start_round(learner, session, minutes, count=None, note=None):
+def start_round(learner, session, minutes, count=None, note=None, whole_category=False):
     """読む解説を1本選び、その解説の範囲から出題ぶんを取ってラウンドを作る。
 
     note を渡せばそれを読む。渡さなければ苦手な分野から選ぶ。ダッシュボードで
@@ -29,6 +29,9 @@ def start_round(learner, session, minutes, count=None, note=None):
     解説が無ければ始められない。問題と同じく、管理用の ID が JSON で取り込む。
     """
     count = count or LearningRound.QUESTION_COUNT
+
+    if whole_category:
+        return _start_category_round(learner, session, minutes)
 
     if note is None:
         note = pick_note(learner, session.subject, category=focus_category(session))
@@ -55,6 +58,45 @@ def start_round(learner, session, minutes, count=None, note=None):
     LearningItem.objects.bulk_create([
         LearningItem(round=round_, question=question, order=index)
         for index, question in enumerate(order)
+    ])
+    return round_
+
+
+# 中分類まるごとのラウンドで、小分類ごとに出す問題の数。学習計画の合格の基準
+# （どの小分類も5問以上・80％ 以上。plan.topic_passed）と同じにし、1ラウンドで届くようにする
+CATEGORY_ROUND_PER_TOPIC = StudyPlanPass.PASS_MIN_TOPIC_ANSWERS
+
+
+def _start_category_round(learner, session, minutes):
+    """中分類まるごとのラウンド。出題設定の中分類の解説をすべて読み、小分類ごとに出題する。
+
+    plan&check の「解説」が使う（出題設定はその中分類にしてある）。小分類ごとに
+    CATEGORY_ROUND_PER_TOPIC 問ずつ（少なければあるだけ）出す。解説の無い小分類の問題も出す
+    （合格の判定はどの小分類も数えるため）。
+    """
+    category = focus_category(session)
+    if category is None:
+        return None
+    notes = list(LearningNote.objects.filter(category=category).order_by('id'))
+    questions = []
+    pool = {}
+    for question in Question.objects.active().for_subject(category.subject).filter(category=category):
+        pool.setdefault(question.topic, []).append(question)
+    for topic_questions in pool.values():
+        random.shuffle(topic_questions)
+        questions.extend(topic_questions[:CATEGORY_ROUND_PER_TOPIC])
+    if not notes or not questions:
+        return None
+
+    abandon_unfinished(learner)
+    round_ = LearningRound.objects.create(
+        learner=learner, note=notes[0], subject=category.subject,
+        reading_seconds=minutes * 60, whole_category=True,
+    )
+    random.shuffle(questions)
+    LearningItem.objects.bulk_create([
+        LearningItem(round=round_, question=question, order=index)
+        for index, question in enumerate(questions)
     ])
     return round_
 
@@ -126,7 +168,8 @@ def topic_round_counts(learner):
     その小分類の1回として数える。
     """
     rows = (
-        LearningRound.objects.filter(learner=learner, note__isnull=False)
+        # 中分類まるごとのラウンドは、小分類1つの回には数えない
+        LearningRound.objects.filter(learner=learner, note__isnull=False, whole_category=False)
         .values('note__category_id', 'note__topic').annotate(n=Count('id'))
     )
     return {(row['note__category_id'], row['note__topic']): row['n'] for row in rows}

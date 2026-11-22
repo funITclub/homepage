@@ -885,18 +885,20 @@ class ViewTests(TestCase):
 
         source = frontend_source('Dashboard.tsx')
         self.assertLess(source.index('<PersonalStats'), source.index('<Summary'))
-        self.assertLess(source.index('<Summary'), source.index('to="/quiz/"'))
+        self.assertLess(source.index('<Summary'), source.index('<MailSection'))
 
-    def test_the_dashboard_only_offers_the_quiz_and_learning(self):
-        """ダッシュボードには出題設定を置かず、「1問1答」「学習モード」のボタンだけ。
-        出題設定は1問1答の画面のいちばん下にあり、上のリンクからそこへ移る。"""
+    def test_the_dashboard_has_no_quiz_or_learning_buttons(self):
+        """ダッシュボードには出題設定も「1問1答」「学習モード」のボタンも置かない
+        （plan&check の計画の中分類か、ヘッダーのメニューから開く）。
+        出題設定は1問1答の画面の上の「出題設定」から開く右のサイドバーにある。"""
         source = frontend_source('Dashboard.tsx')
-        self.assertNotIn('SettingsForm', source)
-        self.assertIn('/>1問1答', source)
-        self.assertIn('/>学習モード', source)
+        for word in ('SettingsForm', 'to="/quiz/"', 'to="/learn/"'):
+            with self.subTest(word=word):
+                self.assertNotIn(word, source)
         quiz = frontend_source('QuizPage.tsx')
-        self.assertIn("getElementById('fe-quiz-settings')", quiz)
-        self.assertIn('id="fe-quiz-settings"', quiz)
+        # 出題設定は、上の「出題設定」から開く右のサイドバー（Drawer）にある
+        self.assertIn('<Drawer open={setting}', quiz)
+        self.assertIn('onClick={() => setSetting(true)}', quiz)
 
     def test_writing_needs_the_csrf_token(self):
         """ログインしていなくても、書き込みは CSRF トークンを確かめる。"""
@@ -1071,6 +1073,31 @@ class LearnerIdTests(TestCase):
         self.assertRedirects(response, reverse('fe:index'), fetch_redirect_response=False)
         self.assertNotIn(SESSION_LEARNER, self.client.session)
 
+    def test_keep_holds_the_id_after_the_browser_is_closed(self):
+        """ポップアップで「次回から表示しない」に印を付けて入ると（keep）、閉じても ID を保持する。
+
+        Cookie に期限が付き、セッションが切れても Cookie から入り直す。
+        """
+        learner = Learner.objects.create(code='keeper')
+        response = api_post(self.client, 'api_enter', {'code': 'keeper', 'action': 'enter', 'keep': True})
+        self.assertEqual(response.status_code, 200)
+        cookie = response.cookies[LEARNER_COOKIE]
+        self.assertNotEqual(cookie['max-age'], '')
+
+        # セッションが切れても、Cookie が残っていれば入り直す
+        session = self.client.session
+        session.pop(SESSION_LEARNER)
+        session.save()
+        self.assertEqual(self.client.get(reverse('fe:stats')).status_code, 200)
+        self.assertEqual(self.client.session[SESSION_LEARNER], learner.pk)
+
+    def test_without_keep_entering_again_drops_the_kept_cookie(self):
+        """保持していても、印を付けずに入り直せば、閉じたら消える Cookie に戻る。"""
+        Learner.objects.create(code='keeper')
+        api_post(self.client, 'api_enter', {'code': 'keeper', 'action': 'enter', 'keep': True})
+        response = self._post('keeper', 'enter')
+        self.assertEqual(response.cookies[LEARNER_COOKIE]['max-age'], '')
+
     def test_starting_without_an_id_is_also_forgotten(self):
         """履歴を残さずに始めた場合も同じ。閉じたら入口からになる。"""
         response = self.client.get(reverse('fe:index'))
@@ -1095,13 +1122,15 @@ class LearnerIdTests(TestCase):
         self.client.get(reverse('fe:index'))
         self.assertEqual(Learner.objects.filter(code__isnull=True).count(), 1)
 
-    def test_dashboard_without_an_id_invites_to_make_one(self):
-        """ID なしのダッシュボードには、記録を残したくなったら ID を作る案内を出す。
-        ID あり／なしの2つを並べて選ばせることはしない。問題メールの欄は ID なしでも出す。"""
+    def test_dashboard_without_an_id_shows_the_id_popup(self):
+        """ID なしのダッシュボードを開くと、ID の入力のポップアップを出す（IdPopup.tsx）。
+        「入室」「ID なしで入室」と「次回から表示しない」。無い ID なら「新規作成しますか？」。問題メールの欄は ID なしでも出す。"""
         source = frontend_source('Dashboard.tsx')
-        self.assertIn('ID を作って記録を残す', source)
-        self.assertIn("{me.is_temporary && (", source)
+        self.assertIn("{me.is_temporary && <IdPopup", source)
         self.assertIn("      <MailSection />", source)
+        popup = frontend_source('IdPopup.tsx')
+        for label in ('>入室</button>', '>ID なしで入室</button>', '次回から表示しない', '新規作成しますか？'):
+            self.assertIn(label, popup)
         self.client.get(reverse('fe:index'))
         self.assertEqual(api_get(self.client, 'api_mail').json()['with_id'], False)
 
@@ -1192,7 +1221,15 @@ class LearnerIdTests(TestCase):
         response = self._post('nobody', 'enter')
         self.assertEqual(response.status_code, 400)
         self.assertIn('その ID はまだありません', response.json()['detail'])
+        # ダッシュボードのポップアップは not_found を見て「新規作成しますか？」を出す
+        self.assertTrue(response.json()['not_found'])
         self.assertFalse(Learner.objects.exists())
+
+    def test_a_bad_id_is_not_offered_to_be_created(self):
+        """形の正しくない ID は、作成の確認を出さずにそのまま誤りを返す。"""
+        response = self._post('ab', 'enter')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['not_found'])
 
     def test_anyone_with_the_id_can_enter(self):
         """合言葉は無い。ID を入力した人を本人として扱う。"""
@@ -1208,7 +1245,12 @@ class LearnerIdTests(TestCase):
         self.assertTemplateUsed(response, 'fe/app.html')
         self.assertEqual(api_get(self.client, 'api_me').json()['entered'], False)
         self.assertEqual(self.client.get('/fe/enter/').status_code, 404)
-        self.assertIn('作った ID で入る', frontend_source('EnterPage.tsx'))
+        # ヘッダーの「ID で入る」の先も、ポップアップと同じ「入室」と新規作成の確認。説明文は出さない
+        enter = frontend_source('EnterPage.tsx')
+        self.assertIn('>入室</button>', enter)
+        self.assertIn('を新規作成しますか？', enter)
+        self.assertNotIn('作った ID で入る', enter)
+        self.assertNotIn('<p>', enter)
 
     def test_the_old_mypage_goes_to_the_dashboard(self):
         """以前の ID ありの入口（/fe/mypage/）は無くした。ブックマーク用に /fe/ へ送る。"""
@@ -1851,6 +1893,33 @@ class LearningModeTests(TestCase):
                 topic=note['topic'], title=note['title'],
                 body=note['body'], source=note['source'],
             )
+
+    def test_whole_category_round_reads_every_note_and_asks_each_topic(self):
+        """中分類まるごとのラウンド（plan&check の「解説」）は、その中分類の解説をすべて読み、
+        小分類ごとに5問ずつ（少なければあるだけ）出す。"""
+        self._prepare()   # データベース（9）の小分類「データベース」に12問と解説1本
+        category = Category.objects.get(code=9)
+        self._add_questions(category, '正規化', 3)
+        LearningNote.objects.create(category=category, topic='正規化', title='正規化のしくみ', body='本文')
+        api_post(self.client, 'api_settings', {'mode': 'category', 'subject': 'A', 'category': 9})
+        response = api_post(self.client, 'api_learn', {'minutes': None, 'note': None, 'scope': 'category'})
+        self.assertEqual(response.status_code, 201)
+        round_ = LearningRound.objects.get(learner=self.learner)
+        self.assertTrue(round_.whole_category)
+        self.assertEqual(len(round_.notes), 2)
+        self.assertIn('データベース（解説 2 本）', round_.title)
+        topics = sorted(item.question.topic for item in round_.items.select_related('question'))
+        self.assertEqual(topics.count('データベース'), 5)
+        self.assertEqual(topics.count('正規化'), 3)
+        # 読む画面は、両方の解説を出す
+        read = api_get(self.client, 'api_learn_read', round_.pk).json()
+        self.assertEqual([n['title'] for n in read['notes']], [n.title for n in round_.notes])
+
+    def test_whole_category_round_needs_a_category(self):
+        """中分類を指定していなければ、中分類まるごとのラウンドは始められない。"""
+        self._prepare()
+        response = api_post(self.client, 'api_learn', {'scope': 'category'})
+        self.assertEqual(response.status_code, 400)
 
     def test_a_round_needs_a_note(self):
         """解説が無ければ始められず、「解説がありません。」とだけ伝える。ログインしていても同じ。"""
@@ -3527,3 +3596,353 @@ class PageViewTests(TestCase):
         account = get_user_model().objects.create_user(username='plain', password='pass12345')
         self.client.force_login(account)
         self.assertEqual(self.client.get(reverse('fe:manage_pageviews')).status_code, 200)
+
+
+class StudyPlanTests(TestCase):
+    """学習計画（fe.plan）：3巡の組み方、巡ごとの結果、80％ の合格。"""
+
+    @classmethod
+    def setUpTestData(cls):
+        seed_masters()
+        build_questions()
+
+    def setUp(self):
+        from datetime import date
+        self.today = date(2026, 11, 21)
+        self.learner = make_learner('planner')
+        enter(self.client, self.learner)
+
+    def make(self, days=30):
+        from datetime import timedelta
+        from .plan import create_plan
+        return create_plan(self.learner, self.today + timedelta(days=days), self.today)
+
+    def answer_on(self, day, category, correct, times=1, topic=None):
+        """小分類を指定しなければ、テスト用の問題と同じ小分類（中分類の名前）で解く。"""
+        from .plan import record
+        for _ in range(times):
+            record(self.learner, category, topic or category.name, correct, day)
+
+    def test_rounds_split_days_into_three(self):
+        """受験日の前日までを3つの巡に分け、端数は前の巡に足す。"""
+        from .plan import round_ranges
+        plan = self.make(days=31)
+        sizes = [len(days) for _, days in round_ranges(plan)]
+        self.assertEqual(sizes, [11, 10, 10])
+        self.assertEqual(round_ranges(plan)[0][1][0], self.today)
+
+    def test_first_round_follows_learning_order(self):
+        """1巡目は学習モードの順（科目A の番号順 → 科目B）に、日付が進む。"""
+        from .models import StudyPlanEntry
+        plan = self.make()
+        entries = list(StudyPlanEntry.objects.filter(plan=plan, round_no=1).select_related('category'))
+        codes = [e.category.code for e in entries]
+        self.assertEqual(codes, sorted(codes))
+        self.assertEqual(len(codes), Category.objects.count())
+        self.assertEqual([e.date for e in entries], sorted(e.date for e in entries))
+
+    def test_later_round_puts_weak_first_and_twice(self):
+        """2巡目は1巡目の正答率が低い順で、60％ 未満は2日ぶん。"""
+        from datetime import timedelta
+        from .models import StudyPlanEntry
+        from .plan import ensure_rounds, round_ranges
+        plan = self.make()
+        good = Category.objects.get(code=1)
+        weak = Category.objects.get(code=2)
+        # 正解を先に積むと、小分類の問題数（テスト用は4問）に届いた時点で 100％ の合格になるので、間違いを先にする
+        self.answer_on(self.today, good, False, times=3)
+        self.answer_on(self.today, good, True, times=7)    # 70％
+        self.answer_on(self.today, weak, False, times=5)   # 0％
+        # 2巡目はその巡が始まるまで組まない
+        ensure_rounds(plan, self.today)
+        self.assertFalse(StudyPlanEntry.objects.filter(plan=plan, round_no=2).exists())
+
+        second_start = round_ranges(plan)[1][1][0]
+        ensure_rounds(plan, second_start)
+        entries = list(StudyPlanEntry.objects.filter(plan=plan, round_no=2).select_related('category'))
+        codes = [e.category.code for e in entries]
+        self.assertEqual(codes[:2], [weak.code, weak.code])
+        self.assertEqual(codes.count(good.code), 1)
+        # 解いていない中分類（0％ 扱い）は 70％ の中分類より先
+        self.assertEqual(codes[-1], good.code)
+        self.assertTrue(all(second_start <= e.date < second_start + timedelta(days=10) for e in entries))
+
+    def test_pass_when_every_topic_reaches_80_percent(self):
+        """中分類の合格は、その巡でどの小分類も5問以上・80％ 以上になったとき。
+        合格した中分類は後の巡に入らない。"""
+        from .models import StudyPlanEntry, StudyPlanPass
+        from .plan import ensure_rounds, round_ranges
+        plan = self.make()
+        category = Category.objects.get(code=3)
+        topics = {category.id: {'記憶装置': 10, 'プロセッサ': 10}}
+        with mock.patch('works.fe.plan.category_topics', return_value=topics):
+            self.answer_on(self.today, category, True, times=10, topic='記憶装置')
+            # 1つの小分類だけでは、何問解いても合格にならない
+            self.assertFalse(StudyPlanPass.objects.exists())
+            self.answer_on(self.today, category, True, times=3, topic='プロセッサ')
+            self.answer_on(self.today, category, False, times=1, topic='プロセッサ')
+            # 4問ではまだ足りない（3/4 = 75％ でもある）
+            self.assertFalse(StudyPlanPass.objects.exists())
+            self.answer_on(self.today, category, True, times=1, topic='プロセッサ')   # 4/5 = 80％
+        passed = StudyPlanPass.objects.get(learner=self.learner)
+        self.assertEqual((passed.category, passed.round_no, passed.correct, passed.answered),
+                         (category, 1, 14, 15))
+
+        ensure_rounds(plan, round_ranges(plan)[1][1][0])
+        self.assertFalse(StudyPlanEntry.objects.filter(plan=plan, round_no=2, category=category).exists())
+
+    def test_topic_pass_rule(self):
+        """小分類は5問以上・80％ 以上で合格。問題が5問に満たない小分類は、その数を解けばよい。"""
+        from .plan import topic_passed
+        self.assertTrue(topic_passed(5, 4, 10))
+        self.assertFalse(topic_passed(5, 3, 10))
+        self.assertFalse(topic_passed(4, 4, 10))
+        self.assertTrue(topic_passed(3, 3, 3))
+        self.assertFalse(topic_passed(3, 2, 3))
+
+    def test_plan_shows_topics_in_each_cell(self):
+        """表のセルに、小分類ごとの合否と、基準に届いた小分類の数を出す。"""
+        from .api import plan_json
+        plan = self.make()
+        category = Category.objects.get(code=6)
+        topics = {category.id: {'A': 10, 'B': 10}}
+        self.answer_on(self.today, category, True, times=5, topic='A')
+        with mock.patch('works.fe.plan.category_topics', return_value=topics):
+            row = {r['code']: r for r in plan_json(plan, self.today)['rows']}[6]
+        cell = row['rounds'][0]
+        self.assertEqual(cell['topics_passed'], 1)
+        self.assertEqual([(t['topic'], t['passed']) for t in cell['topics']], [('A', True), ('B', False)])
+        self.assertIsNone(row['passed'])
+
+    def test_rate_below_80_does_not_pass(self):
+        from .models import StudyPlanPass
+        self.make()
+        category = Category.objects.get(code=4)
+        self.answer_on(self.today, category, False, times=3)
+        self.answer_on(self.today, category, True, times=7)
+        self.assertFalse(StudyPlanPass.objects.exists())
+
+    def test_only_study_corner_answers_count_for_the_plan(self):
+        """学習計画の結果に数えるのは学習コーナーで解いた分だけ。ヘッダーから開いた
+        1問1答（plan を添えない）の分は、分野別の記録には入るが計画には入らない。"""
+        from datetime import timedelta
+        from .models import StudyPlanResult
+        from .plan import create_plan
+        from .views import SESSION_PENDING
+        today = timezone.localdate()
+        create_plan(self.learner, today + timedelta(days=30), today)
+        question = Question.objects.filter(subject='A').first()
+
+        def answer_by_api(plan):
+            session = self.client.session
+            session[SESSION_PENDING] = question.id
+            session.save()
+            data = {'question_id': question.id, 'choice': question.answer_index}
+            if plan:
+                data['plan'] = True
+            return api_post(self.client, 'api_quiz_answer', data)
+
+        self.assertEqual(answer_by_api(plan=False).status_code, 200)
+        self.assertFalse(StudyPlanResult.objects.exists())
+        self.assertEqual(CategoryProgress.objects.get(learner=self.learner, category=question.category).answered, 1)
+
+        self.assertEqual(answer_by_api(plan=True).status_code, 200)
+        result = StudyPlanResult.objects.get(plan__learner=self.learner)
+        self.assertEqual((result.round_no, result.category, result.answered, result.correct),
+                         (1, question.category, 1, 1))
+        # 画面は、学習コーナーのときだけ plan を添える
+        self.assertIn('api.quizAnswer(next.question.id, choice, corner !== null)', frontend_source('QuizPage.tsx'))
+
+    def test_learning_mode_counts_only_whole_category_rounds(self):
+        """学習モードは、plan&check の「解説」で始めた回（中分類まるごと）だけ計画に数える。"""
+        from datetime import timedelta
+        from .models import StudyPlanResult
+        from .plan import create_plan
+        today = timezone.localdate()
+        create_plan(self.learner, today + timedelta(days=30), today)
+        category = Category.objects.get(code=9)
+        LearningNote.objects.create(category=category, topic=category.name, title='解説', body='本文')
+        api_post(self.client, 'api_settings', {'mode': 'category', 'subject': 'A', 'category': 9})
+
+        def solve_one(scope):
+            body = {'minutes': 5}
+            if scope:
+                body['scope'] = scope
+            round_id = api_post(self.client, 'api_learn', body).json()['round']['id']
+            api_post(self.client, 'api_learn_read', None, round_id)
+            api_post(self.client, 'api_learn_quiz', {'choice': 0}, round_id)
+
+        solve_one(scope=None)          # ヘッダーから開いた学習モード（小分類1つ）
+        self.assertFalse(StudyPlanResult.objects.exists())
+        solve_one(scope='category')    # plan&check の「解説」
+        self.assertEqual(StudyPlanResult.objects.get(plan__learner=self.learner).answered, 1)
+
+    def test_remake_keeps_passes(self):
+        """組み直すと結果は消えるが、合格は残り、1巡目にも入らない。"""
+        from .models import StudyPlanEntry, StudyPlanPass, StudyPlanResult
+        self.make()
+        category = Category.objects.get(code=5)
+        self.answer_on(self.today, category, True, times=10)
+        plan = self.make(days=20)
+        self.assertTrue(StudyPlanPass.objects.filter(category=category).exists())
+        self.assertFalse(StudyPlanResult.objects.exists())
+        self.assertFalse(StudyPlanEntry.objects.filter(plan=plan, category=category).exists())
+
+    def test_api(self):
+        from datetime import timedelta
+        today = timezone.localdate()
+        self.assertIsNone(api_get(self.client, 'api_plan').json()['plan'])
+        bad = api_post(self.client, 'api_plan', {'exam_date': (today + timedelta(days=2)).isoformat()})
+        self.assertEqual(bad.status_code, 400)
+        response = api_post(self.client, 'api_plan', {'exam_date': (today + timedelta(days=30)).isoformat()})
+        data = response.json()['plan']
+        self.assertEqual(data['current_round'], 1)
+        self.assertEqual(data['days_left'], 30)
+        self.assertTrue(data['today'])
+        self.assertEqual(len(data['rows'][0]['rounds']), 3)
+        self.assertEqual(response.json()['overall']['total'], 0)
+
+    def test_dashboard_card_opens_plan_and_study_from_each_row(self):
+        """plan&check はヘッダーに出さず、ダッシュボードの総合正答率の下の「はじめる」のカードから開く。
+        計画の中分類（今日の欄・表の各行）から学習モードと1問1答を開ける。"""
+        dashboard_source = frontend_source('Dashboard.tsx')
+        self.assertIn('to="/planandcheck/"', dashboard_source)
+        self.assertNotIn('PlanCard', dashboard_source)
+        stats = dashboard_source[dashboard_source.index('function PersonalStats'):]
+        self.assertLess(stats.index('総合正答率'), stats.index('<StartCard />'))
+        self.assertLess(stats.index('<StartCard />'), stats.index('苦手分野'))
+        # 「はじめる」は ID ありのとき（PersonalStats の中）だけ。ID なしで plan&check を開いてもダッシュボードへ戻す
+        self.assertEqual(dashboard_source.count('<StartCard />'), 1)
+        self.assertNotIn('/id/', frontend_source('PlanPage.tsx'))
+        self.assertIn('<Navigate to="/" replace />', frontend_source('PlanPage.tsx'))
+        self.assertNotIn('planandcheck', frontend_source('App.tsx').split('const MENU')[1])
+        plan_source = frontend_source('PlanPage.tsx')
+        # ボタンは今日の欄だけ。Round ごとの結果の表は表示だけ
+        self.assertEqual(plan_source.count('<StudyButtons '), 1)
+
+    def test_study_corner_fixes_the_category_and_has_back_buttons(self):
+        """学習コーナー（計画の中分類から開いた 1問1答・学習モード）は、その中分類に固定して
+        選択肢を出さず、各画面に戻るボタンを出す。plan&check はダッシュボードへ戻る。"""
+        plan = frontend_source('PlanPage.tsx')
+        self.assertIn('setCorner({ subject, code, label })', plan)
+        # トップ（plan&check）は帯に総合正答率を出し、戻るボタンを置かない
+        self.assertNotIn('CornerBack', plan)
+        self.assertIn('<Band data={data} />', plan)
+        self.assertIn('総合正答率', plan)
+        # 学習モードは入口を通さず、すぐラウンドを始めて読む画面へ
+        self.assertIn("api.startRound(null, null, 'category')", plan)
+        quiz = frontend_source('QuizPage.tsx')
+        self.assertIn('const settingsDrawer = !corner && settings', quiz)
+        self.assertIn('<CornerBack to="/planandcheck/"', quiz)
+        start = frontend_source('LearnStartPage.tsx')
+        self.assertNotIn('CornerStart', start)
+        self.assertIn('useEffect(clearCorner, [])', start)
+        self.assertIn('<OneMoreRound />', frontend_source('LearnResultPage.tsx'))
+        # 「解説」で学習モードを始め、読む段階は時間を数えず「問題へ進む」で進む
+        self.assertIn(">解説</button>", plan)
+        self.assertNotIn(">学習モード</button>", plan)
+        read = frontend_source('LearnReadPage.tsx')
+        self.assertIn("if (finished || paused || untimed) return", read)
+        self.assertIn(">問題へ進む</button>", read)
+        self.assertNotIn("解答に進む", read)
+        for name in ('LearnReadPage.tsx', 'LearnQuizPage.tsx', 'LearnResultPage.tsx'):
+            with self.subTest(page=name):
+                self.assertIn('<CornerBackIfAny />', frontend_source(name))
+        # メニューとダッシュボードへ移ったら、学習コーナーを抜ける
+        self.assertIn('onClick={clearCorner}', frontend_source('App.tsx'))
+        self.assertIn('useEffect(clearCorner, [])', frontend_source('Dashboard.tsx'))
+
+    def test_missed_day_is_marked_and_counted_as_zero(self):
+        """予定の日を過ぎても1問も解いていない中分類は「未実施」で、正答率は 0％。持ち越さない。"""
+        from datetime import timedelta
+        from .api import plan_json
+        from .models import StudyPlanEntry
+        plan = self.make()
+        later = self.today + timedelta(days=3)
+        data = plan_json(plan, later)
+        first_day = {e.category.code for e in StudyPlanEntry.objects.filter(plan=plan, date=self.today)}
+        rows = {row['code']: row for row in data['rows']}
+        for code in first_day:
+            cell = rows[code]['rounds'][0]
+            self.assertTrue(cell['missed'])
+            self.assertEqual(cell['rate_percent'], 0)
+        # 今日の欄には持ち越さない
+        self.assertFalse(first_day & {row['code'] for row in data['today']})
+        self.assertGreaterEqual(data['missed_count'], len(first_day))
+
+        # 1問でも解けば未実施ではない
+        code = next(iter(first_day))
+        self.answer_on(self.today, Category.objects.get(code=code), True)
+        cell = {row['code']: row for row in plan_json(plan, later)['rows']}[code]['rounds'][0]
+        self.assertFalse(cell['missed'])
+        self.assertEqual(cell['rate_percent'], 100)
+
+    def test_leave_the_id(self):
+        """ID から抜けると、ID の無い記録で使い続ける。ID の記録はそのまま残る。"""
+        response = api_post(self.client, 'api_leave')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['code'], None)
+        self.assertTrue(response.json()['is_temporary'])
+        self.assertEqual(api_get(self.client, 'api_me').json()['code'], None)
+        self.assertTrue(Learner.objects.filter(code='planner').exists())
+        # ID なしで抜けようとしても何もしない
+        self.assertEqual(api_post(self.client, 'api_leave').status_code, 400)
+        self.assertIn('ID から抜ける', frontend_source('EnterPage.tsx'))
+
+    @override_settings(DEBUG=True)
+    def test_demo_data_shows_each_stage(self):
+        """確認用の ID（seed_fe_plan_demo）は、計画の段階ごとに作られ、Round が進むほど合格が増える。"""
+        from .api import plan_json
+        from .models import StudyPlan
+        call_command('seed_fe_plan_demo', stdout=io.StringIO())
+        today = timezone.localdate()
+        self.assertFalse(StudyPlan.objects.filter(learner__code='demo-0-before').exists())
+        stages = {}
+        for code in ('demo-1-start', 'demo-2-round1', 'demo-3-round2', 'demo-4-round3'):
+            stages[code] = plan_json(StudyPlan.objects.get(learner__code=code), today)
+        self.assertEqual([stages[c]['current_round'] for c in stages], [1, 1, 2, 3])
+        passed = [stages[c]['passed_count'] for c in stages]
+        self.assertEqual(passed, sorted(passed))
+        self.assertGreater(stages['demo-2-round1']['missed_count'], 0)
+        # 流し直しても増えない
+        call_command('seed_fe_plan_demo', stdout=io.StringIO())
+        self.assertEqual(Learner.objects.filter(code__startswith='demo-').count(), 5)
+
+    @override_settings(DEBUG=False)
+    def test_demo_data_is_only_for_development(self):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command('seed_fe_plan_demo', stdout=io.StringIO())
+
+    def test_missed_round_stays_after_a_later_pass(self):
+        """過ぎた巡で1問も解いていなければ、あとの巡で合格しても、その巡は「未実施」のまま。"""
+        from .api import plan_json
+        from .plan import ensure_rounds, round_ranges
+        plan = self.make()
+        category = Category.objects.get(code=1)
+        second = round_ranges(plan)[1][1][0]
+        ensure_rounds(plan, second)
+        self.answer_on(second, category, True, times=5)   # Round 2 で合格（テスト用の小分類は1つ）
+        row = {r['code']: r for r in plan_json(plan, second)['rows']}[1]
+        self.assertIsNotNone(row['passed'])
+        self.assertTrue(row['rounds'][0]['missed'])
+        self.assertEqual(row['rounds'][0]['rate_percent'], 0)
+        # 行の色は合格の緑を先にする（未実施の赤は、合格していない行だけ）
+        self.assertIn("row.passed ? 'fe-row-pass' : row.rounds.some((c) => c.missed) ? 'fe-row-missed'",
+                      frontend_source('PlanPage.tsx'))
+
+    def test_answers_without_topic_breakdown_hide_topics(self):
+        """小分類ごとに数え始める前に解いた分（中分類の結果だけある）は、小分類を出さない。"""
+        from .api import plan_json
+        from .models import StudyPlanResult
+        plan = self.make()
+        category = Category.objects.get(code=2)
+        StudyPlanResult.objects.create(plan=plan, round_no=1, category=category, answered=1, correct=1)
+        cell = {r['code']: r for r in plan_json(plan, self.today)['rows']}[2]['rounds'][0]
+        self.assertEqual((cell['answered'], cell['rate_percent']), (1, 100))
+        self.assertEqual(cell['topics'], [])
+
+    def test_api_needs_id(self):
+        temporary = Learner.objects.create(code=None)
+        enter(self.client, temporary)
+        self.assertEqual(api_get(self.client, 'api_plan').status_code, 403)

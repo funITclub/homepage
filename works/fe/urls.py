@@ -29,10 +29,12 @@ urlpatterns = [
     path('learn/<int:pk>/result/', app(), name='learn_result'),
     path('stats/', app(), name='stats'),
     path('history/', app(), name='history'),
+    path('planandcheck/', app(), name='plan'),
 
     # React の画面が呼ぶ API（api.py）
     path('api/me/', api.MeAPI.as_view(), name='api_me'),
     path('api/enter/', api.EnterAPI.as_view(), name='api_enter'),
+    path('api/leave/', api.LeaveAPI.as_view(), name='api_leave'),
     path('api/pageview/', api.PageViewAPI.as_view(), name='api_pageview'),
     path('api/dashboard/', api.DashboardAPI.as_view(), name='api_dashboard'),
     path('api/guide/', api.GuideAPI.as_view(), name='api_guide'),
@@ -43,6 +45,7 @@ urlpatterns = [
     path('api/history/', api.HistoryAPI.as_view(), name='api_history'),
     # 本番合格の申告（集計はダッシュボードに出す）
     path('api/pass/', api.PassReportAPI.as_view(), name='api_pass'),
+    path('api/plan/', api.PlanAPI.as_view(), name='api_plan'),
     # 問題メール（9〜18時の毎時に3問。登録はダッシュボードから、確定と解除はメールのリンクから）
     path('api/mail/', api.MailAPI.as_view(), name='api_mail'),
     path('api/learn/', api.LearnStartAPI.as_view(), name='api_learn'),

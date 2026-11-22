@@ -31,8 +31,13 @@ WEAK_MIN_ATTEMPTS = 3
 RECENT_DAYS = 7
 
 
-def record_progress(learner, question, is_correct):
-    """解答を理解度に反映する。問題が消えても残る記録はここだけ。"""
+def record_progress(learner, question, is_correct, for_plan=False):
+    """解答を理解度に反映する。問題が消えても残る記録はここだけ。
+
+    for_plan が真なら、学習計画（plan&check）の結果にも足す。数えるのは学習コーナー
+    （plan&check から開いた 1問1答と、「解説」で始めた中分類まるごとの学習モード）で
+    解いた分だけ。ヘッダーから開いた 1問1答・学習モードと問題メールの分は数えない。
+    """
     now = timezone.now()
     progress, _ = CategoryProgress.objects.get_or_create(
         learner=learner, category=question.category, subject=question.subject
@@ -50,6 +55,12 @@ def record_progress(learner, question, is_correct):
         answered=F('answered') + 1,
         correct=F('correct') + (1 if is_correct else 0),
     )
+
+    # 学習コーナーで解いた分は、学習計画の、その日が入る巡の結果にも足す（fe.plan）
+    if not for_plan:
+        return
+    from .plan import record
+    record(learner, question.category, question.topic, is_correct, timezone.localdate(now))
 
 
 def categories_for(subject=None):

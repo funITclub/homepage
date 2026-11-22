@@ -180,8 +180,10 @@ class LearnerForm(forms.Form):
                 raise forms.ValidationError('その ID は既に使われています。')
         else:
             if exists is None:
+                # code='not_found'：ダッシュボードのポップアップは、これを見て「新規作成しますか？」を出す
                 raise forms.ValidationError(
-                    'その ID はまだありません。初めてなら「新しく作る」を押してください。'
+                    'その ID はまだありません。初めてなら「新しく作る」を押してください。',
+                    code='not_found',
                 )
             self.learner = exists
         return code

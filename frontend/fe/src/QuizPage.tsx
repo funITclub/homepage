@@ -1,13 +1,19 @@
-// 1問1答。問題、いちばん下に出題設定。上の「出題設定」のリンクで、いちばん下の出題設定へ移る。
+// 1問1答。いちばん上の「出題設定」を押すと、右から出るサイドバー（Drawer）で出題設定を変えられる。
+// 保存したらサイドバーを閉じ、その設定で次の問題を出す。
 //
 // 解答の前：問題の属性 → 問題文（図） → 選択肢 → 出典 → 「解答する」
 // 解答の後：問題の属性 → 問題文 → 正誤 → 選択肢（正解と自分の解答に色） → 出典 → 解説 → 「次の問題へ」
 // 正解と解説は解答してから API が返す（先に渡すと、画面の中を覗けば答えが分かるため）。
 // いま出している問題でない解答（二重送信など）は API が 409 で断るので、次の問題を出し直す。
+//
+// 学習コーナー（plan&check の計画の中分類から開いたとき。corner.tsx）は、出題設定をその中分類に
+// してあるので、出題設定とそのボタンを出さない。いちばん上に plan&check へ戻るボタンを出す。
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { ApiError, api, type QuizNext, type QuizResult, type Settings } from './api'
+import { CornerBack, getCorner } from './corner'
+import { Drawer } from './Drawer'
 import { Icon } from './Icon'
 import { Choices, Explanation, Source, Stem } from './QuestionParts'
 import { SettingsForm } from './SettingsForm'
@@ -24,6 +30,9 @@ export function QuizPage() {
   const [choice, setChoice] = useState<number | null>(null)
   const [result, setResult] = useState<QuizResult | null>(null)
   const [sending, setSending] = useState(false)
+  const [corner] = useState(getCorner)
+  const [setting, setSetting] = useState(false)
+  const closeSettings = useCallback(() => setSetting(false), [])
 
   const loadNext = useCallback(async () => {
     setError(null)
@@ -45,6 +54,7 @@ export function QuizPage() {
 
   const saved = (value: Settings) => {
     setSettings(value)
+    setSetting(false)
     void loadNext()
   }
 
@@ -53,7 +63,8 @@ export function QuizPage() {
     if (!next?.question || choice === null) return
     setSending(true)
     try {
-      setResult(await api.quizAnswer(next.question.id, choice))
+      // 学習コーナー（plan&check から開いた）ときだけ、学習計画の結果に数える
+      setResult(await api.quizAnswer(next.question.id, choice, corner !== null))
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         toast.show(e.message, { kind: 'info' })
@@ -66,31 +77,35 @@ export function QuizPage() {
     }
   }
 
-  const settingsCard = settings && (
-    <section className="fe-card fe-quiz-settings" id="fe-quiz-settings">
-      <div className="fe-card-title">出題設定</div>
+  const back = corner && <CornerBack to="/planandcheck/" corner={corner} />
+
+  // 出題設定のサイドバー。閉じるたびに作り直さないよう、開いた設定（settings）が変わったときだけ作り直す
+  const settingsDrawer = !corner && settings && (
+    <Drawer open={setting} onClose={closeSettings} title="出題設定">
       <SettingsForm key={`${settings.mode}-${settings.subject}-${settings.category}`}
                     settings={settings} submitLabel="この設定で出題" onSaved={saved} />
-    </section>
+    </Drawer>
   )
 
-  // 上の「出題設定」のリンク。いちばん下の出題設定へ移る
-  const settingsLink = (
+  // いちばん上。学習コーナーは plan&check へ戻るボタン、ふつうは出題設定を開くボタン
+  const top = corner ? back : (
     <div className="fe-quiz-top">
-      <button type="button" className="btn btn-link btn-sm p-0"
-              onClick={() => document.getElementById('fe-quiz-settings')?.scrollIntoView({ behavior: 'smooth' })}>
+      <button type="button" className="btn btn-link btn-sm p-0" onClick={() => setSetting(true)} disabled={!settings}>
         <Icon name="sliders-h" className="me-1" />出題設定
       </button>
     </div>
   )
 
-  if (error) return <><LoadError message={error} onRetry={() => void loadNext()} />{settingsCard}</>
-  if (!next) return <Loading rows={2} />
+  if (error) return <>{top}<LoadError message={error} onRetry={() => void loadNext()} />{settingsDrawer}</>
+  if (!next) return <>{back}<Loading rows={2} /></>
   if (!next.question) {
     return (
       <>
-        <div className="fe-card fe-warning">いまの設定で出題できる問題がありません。出題モードか科目を変えてください。</div>
-        {settingsCard}
+        {top}
+        <div className="fe-card fe-warning">
+          {corner ? '出題できる問題がありません。' : 'いまの設定で出題できる問題がありません。出題モードか科目を変えてください。'}
+        </div>
+        {settingsDrawer}
       </>
     )
   }
@@ -101,7 +116,7 @@ export function QuizPage() {
 
   return (
     <>
-      {settingsLink}
+      {top}
       <div className="fe-quiz-meta">
         <div>
           <span className="fe-badge fe-badge-strong">{q.subject_label}</span>
@@ -144,8 +159,7 @@ export function QuizPage() {
         </div>
       </form>
 
-      <hr className="fe-rule fe-rule-wide" />
-      {settingsCard}
+      {settingsDrawer}
     </>
   )
 }

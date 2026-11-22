@@ -31,6 +31,7 @@ PAGES = {
     'learn_result': '学習モード 結果',
     'stats': '分野別正答率',
     'history': '履歴',
+    'plan': 'plan&check',
     'guide': 'このアプリについて',
 }
 

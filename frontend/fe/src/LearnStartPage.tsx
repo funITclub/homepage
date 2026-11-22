@@ -2,14 +2,19 @@
 //
 // ・学習対象は中分類ごとに畳み、開くと小分類（解説）が1行ずつ並ぶ。出題できる問題の無い行は選べない
 // ・最初に開いておくのは、ダッシュボードで指定した分野と、直前に学習した中分類（API の opened）。
+//   ただしヘッダーのメニューから来たとき（location.state.menu）は、すべて畳んで出す。
 //   選ぶのは利用者なので、どれも選んだ状態にはしない
 // ・何も選ばなければ「おまかせ」（苦手な分野から選ぶ。分野を指定していればその中から）
 // ・選んだ行と、それを含む中分類は目立たせる。畳んだままでもどこを選んだか分かるように
+//
+// 学習コーナー（plan&check の計画の中分類から開いたとき。corner.tsx）は、この入口を通さない。
+// plan&check と結果の「もう1ラウンド」が、その中分類のおまかせ・既定の読む時間でラウンドを始める。
 
-import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 
 import { api, type LearnStart } from './api'
+import { clearCorner } from './corner'
 import { LoadError, Loading } from './Status'
 import { useToast } from './toast'
 import { usePageView } from './usePageView'
@@ -23,18 +28,30 @@ const when = (iso: string) => {
 
 export function LearnStartPage() {
   usePageView('learn_start')
+  // 学習コーナーはこの入口を通さない（plan&check からすぐ読む画面へ移る）。ここへ来たらふつうの学習モード
+  useEffect(clearCorner, [])
+  const location = useLocation()
   const { data, error, reload } = useLoad(api.learn)
   if (error) return <LoadError message={error} onRetry={() => void reload()} />
   if (!data) return <Loading rows={4} />
-  return <LearnStartForm data={data} />
+  // 学習モードを開いたままメニューの「学習モード」を押しても、すべて畳んだところから出し直す
+  return <LearnStartForm key={location.key} data={data} />
 }
+
+/** ヘッダーのメニューから来たか（App.tsx の NavLink が state に menu: true を付ける） */
+function useFromMenu() {
+  const state = useLocation().state as { menu?: boolean } | null
+  return !!state?.menu
+}
+
 
 function LearnStartForm({ data }: { data: LearnStart }) {
   const toast = useToast()
   const navigate = useNavigate()
+  const fromMenu = useFromMenu()
   const [note, setNote] = useState<number | null>(null)
   const [minutes, setMinutes] = useState(data.default_minutes)
-  const [open, setOpen] = useState(() => new Set(data.groups.filter((g) => g.opened).map((g) => g.code)))
+  const [open, setOpen] = useState(() => new Set(fromMenu ? [] : data.groups.filter((g) => g.opened).map((g) => g.code)))
   const [sending, setSending] = useState(false)
 
   const submit = async (event: FormEvent) => {

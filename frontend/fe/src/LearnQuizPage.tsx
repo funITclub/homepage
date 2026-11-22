@@ -8,6 +8,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { api, type LearnItem } from './api'
+import { CornerBackIfAny, getCorner } from './corner'
 import { Choices, Source, Stem } from './QuestionParts'
 import { LoadError, Loading } from './Status'
 import { useToast } from './toast'
@@ -67,13 +68,15 @@ function Item({ item, onChange, onReload }: {
   const abandon = () => void run(async () => {
     const result = await api.abandonRound(round.id)
     if (result.message) toast.show(result.message, { kind: 'info' })
-    navigate(result.abandoned ? '/learn/' : `/learn/${round.id}/result/`)
+    // 学習コーナーでは入口を通さないので、何も解かずにやめたら plan&check へ戻る
+    navigate(result.abandoned ? (getCorner() ? '/planandcheck/' : '/learn/') : `/learn/${round.id}/result/`)
   })
 
   const last = round.position + 1 >= round.total
 
   return (
     <div className="fe-narrow-wide">
+      <CornerBackIfAny />
       {round.title && <div className="fe-muted small mb-2">{round.title}</div>}
       <div className="fe-round-head">
         <span className="fe-accent fw-bold">{round.position + 1} / {round.total}問目</span>

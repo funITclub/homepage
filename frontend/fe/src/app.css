@@ -157,7 +157,7 @@ body,
 
 .fe-header-inner {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
@@ -166,10 +166,12 @@ body,
   color: #fff;
 }
 
+/* 題名は帯の数字（1.5rem）と本文（1rem）の間、メニューは本文と同じ大きさにする */
 .fe-title {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .fe-app .fe-title a {
@@ -177,11 +179,14 @@ body,
   text-decoration: none;
 }
 
+/* 1段目は題名（左）といまの ID（右）、2段目はメニュー */
 .fe-nav {
+  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.9rem;
-  font-size: 0.85rem;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  font-size: 1rem;
 }
 
 .fe-app .fe-nav a {
@@ -797,6 +802,17 @@ body,
     grid-template-columns: repeat(2, 1fr);
   }
 
+  /* ヘッダー：題名とメニューを少し小さくする（ID の行分けはファイルの最後） */
+  .fe-title {
+    font-size: 1.1rem;
+  }
+
+  .fe-nav {
+    font-size: 0.9rem;
+    gap: 0.2rem 0.8rem;
+  }
+
+
   .fe-fields {
     grid-template-columns: 1fr;
   }
@@ -827,10 +843,11 @@ body,
   margin: 3rem 0 2rem;
 }
 
-/* 見出しの右の、いまの ID */
+/* 題名の右の、いまの ID。メニューより少し小さくする */
 .fe-id {
   display: inline-flex;
   align-items: center;
+  font-size: 0.8rem;
   color: #c3d6ee;
 }
 
@@ -840,7 +857,8 @@ body,
 }
 
 .fe-app .fe-id a.btn {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  padding: 0.05rem 0.45rem;
 }
 
 .fe-page-title {
@@ -905,28 +923,6 @@ body,
 
 /* ---- ダッシュボード ---- */
 
-.fe-invite {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  background: var(--fe-accent-soft);
-  border-color: #3b5378;
-}
-
-.fe-invite-title {
-  font-weight: 700;
-  color: var(--fe-accent);
-  margin-bottom: 0.25rem;
-}
-
-.fe-invite-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
 .fe-tiles + .fe-card {
   margin-top: var(--fe-gap);
 }
@@ -950,7 +946,7 @@ body,
   max-width: 24rem;
 }
 
-/* ダッシュボードの「1問1答」「学習モード」。「ID を作って記録を残す」と同じ小さいボタンを縦に並べ、
+/* ダッシュボードの「1問1答」「学習モード」。小さいボタンを縦に並べ、
    右にそれぞれの短い説明を添える。ボタンは同じ幅にそろえる。スマホでは説明をボタンの下に回す */
 .fe-start-list {
   display: grid;
@@ -1295,4 +1291,358 @@ body,
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- 学習計画（PlanPage） ---- */
+
+.fe-badge-good {
+  background: var(--fe-good-soft);
+  border-color: #35573e;
+  color: var(--fe-good);
+}
+
+.fe-plan-today {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fe-plan-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.fe-plan-table th,
+.fe-plan-table td {
+  vertical-align: top;
+}
+
+.fe-plan-table th.fe-plan-current {
+  color: var(--fe-accent);
+}
+
+.fe-plan-name {
+  min-width: 9rem;
+}
+
+.fe-plan-range {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--fe-muted);
+  white-space: nowrap;
+}
+
+.fe-plan-result {
+  white-space: nowrap;
+}
+
+.fe-plan-subject td {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--fe-accent);
+  background: var(--fe-surface-2);
+}
+
+.fe-row-pass td {
+  background: var(--fe-good-soft);
+}
+
+.fe-plan-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+
+
+/* ---- 学習コーナー（corner.tsx） ---- */
+
+.fe-corner-back {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--fe-gap);
+}
+
+/* 未実施（予定の日を過ぎても1問も解いていない）。表のセル・行・タイル */
+.fe-missed {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: var(--fe-bad);
+  color: var(--fe-bg);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.fe-row-missed td {
+  background: var(--fe-bad-soft);
+}
+
+
+/* ---- 学習コーナーのトップ（plan&check）の帯 ---- */
+
+.fe-band {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0;
+  padding: 0.85rem 0.5rem;
+  border-radius: 10px;
+  background: var(--fe-accent-soft);
+  border: 1px solid #3b5378;
+}
+
+.fe-band-item {
+  flex: 1 1 0;
+  min-width: 5.5rem;
+  padding: 0 0.75rem;
+}
+
+/* 区切りの線は1行に並ぶ幅のときだけ（スマホで折り返すと、行の頭に線が残るため） */
+@media (min-width: 768px) {
+  .fe-band {
+    flex-wrap: nowrap;
+  }
+
+  .fe-band-item + .fe-band-item {
+    border-left: 1px solid #3b5378;
+  }
+}
+
+.fe-band-label {
+  font-size: 0.75rem;
+  color: var(--fe-muted);
+}
+
+.fe-band-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--fe-accent);
+}
+
+.fe-band-value small {
+  font-size: 0.8rem;
+}
+
+.fe-band-sub {
+  font-size: 0.72rem;
+  color: var(--fe-muted);
+  white-space: nowrap;
+}
+
+.fe-band-missed .fe-band-label,
+.fe-band-missed .fe-band-value {
+  color: var(--fe-bad);
+}
+
+/* ダッシュボードの「はじめる」のカード（カード全体がリンク） */
+.fe-start-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--fe-accent);
+}
+
+.fe-start-card:hover {
+  border-color: var(--fe-accent);
+}
+
+.fe-start-card-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+/* スマホ幅。上の .fe-band-item より後に置かないと、元の指定に負ける */
+@media (max-width: 767.98px) {
+  /* 帯は2列 */
+  .fe-band-item {
+    flex: 1 1 45%;
+  }
+}
+
+/* plan&check の表のセルの「小分類 2/5」。押すと小分類ごとの結果を開く */
+.fe-plan-topics {
+  font-size: 0.72rem;
+  margin-top: 0.15rem;
+}
+
+.fe-plan-topics summary {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fe-plan-topics ul {
+  list-style: none;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0;
+  white-space: nowrap;
+}
+
+/* 小分類ごとに1行。詰まって見えないよう、行の高さと行どうしの間をとる */
+.fe-plan-topics li {
+  line-height: 1.5;
+  padding: 0.15rem 0;
+}
+
+.fe-plan-topics li + li {
+  border-top: 1px solid var(--fe-border);
+}
+
+.fe-plan-topics li span:first-child {
+  display: inline-block;
+  width: 1.2em;
+}
+
+/* ---- 右から出るサイドバー（Drawer）。1問1答の出題設定 ---- */
+
+.fe-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  pointer-events: none;
+}
+
+.fe-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.55);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.fe-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(24rem, 90vw);
+  overflow-y: auto;
+  padding: 1.25rem;
+  background: var(--fe-bg);
+  border-left: 1px solid var(--fe-border);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.45);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+
+.fe-drawer-open {
+  pointer-events: auto;
+}
+
+.fe-drawer-open .fe-drawer-backdrop {
+  opacity: 1;
+}
+
+.fe-drawer-open .fe-drawer-panel {
+  transform: translateX(0);
+}
+
+.fe-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.fe-drawer-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--fe-text);
+}
+
+.fe-app .fe-drawer-close {
+  color: var(--fe-muted);
+  font-size: 1.1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fe-drawer-backdrop,
+  .fe-drawer-panel {
+    transition: none;
+  }
+}
+
+/* サイドバーの中の出題設定は、幅が狭いので1列に積む */
+.fe-drawer .fe-settings {
+  grid-template-columns: 1fr;
+}
+
+.fe-drawer .fe-settings-submit {
+  justify-self: start;
+}
+
+/* ---- ID の入力のポップアップ（IdPopup）。ダッシュボードを開いたとき、ID なしなら出す ---- */
+
+.fe-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.fe-popup-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.fe-popup-panel {
+  position: relative;
+  width: min(24rem, 100%);
+  padding: 1.25rem;
+  background: var(--fe-bg);
+  border: 1px solid var(--fe-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.fe-popup-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--fe-text);
+}
+
+/* /id/（EnterPage）は、ポップアップと同じパネルをページの中に置く（背景を暗くせず、影も付けない） */
+.fe-enter-panel {
+  margin: 1rem auto;
+  box-shadow: none;
+}
+
+/* 「入室」でまだ無い ID だったときの「新規作成しますか？」 */
+.fe-popup-confirm {
+  margin: 0;
+  color: var(--fe-text);
+  overflow-wrap: anywhere;
+}
+
+/* ボタンは幅いっぱいに縦に積む（狭い画面でも折り返しで崩れない） */
+.fe-popup-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.fe-popup-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  color: var(--fe-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.fe-popup-check-off {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fe-popup-check .form-check-input {
+  margin: 0;
 }

@@ -7,11 +7,14 @@
 //   戻っても自動では再開しない
 // ・終わったラウンドの解説は、結果画面から読み返せる（時間は数えない）
 // ・解く段階に進んだラウンドを開いたら、解く画面へ移る
+// ・学習コーナー（plan&check の「解説」から開いたとき。corner.tsx）は読む時間を数えない。
+//   残り時間を出さず、0 になって自動で進むこともない。進むボタンはどちらも「問題へ進む」
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { api, type LearnRead } from './api'
+import { CornerBackIfAny, getCorner } from './corner'
 import { LoadError, Loading } from './Status'
 import { useToast } from './toast'
 import { usePageView } from './usePageView'
@@ -43,6 +46,8 @@ function Reading({ data }: { data: LearnRead }) {
   const [moving, setMoving] = useState(false)
   const players = useRef<HTMLAudioElement[]>([])
   const moved = useRef(false)
+  // 学習コーナーでは読む時間を数えない
+  const [untimed] = useState(() => getCorner() !== null)
 
   const goQuiz = useCallback(async () => {
     if (moved.current) return
@@ -62,7 +67,8 @@ function Reading({ data }: { data: LearnRead }) {
     try {
       const result = await api.abandonRound(round.id)
       if (result.message) toast.show(result.message, { kind: 'info' })
-      navigate(result.abandoned ? '/learn/' : `/learn/${round.id}/result/`)
+      // 学習コーナーでは入口を通さないので、何も解かずにやめたら plan&check へ戻る
+      navigate(result.abandoned ? (getCorner() ? '/planandcheck/' : '/learn/') : `/learn/${round.id}/result/`)
     } catch (e) {
       toast.show((e as Error).message, { kind: 'danger' })
     }
@@ -70,28 +76,28 @@ function Reading({ data }: { data: LearnRead }) {
 
   // 1秒ごとに減らす。止めている間（読み上げ中）は減らさない
   useEffect(() => {
-    if (finished || paused) return
+    if (finished || paused || untimed) return
     if (remaining <= 0) {
       void goQuiz()
       return
     }
     const timer = window.setTimeout(() => setRemaining((r) => r - 1), 1000)
     return () => window.clearTimeout(timer)
-  }, [finished, paused, remaining, goQuiz])
+  }, [finished, paused, untimed, remaining, goQuiz])
 
   const playing = () => players.current.some((p) => p && !p.paused)
 
   const onPlay = (player: HTMLAudioElement) => {
     // 一度に鳴らすのは1本だけ
     for (const other of players.current) if (other && other !== player) other.pause()
-    if (finished) return
+    if (finished || untimed) return
     setPaused(true)
     api.learnTimer(round.id, 'pause').then((r) => setRemaining(r.remaining)).catch(() => {})
   }
 
   const onStop = () => {
     // 別の解説の読み上げに切り替えただけなら、止めたままにする
-    if (finished || playing()) return
+    if (finished || untimed || playing()) return
     api.learnTimer(round.id, 'resume')
       .then((r) => {
         if (playing()) return
@@ -118,6 +124,7 @@ function Reading({ data }: { data: LearnRead }) {
 
   return (
     <div className="fe-narrow-wide">
+      <CornerBackIfAny />
       {finished ? (
         <div className="fe-card fe-timer-bar">
           <div className="fe-muted small">このラウンドは終了しています</div>
@@ -127,10 +134,10 @@ function Reading({ data }: { data: LearnRead }) {
         <div className="fe-card fe-timer-bar fe-sticky">
           <div className="fe-muted small">読み終わったら、この範囲から{round.total}問出題します</div>
           <div className="fe-timer-actions">
-            {paused && <span className="fe-muted small">読み上げ中は止めています</span>}
-            <span className="fe-timer" aria-live="off">{clock(Math.max(0, remaining))}</span>
+            {!untimed && paused && <span className="fe-muted small">読み上げ中は止めています</span>}
+            {!untimed && <span className="fe-timer" aria-live="off">{clock(Math.max(0, remaining))}</span>}
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => void abandon()}>やめる</button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={moving} onClick={() => void goQuiz()}>解答に進む</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={moving} onClick={() => void goQuiz()}>問題へ進む</button>
           </div>
         </div>
       )}
