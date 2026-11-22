@@ -549,6 +549,9 @@ class LearningRound(models.Model):
         default=Question.SUBJECT_A,
     )
     reading_seconds = models.PositiveIntegerField(verbose_name='提示時間(秒)')
+    # 中分類まるごとのラウンド（plan&check の「解説」）。読むのは中分類の解説すべて、
+    # 解くのは中分類の小分類ごとの問題。偽なら、これまでどおり小分類1つ（note の小分類）
+    whole_category = models.BooleanField(verbose_name='中分類まるごと', default=False)
     phase = models.CharField(
         verbose_name='段階', max_length=10, choices=PHASE_CHOICES, default=PHASE_READING
     )
@@ -574,9 +577,17 @@ class LearningRound(models.Model):
         出題は小分類ごとなので、読む単位も小分類に合わせる。小分類に解説が
         2本あるのに1本だけ読ませると、読んでいない内容の問題が混ざる。
         並びは取り込んだ順で、JSON の中の並びがそのまま読む順になる。
+
+        中分類まるごとのラウンドは、その中分類の解説をすべて、シラバスの小分類の順に読む
+        （小分類の中は取り込んだ順）。
         """
         if self.note is None:
             return []
+        if self.whole_category:
+            from .data.categories import topic_rank
+            code = self.note.category.code
+            notes = LearningNote.objects.filter(category=self.note.category).select_related('category')
+            return sorted(notes, key=lambda n: (topic_rank(code, n.topic), n.id))
         return list(
             LearningNote.objects.filter(category=self.note.category, topic=self.note.topic)
             .select_related('category').order_by('id')
@@ -607,7 +618,9 @@ class LearningRound(models.Model):
 
     @property
     def title(self):
-        """読んだ解説の見出し。2本あれば並べる。"""
+        """読んだ解説の見出し。2本あれば並べる。中分類まるごとなら中分類の名前と本数。"""
+        if self.whole_category and self.note is not None:
+            return '{}（解説 {} 本）'.format(self.note.category.label, len(self.notes))
         return '／'.join(note.title for note in self.notes)
 
     @property
@@ -859,3 +872,128 @@ class PageViewCount(models.Model):
 
     def __str__(self):
         return '{} {} {}'.format(self.date, self.page, self.count)
+
+
+
+class StudyPlan(models.Model):
+    """学習計画。受験日だけを本人が決め、中分類ごとの日程は fe.plan が割り振る。
+
+    受験日の前日までを3つの巡（ROUNDS）に等分する。1巡目は学習モードの順（中分類の
+    番号順、科目A → 科目B）に全中分類を並べる。2巡目・3巡目は、その巡が始まってから
+    前の巡の正答率で並べ直す（苦手が先、苦手は2日ぶん）。前の巡の結果が出るまで
+    並べられないため。1つの ID に1つ。
+    """
+
+    ROUNDS = 3
+
+    learner = models.OneToOneField(
+        Learner, verbose_name='ID', on_delete=models.CASCADE, related_name='study_plan',
+    )
+    exam_date = models.DateField(verbose_name='受験日')
+    start_date = models.DateField(verbose_name='開始日')
+    created_at = models.DateTimeField(verbose_name='作成日時', auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'FE 学習計画'
+        db_table = 'funitclub_fe_study_plan'
+
+    def __str__(self):
+        return '{} {}'.format(self.learner, self.exam_date)
+
+
+class StudyPlanEntry(models.Model):
+    """巡の中で、その中分類に取り組む日。苦手な中分類は2巡目以降、2日ぶん入る。"""
+
+    plan = models.ForeignKey(
+        StudyPlan, verbose_name='学習計画', on_delete=models.CASCADE, related_name='entries',
+    )
+    round_no = models.PositiveSmallIntegerField(verbose_name='巡')
+    category = models.ForeignKey(Category, verbose_name='中分類', on_delete=models.PROTECT)
+    date = models.DateField(verbose_name='日付')
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'FE 学習計画の日程'
+        db_table = 'funitclub_fe_study_plan_entry'
+        ordering = ['round_no', 'date', 'id']
+
+
+class StudyPlanResult(models.Model):
+    """巡ごと・中分類ごとの解答数と正解数。解答するたびに stats.record_progress が足す。
+
+    どの画面で解いても（1問1答・学習モード・問題メール）、その日が入る巡に数える。
+    """
+
+    plan = models.ForeignKey(
+        StudyPlan, verbose_name='学習計画', on_delete=models.CASCADE, related_name='results',
+    )
+    round_no = models.PositiveSmallIntegerField(verbose_name='巡')
+    category = models.ForeignKey(Category, verbose_name='中分類', on_delete=models.PROTECT)
+    answered = models.PositiveIntegerField(verbose_name='解答数', default=0)
+    correct = models.PositiveIntegerField(verbose_name='正解数', default=0)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'FE 学習計画の結果'
+        db_table = 'funitclub_fe_study_plan_result'
+        ordering = ['round_no', 'category__code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['plan', 'round_no', 'category'], name='funitclub_fe_unique_plan_result'
+            ),
+        ]
+
+
+class StudyPlanTopicResult(models.Model):
+    """巡ごと・中分類ごと・小分類ごとの解答数と正解数。合格の判定（plan.record）に使う。
+
+    小分類は解いた問題の topic。中分類の合格は、その中のどの小分類も合格の基準に届いたとき。
+    """
+
+    plan = models.ForeignKey(
+        StudyPlan, verbose_name='学習計画', on_delete=models.CASCADE, related_name='topic_results',
+    )
+    round_no = models.PositiveSmallIntegerField(verbose_name='巡')
+    category = models.ForeignKey(Category, verbose_name='中分類', on_delete=models.PROTECT)
+    topic = models.CharField(verbose_name='小分類', max_length=60, blank=True)
+    answered = models.PositiveIntegerField(verbose_name='解答数', default=0)
+    correct = models.PositiveIntegerField(verbose_name='正解数', default=0)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'FE 学習計画の小分類の結果'
+        db_table = 'funitclub_fe_study_plan_topic_result'
+        ordering = ['round_no', 'category__code', 'topic']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['plan', 'round_no', 'category', 'topic'], name='funitclub_fe_unique_plan_topic_result'
+            ),
+        ]
+
+
+class StudyPlanPass(models.Model):
+    """合格した中分類。巡の中で、その中分類のどの小分類も PASS_MIN_TOPIC_ANSWERS 問以上
+    （小分類の問題がそれより少なければその数）解き、正答率が PASS_PERCENT％ 以上になったら。
+    小分類が分からない中分類（問題が無いなど）は、中分類全体で PASS_MIN_ANSWERS 問以上・PASS_PERCENT％ 以上。
+
+    合格した中分類は、それより後の巡の日程に入れない。計画を作り直しても残す
+    （受験日を変えただけで、身についた中分類をやり直させないため）。
+    """
+
+    PASS_PERCENT = 80
+    PASS_MIN_TOPIC_ANSWERS = 5
+    PASS_MIN_ANSWERS = 10
+
+    learner = models.ForeignKey(
+        Learner, verbose_name='ID', on_delete=models.CASCADE, related_name='plan_passes',
+    )
+    category = models.ForeignKey(Category, verbose_name='中分類', on_delete=models.PROTECT)
+    round_no = models.PositiveSmallIntegerField(verbose_name='巡')
+    answered = models.PositiveIntegerField(verbose_name='解答数')
+    correct = models.PositiveIntegerField(verbose_name='正解数')
+    passed_on = models.DateField(verbose_name='合格した日')
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'FE 学習計画の合格'
+        db_table = 'funitclub_fe_study_plan_pass'
+        ordering = ['category__code']
+        constraints = [
+            models.UniqueConstraint(fields=['learner', 'category'], name='funitclub_fe_unique_plan_pass'),
+        ]

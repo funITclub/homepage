@@ -1,15 +1,21 @@
-// ダッシュボード。上から次の順に並べる。
-//   ID あり：自分の成績（4枚・苦手分野・未着手・分野別・直近14日） → みんなの集計（と合格の申告）
-//            → 「1問1答」「学習モード」のボタン → 問題メール
-//   ID なし：みんなの集計 → 「1問1答」「学習モード」のボタン → ID を作る案内 → 問題メール
+// ダッシュボード。上から次の順に並べる。「はじめる」のカードは、押すと plan&check（/planandcheck/）へ移る。
+// plan&check はヘッダーのメニューに出さず、このカードからだけ開く。計画は ID ごとに持つので、カードは ID ありのときだけ出す。
+//   ID あり：帯（総合正答率・直近の正答率・学習した日数・収録問題） → 「はじめる」のカード → 苦手分野・未着手・分野別・直近14日
+//            → みんなの集計（と合格の申告） → 問題メール
+//   ID なし：みんなの集計 → 問題メール（「はじめる」のカードは出さない）
+//            開いたときに ID の入力のポップアップ（IdPopup.tsx）を出す（「次回から表示しない」まで）
+// 1問1答と学習モードのボタンは置かない（plan&check の計画の中分類か、ヘッダーのメニューから開く）。
+// ダッシュボードを開いたら、学習コーナーの中分類（corner.tsx）を忘れる。
 // 出題設定は1問1答の画面で変える。説明は「このアプリについて」にまとめる。
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 
 import { useMe } from './App'
+import { clearCorner } from './corner'
 import { api, type Dashboard as DashboardData, type Personal } from './api'
 import { Icon } from './Icon'
+import { IdPopup } from './IdPopup'
 import { MailSection } from './MailSection'
 import { LoadError, Loading } from './Status'
 import { useToast } from './toast'
@@ -20,6 +26,7 @@ const percent = (value: number | null) => (value === null ? '—' : `${value}％
 export function Dashboard() {
   const { me } = useMe()
   const board = useLoad(api.dashboard)
+  useEffect(clearCorner, [])
 
   if (board.error) return <LoadError message={board.error} onRetry={() => void board.reload()} />
   if (!board.data) return <Loading rows={4} />
@@ -27,47 +34,16 @@ export function Dashboard() {
 
   return (
     <>
+      {me.is_temporary && <IdPopup onEntered={() => void board.reload()} />}
+
       {data.personal && <PersonalStats personal={data.personal} questionTotal={data.question_total} />}
 
       <Summary data={data} temporary={me.is_temporary} onChange={() => void board.reload()} />
 
-      {/* 出題（出題設定は1問1答の画面で変える）。集計の下に、ボタンを縦に並べて、それぞれ短い説明を添える */}
-      <section className="fe-section">
-        <div className="fe-start-list">
-          <div className="fe-start-row">
-            <Link to="/quiz/" className="btn btn-primary btn-sm">
-              <Icon name="play" className="me-2" />1問1答
-            </Link>
-            <span className="fe-muted small">苦手な分野を重めに、1問ずつ出題します。出題設定で分野や出し方を変えられます。</span>
-          </div>
-          <div className="fe-start-row">
-            <Link to="/learn/" className="btn btn-outline-primary btn-sm">
-              <Icon name="book-open" className="me-2" />学習モード
-            </Link>
-            <span className="fe-muted small">技術解説を読んでから、その範囲の問題を解きます。</span>
-          </div>
-        </div>
-        {data.question_total === 0 && (
-          <div className="fe-card fe-warning mt-3">
-            問題集はまだ用意されていません。用意されるまでは、計算問題だけを出題します。
-          </div>
-        )}
-      </section>
-
-      {/* 記録を残したくなった人への案内（ID なしのときだけ） */}
-      {me.is_temporary && (
+      {data.question_total === 0 && (
         <section className="fe-section">
-          <div className="fe-card fe-invite">
-            <div>
-              <div className="fe-invite-title"><Icon name="save" className="me-2" />学習の記録を残しませんか</div>
-              <div className="fe-muted small">
-                いまの記録はブラウザを閉じると消えます。ID を作ると記録が残り、別の端末からも続きを開けて、問題メールで答えた分も記録されます。
-              </div>
-            </div>
-            <div className="fe-invite-actions">
-              <Link to="/id/" className="btn btn-primary btn-sm">ID を作って記録を残す</Link>
-              <Link to="/id/" className="btn btn-outline-primary btn-sm">ID をお持ちの方はこちら</Link>
-            </div>
+          <div className="fe-card fe-warning">
+            問題集はまだ用意されていません。用意されるまでは、計算問題だけを出題します。
           </div>
         </section>
       )}
@@ -84,28 +60,31 @@ function PersonalStats({ personal, questionTotal }: { personal: Personal; questi
   const maxDaily = Math.max(1, ...personal.daily.map((d) => d.total))
   return (
     <>
-      <section className="fe-section fe-tiles">
-        <div className="fe-card fe-tile">
-          <div className="fe-tile-label">総合正答率</div>
-          <div className="fe-tile-value">{percent(o.rate_percent)}</div>
-          <div className="fe-tile-sub">{o.correct} / {o.total} 問正解</div>
+      {/* いちばん上の帯（plan&check の帯と同じ見た目） */}
+      <section className="fe-section fe-band">
+        <div className="fe-band-item">
+          <div className="fe-band-label">総合正答率</div>
+          <div className="fe-band-value">{percent(o.rate_percent)}</div>
+          <div className="fe-band-sub">{o.correct} / {o.total} 問正解</div>
         </div>
-        <div className="fe-card fe-tile">
-          <div className="fe-tile-label">直近{o.recent_days}日の正答率</div>
-          <div className="fe-tile-value">{percent(o.recent_rate_percent)}</div>
-          <div className="fe-tile-sub">目安は {o.pass_line_percent}％以上</div>
+        <div className="fe-band-item">
+          <div className="fe-band-label">直近{o.recent_days}日の正答率</div>
+          <div className="fe-band-value">{percent(o.recent_rate_percent)}</div>
+          <div className="fe-band-sub">目安は {o.pass_line_percent}％以上</div>
         </div>
-        <div className="fe-card fe-tile">
-          <div className="fe-tile-label">学習した日数</div>
-          <div className="fe-tile-value">{o.study_days}<small> 日</small></div>
-          <div className="fe-tile-sub">継続が一番効く</div>
+        <div className="fe-band-item">
+          <div className="fe-band-label">学習した日数</div>
+          <div className="fe-band-value">{o.study_days}<small> 日</small></div>
+          <div className="fe-band-sub">継続が一番効く</div>
         </div>
-        <div className="fe-card fe-tile">
-          <div className="fe-tile-label">収録問題</div>
-          <div className="fe-tile-value">{questionTotal}<small> 問</small></div>
-          <div className="fe-tile-sub">＋ 計算問題 {personal.template_total} 型</div>
+        <div className="fe-band-item">
+          <div className="fe-band-label">収録問題</div>
+          <div className="fe-band-value">{questionTotal}<small> 問</small></div>
+          <div className="fe-band-sub">＋ 計算問題 {personal.template_total} 型</div>
         </div>
       </section>
+
+      <StartCard />
 
       <section className="fe-section">
         <h2 className="fe-section-title">苦手分野</h2>
@@ -267,5 +246,17 @@ function PassReport({ data, onChange }: { data: DashboardData; onChange: () => v
       </form>
       <div className="fe-muted small mt-2">合格者数に1人ぶん加わります。名前は表示されません。あとから取り消せます。</div>
     </div>
+  )
+}
+
+/** 「はじめる」のカード。押すと plan&check（学習コーナーのトップ）へ移る */
+function StartCard() {
+  return (
+    <section className="fe-section">
+      <Link to="/planandcheck/" className="fe-card fe-start-card text-decoration-none">
+        <span className="fe-start-card-title">はじめる</span>
+        <Icon name="arrow-right" />
+      </Link>
+    </section>
   )
 }

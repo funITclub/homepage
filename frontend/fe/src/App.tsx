@@ -10,6 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { Link, Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router'
 
 import { api, type Me } from './api'
+import { clearCorner } from './corner'
 import { Dashboard } from './Dashboard'
 import { EnterPage } from './EnterPage'
 import { GuidePage } from './GuidePage'
@@ -20,6 +21,7 @@ import { LearnResultPage } from './LearnResultPage'
 import { LearnStartPage } from './LearnStartPage'
 import { QuizPage } from './QuizPage'
 import { StatsPage } from './StatsPage'
+import { PlanPage } from './PlanPage'
 import { LoadError, Loading } from './Status'
 import { ToastProvider } from './toast'
 import { useButtonFlash } from './useButtonFlash'
@@ -67,6 +69,7 @@ export function App() {
                 <Route path="/learn/:id/result/" element={<LearnResultPage />} />
                 <Route path="/stats/" element={<StatsPage />} />
                 <Route path="/history/" element={<HistoryPage />} />
+                <Route path="/planandcheck/" element={<PlanPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </MeContext.Provider>
@@ -92,18 +95,26 @@ function Header({ me }: { me: Me | null }) {
         <h1 className="fe-title">
           <Link to="/">基本情報技術者試験 対策</Link>
         </h1>
+        {/* いまの ID は題名の行の右に置く（メニューに混ぜると、幅によって行の頭に落ちるため）。
+            ID なしのときは「ID で入る」だけ（ダッシュボードのポップアップを「次回から表示しない」にしたあとの入り口） */}
+        {me?.code && (
+          <span className="fe-id">
+            ID: <strong>{me.code}</strong>
+            <Link to="/id/?switch" className="btn btn-outline-light btn-sm ms-2">ID を切り替える</Link>
+          </span>
+        )}
+        {me && !me.code && (
+          <span className="fe-id">
+            <Link to="/id/" className="btn btn-outline-light btn-sm">ID で入る</Link>
+          </span>
+        )}
         <nav className="fe-nav">
-          <NavLink to="/" end>ダッシュボード</NavLink>
+          {/* メニューから移ったら、学習コーナー（corner.tsx）の中分類を忘れて、ふつうの画面にする */}
+          <NavLink to="/" end onClick={clearCorner}>ダッシュボード</NavLink>
+          {/* menu: true は、メニューから移ったしるし（学習モードの入口は、そのとき中分類をすべて畳んで出す） */}
           {MENU.map((item) => (
-            <NavLink key={item.to} to={item.to}>{item.label}</NavLink>
+            <NavLink key={item.to} to={item.to} state={{ menu: true }} onClick={clearCorner}>{item.label}</NavLink>
           ))}
-          {/* ID なしのときは何も出さない（ID を作る案内はダッシュボードにある） */}
-          {me?.code && (
-            <span className="fe-id">
-              ID: <strong>{me.code}</strong>
-              <Link to="/id/?switch" className="btn btn-outline-light btn-sm py-0 ms-2">ID を切り替える</Link>
-            </span>
-          )}
         </nav>
       </div>
     </header>

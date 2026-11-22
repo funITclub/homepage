@@ -1,8 +1,11 @@
 // 学習モードの結果。解いた問題を、正解したものも含めて全問読み返せるようにする。
 
-import { Link, useParams } from 'react-router'
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { api } from './api'
+import { CornerBackIfAny, getCorner } from './corner'
+import { useToast } from './toast'
 import { Source, Stem } from './QuestionParts'
 import { LoadError, Loading } from './Status'
 import { usePageView } from './usePageView'
@@ -20,6 +23,7 @@ export function LearnResultPage() {
 
   return (
     <div className="fe-narrow-wide">
+      <CornerBackIfAny />
       <div className="fe-card fe-result-head">
         <div>
           <div className="fe-muted small mb-1">読んだ解説</div>
@@ -59,9 +63,31 @@ export function LearnResultPage() {
       ))}
 
       <div className="d-flex gap-2 mt-4">
-        <Link to="/learn/" className="btn btn-primary">もう1ラウンド</Link>
+        {getCorner() ? <OneMoreRound /> : <Link to="/learn/" className="btn btn-primary">もう1ラウンド</Link>}
         {round.has_note && <Link to={`/learn/${round.id}/read/`} className="btn btn-outline-secondary">解説を読み返す</Link>}
       </div>
     </div>
+  )
+}
+
+/** 学習コーナーの「もう1ラウンド」。入口を通さず、同じ中分類まるごとで始める */
+function OneMoreRound() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [sending, setSending] = useState(false)
+
+  const start = async () => {
+    setSending(true)
+    try {
+      const { round } = await api.startRound(null, null, 'category')
+      navigate(`/learn/${round.id}/read/`)
+    } catch (e) {
+      toast.show((e as Error).message, { kind: 'danger' })
+      setSending(false)
+    }
+  }
+
+  return (
+    <button type="button" className="btn btn-primary" disabled={sending} onClick={() => void start()}>もう1ラウンド</button>
   )
 }

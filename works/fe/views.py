@@ -63,6 +63,10 @@ SESSION_LEARNER = 'fe_learner_id'
 # 共用の端末で次の人が前の人の ID のまま入ってしまう。
 LEARNER_COOKIE = 'fe_learner'
 LEARNER_COOKIE_SALT = 'fe.learner'
+# ダッシュボードの ID のポップアップで「次回から表示しない」に印を付けて ID で入ったときは、
+# ブラウザを閉じても ID を保持する（Cookie に期限を付ける）。セッションは2週間で切れるので、
+# 切れたあとは Cookie から入り直す（current_learner）。保持するのは ID を作った記録だけ。
+LEARNER_KEEP_DAYS = 365
 
 
 def _get_study_session(learner):
@@ -70,25 +74,33 @@ def _get_study_session(learner):
     return session
 
 
-def _enter(request, learner):
-    """その ID で入る。前の ID の出題途中の状態は持ち越さない。"""
+def _enter(request, learner, keep=False):
+    """その ID で入る。前の ID の出題途中の状態は持ち越さない。
+
+    keep が真なら、ブラウザを閉じても ID を保持する（remember_entry が Cookie に期限を付ける）。
+    偽なら、前に保持していた Cookie も、ブラウザを閉じたら消える Cookie で上書きされる。
+    """
     for key in (SESSION_RECENT, SESSION_PENDING, SESSION_SHOWN_AT):
         request.session.pop(key, None)
     request.session[SESSION_LEARNER] = learner.pk
     # 応答を返すときに、ブラウザを閉じたら消える Cookie を置く（remember_entry）
     request.fe_entered = learner.pk
+    request.fe_keep = keep
 
 
 def remember_entry(request, response):
-    """入ったばかりなら、ブラウザを閉じたら消える Cookie に ID を置く。
+    """入ったばかりなら、Cookie に ID を置く。
 
-    期限を付けないので、ブラウザを閉じると消える。消えたら current_learner が
+    ふつうは期限を付けないので、ブラウザを閉じると消える。消えたら current_learner が
     セッションの ID も捨てるので、次に開いたときは入口からになる。
+    保持するとき（fe_keep）は LEARNER_KEEP_DAYS の期限を付け、閉じても残す。
     """
     pk = getattr(request, 'fe_entered', None)
     if pk is not None:
+        keep = getattr(request, 'fe_keep', False)
         response.set_signed_cookie(
             LEARNER_COOKIE, str(pk), salt=LEARNER_COOKIE_SALT,
+            max_age=LEARNER_KEEP_DAYS * 24 * 60 * 60 if keep else None,
             httponly=True, samesite='Lax', secure=request.is_secure(),
         )
     return response
@@ -100,10 +112,12 @@ def current_learner(request):
     ID を登録した人も、履歴を残さずに使っている人も、同じようにここから取る。
     ブラウザを閉じて Cookie が消えていれば、セッションに残っていても入っていない
     扱いにする。
+    セッションに無くても、保持している Cookie（期限付き）が ID を作った記録を指していれば、
+    セッションに戻して入っている扱いにする（2週間でセッションが切れたあと）。
     """
     pk = request.session.get(SESSION_LEARNER)
     if pk is None:
-        return None
+        return _restore_kept(request)
     entered = getattr(request, 'fe_entered', None) == pk or request.get_signed_cookie(
         LEARNER_COOKIE, default=None, salt=LEARNER_COOKIE_SALT,
     ) == str(pk)
@@ -113,6 +127,17 @@ def current_learner(request):
     learner = Learner.objects.filter(pk=pk).first()
     if learner is None:
         request.session.pop(SESSION_LEARNER, None)
+    return learner
+
+
+def _restore_kept(request):
+    """保持している Cookie から ID に入り直す。ID の無い記録は戻さない。"""
+    value = request.get_signed_cookie(LEARNER_COOKIE, default=None, salt=LEARNER_COOKIE_SALT)
+    if not value or not value.isdigit():
+        return None
+    learner = Learner.objects.filter(pk=int(value), code__isnull=False).first()
+    if learner is not None:
+        request.session[SESSION_LEARNER] = learner.pk
     return learner
 
 

@@ -259,14 +259,55 @@ export type Message = { message: string }
 /** API がエラーを返したとき投げる */
 export class ApiError extends Error {
   status: number
+  /** notFound：まだ無い ID で入ろうとした（api.EnterAPI の not_found） */
+  notFound: boolean
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, notFound = false) {
     super(message)
     this.status = status
+    this.notFound = notFound
   }
 }
 
 // 入れ物のページ（fe/app.html）が data-* で渡す値。main.tsx が最初に入れる
+/** 学習計画（api.PlanAPI）。中分類ごとに、巡ごとの日程と結果、合格 */
+/** missed：予定の日を過ぎても1問も解いていない（未実施）。そのとき rate_percent は 0 */
+export type PlanTopic = { topic: string; answered: number; correct: number; rate_percent: number | null; passed: boolean }
+/** topics：小分類ごとの合否。中分類の合格は、どの小分類も passed になったとき */
+export type PlanCell = {
+  dates: string[]
+  answered: number
+  correct: number
+  rate_percent: number | null
+  missed: boolean
+  topics: PlanTopic[]
+  topics_passed: number
+}
+export type PlanRow = CategoryInfo & {
+  rounds: PlanCell[]
+  passed: { round_no: number; passed_on: string; rate_percent: number | null } | null
+}
+export type Plan = {
+  exam_date: string
+  start_date: string
+  days_left: number
+  current_round: number | null
+  rounds: { no: number; first: string | null; last: string | null; built: boolean }[]
+  today: (CategoryInfo & { answered: number; correct: number; rate_percent: number | null })[]
+  rows: PlanRow[]
+  passed_count: number
+  missed_count: number
+}
+export type PlanResponse = {
+  today: string
+  /** 総合正答率（学習コーナーのトップの帯に出す） */
+  overall: { rate_percent: number | null; correct: number; total: number }
+  pass_percent: number
+  pass_min_answers: number
+  pass_min_topic_answers: number
+  plan: Plan | null
+}
+
 const config = { apiUrl: '', basePath: '/fe/' }
 
 export function configureApi(apiUrl: string, basePath: string) {
@@ -300,7 +341,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     const detail = typeof data?.detail === 'string' ? data.detail : ''
-    throw new ApiError(res.status, detail || `うまくいきませんでした（${res.status}）。`)
+    throw new ApiError(res.status, detail || `うまくいきませんでした（${res.status}）。`, data?.not_found === true)
   }
   return data as T
 }
@@ -310,8 +351,10 @@ const post = <T,>(path: string, body: unknown = {}) =>
 
 export const api = {
   me: () => request<Me>('me/'),
-  enter: (code: string, action: 'enter' | 'create') =>
-    post<Me & Message>('enter/', { code, action }),
+  // keep：ブラウザを閉じても ID を保持する（ダッシュボードのポップアップの「次回から表示しない」）
+  enter: (code: string, action: 'enter' | 'create', keep = false) =>
+    post<Me & Message>('enter/', { code, action, keep }),
+  leave: () => post<Me & Message>('leave/'),
   pageview: (page: string) => post<void>('pageview/', { page }),
   dashboard: () => request<Dashboard>('dashboard/'),
   guide: () => request<Guide>('guide/'),
@@ -319,17 +362,23 @@ export const api = {
   saveSettings: (mode: string, subject: string, category: number | null) =>
     post<Settings>('settings/', { mode, subject, category }),
   quizNext: () => request<QuizNext>('quiz/next/'),
-  quizAnswer: (questionId: number, choice: number) =>
-    post<QuizResult>('quiz/answer/', { question_id: questionId, choice }),
+  /** plan が真なら、学習計画（plan&check）の結果にも数える（学習コーナーから解いたとき） */
+  quizAnswer: (questionId: number, choice: number, plan = false) =>
+    post<QuizResult>('quiz/answer/', { question_id: questionId, choice, plan }),
   stats: (subject: string) => request<Stats>(`stats/${subject ? `?subject=${subject}` : ''}`),
   history: (query: string) => request<History>(`history/${query ? `?${query}` : ''}`),
   reportPass: (passedOn: string) => post<Message>('pass/', { passed_on: passedOn }),
   withdrawPass: () => request<Message>('pass/', { method: 'DELETE' }),
+  plan: () => request<PlanResponse>('plan/'),
+  makePlan: (examDate: string) => post<PlanResponse>('plan/', { exam_date: examDate }),
+  dropPlan: () => request<PlanResponse>('plan/', { method: 'DELETE' }),
   mail: () => request<Mail>('mail/'),
   registerMail: (email: string) => post<Mail & Message>('mail/', { email }),
   learn: () => request<LearnStart>('learn/'),
-  startRound: (minutes: number, note: number | null) =>
-    post<{ round: Round }>('learn/', { minutes, note }),
+  /** minutes が null なら既定の読む時間（api.LearnStartAPI が DEFAULT_MINUTES にする）。
+   *  scope が 'category' なら中分類まるごと（出題設定の中分類の解説をすべて読み、小分類ごとに出題する） */
+  startRound: (minutes: number | null, note: number | null, scope?: 'category') =>
+    post<{ round: Round }>('learn/', { minutes, note, scope }),
   learnRead: (id: number) => request<LearnRead>(`learn/${id}/read/`),
   finishReading: (id: number) => post<{ round: Round }>(`learn/${id}/read/`),
   learnTimer: (id: number, state: 'pause' | 'resume') =>

@@ -2,6 +2,7 @@
 
     GET    /fe/api/me/                    いま入っている記録（ID の有無）
     POST   /fe/api/enter/                 ID で入る・ID を作る
+    POST   /fe/api/leave/                 ID から抜ける（ID の無い記録で使い続ける）
     POST   /fe/api/pageview/              画面を出したことを数える（fe.pageviews）
     GET    /fe/api/dashboard/             ダッシュボード（みんなの集計・合格の申告・収録問題数）
     GET    /fe/api/settings/              出題設定（モード・科目・分野）と、選べるものの一覧
@@ -13,10 +14,13 @@
     GET    /fe/api/guide/                 このアプリについて（試験名・収録問題数）
     POST   /fe/api/pass/                  本番合格の申告（ID があるときだけ）
     DELETE /fe/api/pass/                  申告の取り消し
+    GET    /fe/api/plan/                  学習計画（巡ごとの日程・結果・合格）
+    POST   /fe/api/plan/                  受験日から学習計画を組む（作り直す）
+    DELETE /fe/api/plan/                  学習計画をやめる
     GET    /fe/api/mail/                  問題メールの登録の様子
     POST   /fe/api/mail/                  問題メールの登録（確認のメールを送る）
     GET    /fe/api/learn/                 学習モードの入口（学習対象の一覧・読む時間・これまでのラウンド）
-    POST   /fe/api/learn/                 ラウンドを始める
+    POST   /fe/api/learn/                 ラウンドを始める（scope=category で中分類まるごと）
     GET    /fe/api/learn/<pk>/read/       読む段階（解説・残り時間）
     POST   /fe/api/learn/<pk>/read/       読み終えて解く段階へ進む
     POST   /fe/api/learn/<pk>/timer/      読む時間を止める・動かす（読み上げの再生中は止める）
@@ -57,18 +61,20 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import mail, pageviews, speech
+from . import mail, pageviews, plan, speech
 from .exam import EXAM
 from .forms import LearnerForm, PassReportForm
 from .learning import current_item, focus_category, grade, note_menu, start_round
 from .models import (Attempt, Category, CategoryProgress, LearningNote, LearningRound,
-                     MailSubscription, PassReport, Question, QuestionTemplate, StudySession)
+                     MailSubscription, PassReport, Question, QuestionTemplate, StudyPlan,
+                     StudyPlanPass, StudySession)
 from .selection import pick_question
 from .stats import (categories_for, category_options, category_stats, daily_counts,
                     field_stats, overall_stats, record_progress, site_summary,
                     weak_categories)
 from .views import (RECENT_LIMIT, SESSION_PENDING, SESSION_RECENT, SESSION_SHOWN_AT,
-                    _enter, _get_study_session, current_learner, remember_entry, touch)
+                    _enter, _get_study_session, current_learner, remember_entry, start_temporary,
+                    touch)
 
 # 解答してから記録する所要時間の上限。途中で離席したときに極端な値が入らないようにする
 ELAPSED_LIMIT_MS = 30 * 60 * 1000
@@ -110,7 +116,7 @@ class FeAPI(APIView):
     permission_classes = [AllowAny]
 
     def finalize_response(self, request, response, *args, **kwargs):
-        # ID で入ったら、ブラウザを閉じたら消える Cookie を置く（views.remember_entry）
+        # ID で入ったら、ID の Cookie を置く（views.remember_entry）
         response = super().finalize_response(request, response, *args, **kwargs)
         return remember_entry(request._request, response)
 
@@ -279,7 +285,9 @@ class EnterAPI(FeAPI):
         form = LearnerForm({'code': request.data.get('code', '')}, creating=creating)
         if not form.is_valid():
             errors = form.errors.get('code') or ['ID を入力してください。']
-            return Response({'detail': errors[0], 'errors': list(errors)},
+            # not_found：形は正しいが、まだ無い ID で入ろうとした（ポップアップが作成の確認を出す）
+            not_found = any(e.code == 'not_found' for e in form.errors.as_data().get('code', []))
+            return Response({'detail': errors[0], 'errors': list(errors), 'not_found': not_found},
                             status=status.HTTP_400_BAD_REQUEST)
         if creating:
             from .models import Learner
@@ -288,8 +296,26 @@ class EnterAPI(FeAPI):
         else:
             learner = form.learner
             message = 'ID「{}」で入りました。'.format(learner.code)
-        _enter(request._request, learner)
+        # keep：ダッシュボードのポップアップで「次回から表示しない」に印を付けて入った（views._enter）
+        _enter(request._request, learner, keep=bool(request.data.get('keep')))
         return Response({**me_json(learner), 'message': message})
+
+
+class LeaveAPI(FeAPI):
+    """ID から抜ける。ID の無い記録（履歴を残さない利用）を新しく作って入り直す。
+
+    ID の成績はその ID に残る。もう一度 ID を入れれば続きから使える。
+    ブラウザを閉じたときと同じく、ID の無い記録で画面を使い続けられるようにする
+    （記録が無いと API が 401 を返し、入口を開き直すことになるため）。
+    """
+
+    def post(self, request):
+        learner = current_learner(request._request)
+        if learner is None or learner.is_temporary:
+            return Response({'detail': 'ID で入っていません。'}, status=status.HTTP_400_BAD_REQUEST)
+        code = learner.code
+        temporary = start_temporary(request._request)
+        return Response({**me_json(temporary), 'message': 'ID「{}」から抜けました。'.format(code)})
 
 
 class PageViewAPI(FeAPI):
@@ -370,6 +396,7 @@ def personal_json(learner):
             for d in daily_counts(learner, days=14)
         ],
     }
+
 
 
 class GuideAPI(FeAPI):
@@ -485,8 +512,9 @@ class QuizAnswerAPI(LearnerAPI):
             learner=self.learner, question=question, category=question.category,
             selected_index=selected, is_correct=is_correct, elapsed_ms=elapsed_ms,
         )
-        # 問題が入れ替わっても残る記録。分野別の正答率と苦手判定はこちらを見る
-        record_progress(self.learner, question, is_correct)
+        # 問題が入れ替わっても残る記録。分野別の正答率と苦手判定はこちらを見る。
+        # plan&check から開いた 1問1答（画面が plan=true を添える）だけ、学習計画の結果にも足す
+        record_progress(self.learner, question, is_correct, for_plan=request.data.get('plan') is True)
 
         # 採点済みなので保留を落とし、直前に出した問題に積む
         request.session.pop(SESSION_PENDING, None)
@@ -621,6 +649,146 @@ class PassReportAPI(RegisteredAPI):
     def delete(self, request):
         PassReport.objects.filter(learner=self.learner).delete()
         return Response({'message': '合格の申告を取り消しました。'})
+
+
+# ---------------------------------------------------------------- 学習計画（fe.plan）
+
+class PlanAPI(RegisteredAPI):
+    """学習計画。受験日を受け取って組み、巡ごとの日程・結果・合格を返す。
+
+    結果を巡をまたいで残すので、ID が要る（履歴を残さない利用では 403）。
+    """
+
+    message = '学習計画には ID の登録が必要です。'
+
+    def get(self, request):
+        return Response(plan_response(self.learner))
+
+    def post(self, request):
+        try:
+            exam_date = datetime.strptime(str(request.data.get('exam_date', '')), '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': '受験日を入れてください。'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            plan.create_plan(self.learner, exam_date, timezone.localdate())
+        except plan.PlanError as error:
+            return Response({'detail': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(plan_response(self.learner))
+
+    def delete(self, request):
+        StudyPlan.objects.filter(learner=self.learner).delete()
+        return Response(plan_response(self.learner))
+
+
+def plan_response(learner):
+    today = timezone.localdate()
+    study_plan = StudyPlan.objects.filter(learner=learner).first()
+    overall = overall_stats(learner)
+    return {
+        'today': today.isoformat(),
+        # 学習コーナーのトップの帯に出す総合正答率（ダッシュボードの「総合正答率」と同じ値）
+        'overall': {
+            'rate_percent': overall['rate_percent'],
+            'correct': overall['correct'],
+            'total': overall['total'],
+        },
+        'pass_percent': plan.PASS_PERCENT,
+        'pass_min_answers': plan.PASS_MIN_ANSWERS,
+        'pass_min_topic_answers': plan.PASS_MIN_TOPIC_ANSWERS,
+        'plan': plan_json(study_plan, today) if study_plan else None,
+    }
+
+
+def plan_json(study_plan, today):
+    """計画の画面に出すもの。中分類を学習モードの順に並べ、巡ごとの日程と結果、合格を添える。"""
+    plan.ensure_rounds(study_plan, today)
+    current = plan.round_of(study_plan, today)
+
+    entries = {}
+    for entry in study_plan.entries.all():
+        dates = entries.setdefault((entry.round_no, entry.category_id), [])
+        # 苦手の2日ぶんが同じ日に入ることがある（日数より枠が多いとき）。日付は1つにまとめる
+        if entry.date.isoformat() not in dates:
+            dates.append(entry.date.isoformat())
+    results = {
+        (row.round_no, row.category_id): row for row in study_plan.results.all()
+    }
+    # 小分類ごとの合否（中分類の合格は、どの小分類も基準に届いたとき。plan.topic_status）
+    topics = plan.category_topics()
+    topic_results = {}
+    for row in study_plan.topic_results.all():
+        topic_results.setdefault((row.round_no, row.category_id), {})[row.topic] = (row.answered, row.correct)
+    passes = {
+        row.category_id: row
+        for row in StudyPlanPass.objects.filter(learner=study_plan.learner)
+    }
+    rounds = [
+        {
+            'no': number,
+            'first': days[0].isoformat() if days else None,
+            'last': days[-1].isoformat() if days else None,
+            'built': any(key[0] == number for key in entries),
+        }
+        for number, days in plan.round_ranges(study_plan)
+    ]
+
+    def rate(correct, answered):
+        return round(correct / answered * 100) if answered else None
+
+    categories = plan.study_categories()
+    # 学習対象から外れた中分類（問題が無くなったなど）でも、合格していれば行を残す
+    shown = {c.id for c in categories}
+    categories += [row.category for row in passes.values() if row.category_id not in shown]
+
+    rows, today_list = [], []
+    for category in categories:
+        passed = passes.get(category.id)
+        cells = []
+        for number in range(1, plan.ROUNDS + 1):
+            result = results.get((number, category.id))
+            answered = result.answered if result else 0
+            correct = result.correct if result else 0
+            dates = entries.get((number, category.id), [])
+            # 未実施：その巡の予定の日を過ぎても1問も解いていない。正答率は 0％ として出す
+            # （次の巡の並べ替えでも、解いていない中分類は 0％ 扱い。plan.ensure_rounds）。
+            # あとの巡で合格しても、その巡の未実施は残す（合格した中分類は、それより後の巡には
+            # 日程が入らないので、合格のあとに未実施が増えることはない）
+            missed = not answered and bool(dates) and min(dates) < today.isoformat()
+            recorded = topic_results.get((number, category.id), {})
+            # 小分類ごとに数え始める前に解いた分は、小分類の内訳が無い。内訳が無いセルでは
+            # 小分類を出さない（解答はあるのに、どの小分類も「未」に見えてしまうため）
+            topic_rows = plan.topic_status(topics.get(category.id, {}), recorded) if (recorded or not answered) else []
+            cells.append({
+                'dates': dates, 'answered': answered, 'correct': correct,
+                'rate_percent': 0 if missed else rate(correct, answered),
+                'missed': missed,
+                'topics': topic_rows,
+                'topics_passed': sum(1 for row in topic_rows if row['passed']),
+            })
+            if number == current and today.isoformat() in dates and not passed:
+                today_list.append({**category_json(category), 'answered': answered,
+                                   'correct': correct, 'rate_percent': rate(correct, answered)})
+        rows.append({
+            **category_json(category),
+            'rounds': cells,
+            'passed': {
+                'round_no': passed.round_no,
+                'passed_on': passed.passed_on.isoformat(),
+                'rate_percent': rate(passed.correct, passed.answered),
+            } if passed else None,
+        })
+
+    return {
+        'exam_date': study_plan.exam_date.isoformat(),
+        'start_date': study_plan.start_date.isoformat(),
+        'days_left': (study_plan.exam_date - today).days,
+        'current_round': current,
+        'rounds': rounds,
+        'today': today_list,
+        'rows': rows,
+        'passed_count': sum(1 for row in rows if row['passed']),
+        'missed_count': sum(1 for row in rows for cell in row['rounds'] if cell['missed']),
+    }
 
 
 # ---------------------------------------------------------------- 問題メール（fe.mail）
@@ -802,9 +970,13 @@ class LearnStartAPI(LearnerAPI):
                 return Response({'detail': 'その解説は見つかりませんでした。'}, status=status.HTTP_400_BAD_REQUEST)
 
         session = _get_study_session(self.learner)
-        round_ = start_round(self.learner, session, minutes, note=note)
+        # scope=category：中分類まるごと（plan&check の「解説」。出題設定の中分類の解説をすべて読む）
+        whole = request.data.get('scope') == 'category'
+        round_ = start_round(self.learner, session, minutes, note=note, whole_category=whole)
         if round_ is None:
-            if note is not None:
+            if whole:
+                detail = 'この中分類には、解説か出題できる問題がまだありません。'
+            elif note is not None:
                 detail = '「{}」に出題できる問題がありません。'.format(note.title)
             elif focus_category(session) is not None:
                 detail = (
@@ -949,7 +1121,8 @@ class LearnQuizAPI(RoundAPI):
                 learner=self.learner, question=question, category=question.category,
                 selected_index=selected, is_correct=is_correct,
             )
-            record_progress(self.learner, question, is_correct)
+            # plan&check の「解説」で始めた回（中分類まるごと）だけ、学習計画の結果にも足す
+            record_progress(self.learner, question, is_correct, for_plan=round_.whole_category)
         return Response(item_json(round_, item, True))
 
 
