@@ -604,10 +604,18 @@ class AutoBlockTests(TestCase):
         from .models import SuspiciousAccess
         now = timezone.now()
         for hours in (9, 7, 5, 3):
-            SuspiciousAccess.objects.create(created_at=now - td(hours=hours), kind='scanner', ip='20.30.40.51')
+            SuspiciousAccess.objects.create(created_at=now - td(hours=hours), kind='probe', ip='20.30.40.51')
         self.assertFalse(suspicious.block_if_persistent('20.30.40.51'))
         SuspiciousAccess.objects.create(created_at=now, kind='probe', ip='20.30.40.51')
         self.assertTrue(suspicious.block_if_persistent('20.30.40.51'))
+
+    def test_curl_checking_ordinary_pages_is_not_blocked(self):
+        """curl で普通のページを何度開いても（運営の確認など）遮断しない。スキャナーとしては残す。"""
+        from .models import SuspiciousAccess
+        for _ in range(8):
+            self.client.get('/', headers={'User-Agent': 'curl/8.7.1'})
+        self.assertEqual(self.blocked(), [])
+        self.assertEqual(SuspiciousAccess.objects.filter(kind='scanner').count(), 8)
 
     def test_other_kinds_do_not_count(self):
         from . import suspicious

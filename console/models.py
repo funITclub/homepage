@@ -148,8 +148,9 @@ class SuspiciousAccess(models.Model):
         AUTO_BLOCK: '執拗なので自動で遮断',
     }
 
-    #: 執拗かどうかを数える種類（自動遮断の対象）
-    WATCHED = (PROBE, FAKE_BROWSER, SCANNER)
+    #: 執拗かどうかを数える種類（自動遮断の対象）。名乗っているスキャナーは入れない
+    #: （curl などで普通のページを開くだけの確認を遮断してしまうため。攻撃はパス探しで数に届く）
+    WATCHED = (PROBE, FAKE_BROWSER)
 
     #: 残す日数
     KEEP_DAYS = 30

@@ -233,7 +233,7 @@ python manage.py createsuperuser --settings=config.settings_dev
   （遮断のすぐ内側）で見るので、ゲートなどが途中で返した応答も取りこぼさない。Azure の SiteWarmup・HealthCheck は人のふりに数えない。
   自分たちの GitHub Actions は不審に数えない。合言葉が通った定期実行（`/fe/tasks/send-mails/`・`/countdown/notify/run/`）と、
   `funitclub-actions/` を名乗る curl（ワークフローで `-A` を付ける）。名乗っていても攻撃用のパスは残す。
-- 攻撃用のパス探し・人のふりをしたロボット・スキャナーが同じ IP から続くと（`SUSPICIOUS_BLOCK_RULES`。10 分で 20 件、
+- 攻撃用のパス探し・人のふりをしたロボットが同じ IP から続くと（名乗っているスキャナーは数えない）（`SUSPICIOUS_BLOCK_RULES`。10 分で 20 件、
   または 1 日で 100 件）、自動で遮断する（`home.BlockedIp`。期間・解除・`IP_BLOCK_EXEMPT` は参加フォームの遮断と同じ）。
   手作業は要らないので事務局にメールは送らない。Azure の内側（169.254.x など）・プライベート・手元の IP は遮断しない。
 - 会員数（`/console/members/`）… クラブの Classroom のクラスの会員（生徒と先生。WG への参加の確認と同じく先生も会員に数える）・招待中の人数と、Chat スペースを登録した WG ごとの
