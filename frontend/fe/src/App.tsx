@@ -61,7 +61,8 @@ export function App() {
               <Routes>
                 <Route path="/" element={<IndexRoute />} />
                 <Route path="/id/" element={<IdRoute />} />
-                <Route path="/guide/" element={<GuidePage />} />
+                <Route path="/about/" element={<GuidePage />} />
+                <Route path="/guide/" element={<Navigate to="/about/" replace />} />
                 <Route path="/quiz/" element={<QuizPage />} />
                 <Route path="/learn/" element={<LearnStartPage />} />
                 <Route path="/learn/:id/read/" element={<LearnReadPage />} />
@@ -85,7 +86,7 @@ const MENU = [
   { to: '/learn/', label: '学習モード' },
   { to: '/stats/', label: '分野別正答率' },
   { to: '/history/', label: '履歴' },
-  { to: '/guide/', label: 'このアプリについて' },
+  { to: '/about/', label: 'このアプリについて' },
 ]
 
 function Header({ me }: { me: Me | null }) {

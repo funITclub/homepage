@@ -19,7 +19,10 @@ urlpatterns = [
     # （サイト全体のログイン必須を外す。学習の画面と同じくログインなしで開けるように）
     path('mypage/', login_not_required(RedirectView.as_view(pattern_name='fe:index')), name='mypage'),
     # このアプリについて（試験の概要・使い方・対応していない問題・ID と記録）
-    path('guide/', app(entry='open'), name='guide'),
+    path('about/', app(entry='open'), name='about'),
+    # 以前の「このアプリについて」の URL。ブックマークが残っていても困らないよう、新しい URL へ送る
+    path('guide/', login_not_required(RedirectView.as_view(pattern_name='fe:about', permanent=True)),
+         name='guide'),
     # 1問1答。問題メールの「1問1答を解く」からも案内するので、記録が無ければその場で作る
     path('quiz/', app(entry='start'), name='quiz'),
     # 学習モード（先に解説を読み、そのあと同じ範囲を解く）
