@@ -822,7 +822,7 @@ class ViewTests(TestCase):
         self.client.logout()
         self.assertEqual(self.client.get(reverse('fe:index')).status_code, 200)
         for name in ('fe:index', 'fe:id_entry', 'fe:quiz', 'fe:learn_start',
-                     'fe:stats', 'fe:history', 'fe:guide'):
+                     'fe:stats', 'fe:history', 'fe:about'):
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 200)
         for name in ('api_me', 'api_dashboard', 'api_settings', 'api_quiz_next', 'api_stats',
@@ -847,9 +847,16 @@ class ViewTests(TestCase):
             with self.subTest(page=name):
                 self.assertRedirects(client.get(reverse(name)), reverse('fe:index'),
                                      fetch_redirect_response=False)
-        for name in ('fe:id_entry', 'fe:guide'):
+        for name in ('fe:id_entry', 'fe:about'):
             with self.subTest(page=name):
                 self.assertEqual(client.get(reverse(name)).status_code, 200)
+
+    def test_old_guide_url_moves_to_about(self):
+        """「このアプリについて」は /fe/about/。以前の /fe/guide/ は新しい URL へ送る。"""
+        client = self.client_class()
+        self.assertEqual(reverse('fe:about'), '/fe/about/')
+        self.assertRedirects(client.get('/fe/guide/'), '/fe/about/', status_code=301,
+                             fetch_redirect_response=False)
 
     def test_the_quiz_starts_without_a_record(self):
         """1問1答は問題メールからの案内先。始めていなければ、ID なしの記録を作ってそのまま開く。"""
@@ -1316,7 +1323,7 @@ class LearnerIdTests(TestCase):
         enter(self.client, learner)
         login_editor(self.client)
         for url in (dashboard(learner), reverse('fe:quiz'), reverse('fe:learn_start'),
-                    reverse('fe:stats'), reverse('fe:history'), reverse('fe:guide'),
+                    reverse('fe:stats'), reverse('fe:history'), reverse('fe:about'),
                     reverse('fe:id_entry')):
             with self.subTest(url=url):
                 html = self.client.get(url).content.decode('utf-8')
@@ -2740,7 +2747,7 @@ class ManageNeedsLoginTests(TestCase):
         learner = make_learner('hidden')
         enter(self.client, learner)
         for url in (dashboard(learner), reverse('fe:quiz'), reverse('fe:learn_start'),
-                    reverse('fe:stats'), reverse('fe:history'), reverse('fe:guide'),
+                    reverse('fe:stats'), reverse('fe:history'), reverse('fe:about'),
                     reverse('fe:id_entry')):
             with self.subTest(url=url):
                 html = self.client.get(url).content.decode('utf-8')
